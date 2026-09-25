@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ACES Level 1 DFD – Verified Zero Overlap</title>
+  <style>
+    body { margin:0; background:#fff; display:flex; justify-content:center; }
+    svg text { font-family: 'Segoe UI', Arial, sans-serif; }
+  </style>
+</head>
+<body>
+<svg width="1400" height="850" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#000"/>
+    </marker>
+  </defs>
+
+  <!-- ===== EXTERNAL ENTITIES ===== -->
+  <rect x="40" y="60" width="100" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="90" y="90" text-anchor="middle" font-size="12" font-weight="bold">Student</text>
+
+  <rect x="40" y="620" width="100" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="90" y="650" text-anchor="middle" font-size="12" font-weight="bold">Student</text>
+
+  <rect x="1260" y="60" width="100" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1310" y="90" text-anchor="middle" font-size="12" font-weight="bold">Admin</text>
+
+  <rect x="1260" y="180" width="100" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1310" y="205" text-anchor="middle" font-size="11" font-weight="bold">Staff</text>
+  <text x="1310" y="220" text-anchor="middle" font-size="9" font-weight="bold">(Lead)</text>
+
+  <!-- ===== PROCESSES ===== -->
+  <rect x="240" y="50" width="160" height="75" rx="14" ry="14" fill="#fff" stroke="#000" stroke-width="2"/>
+  <line x1="240" y1="82" x2="400" y2="82" stroke="#000" stroke-width="2"/>
+  <text x="320" y="72" text-anchor="middle" font-size="12" font-weight="bold">1.0</text>
+  <text x="320" y="100" text-anchor="middle" font-size="9">Auth &amp; Registration</text>
+
+  <rect x="520" y="50" width="160" height="75" rx="14" ry="14" fill="#fff" stroke="#000" stroke-width="2"/>
+  <line x1="520" y1="82" x2="680" y2="82" stroke="#000" stroke-width="2"/>
+  <text x="600" y="72" text-anchor="middle" font-size="12" font-weight="bold">2.0</text>
+  <text x="600" y="100" text-anchor="middle" font-size="9">Session &amp; Subtopic</text>
+
+  <rect x="800" y="50" width="160" height="75" rx="14" ry="14" fill="#fff" stroke="#000" stroke-width="2"/>
+  <line x1="800" y1="82" x2="960" y2="82" stroke="#000" stroke-width="2"/>
+  <text x="880" y="72" text-anchor="middle" font-size="12" font-weight="bold">3.0</text>
+  <text x="880" y="100" text-anchor="middle" font-size="9">Student Registration</text>
+
+  <rect x="520" y="300" width="160" height="75" rx="14" ry="14" fill="#fff" stroke="#000" stroke-width="2"/>
+  <line x1="520" y1="332" x2="680" y2="332" stroke="#000" stroke-width="2"/>
+  <text x="600" y="322" text-anchor="middle" font-size="12" font-weight="bold">4.0</text>
+  <text x="600" y="350" text-anchor="middle" font-size="9">Attendance Tracking</text>
+
+  <rect x="800" y="300" width="160" height="75" rx="14" ry="14" fill="#fff" stroke="#000" stroke-width="2"/>
+  <line x1="800" y1="332" x2="960" y2="332" stroke="#000" stroke-width="2"/>
+  <text x="880" y="322" text-anchor="middle" font-size="12" font-weight="bold">5.0</text>
+  <text x="880" y="350" text-anchor="middle" font-size="9">Module &amp; Assessment</text>
+
+  <rect x="240" y="520" width="160" height="75" rx="14" ry="14" fill="#fff" stroke="#000" stroke-width="2"/>
+  <line x1="240" y1="552" x2="400" y2="552" stroke="#000" stroke-width="2"/>
+  <text x="320" y="542" text-anchor="middle" font-size="12" font-weight="bold">6.0</text>
+  <text x="320" y="570" text-anchor="middle" font-size="9">Progress Monitoring</text>
+
+  <!-- ===== DATA STORES ===== -->
+  <!-- D1 users -->
+  <path d="M60,180 L160,180 L165,183 M160,180 L160,220 L60,220 L60,180 M160,220 L165,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="110" y="205" text-anchor="middle" font-size="10">D1 users</text>
+
+  <!-- D2a students -->
+  <path d="M60,240 L160,240 L165,243 M160,240 L160,280 L60,280 L60,240 M160,280 L165,277" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="110" y="265" text-anchor="middle" font-size="10">D2 students</text>
+
+  <!-- D2b students (read) -->
+  <path d="M960,60 L1060,60 L1065,63 M1060,60 L1060,100 L960,100 L960,60 M1060,100 L1065,97" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1010" y="85" text-anchor="middle" font-size="10">D2 students</text>
+
+  <!-- D3a sessions -->
+  <path d="M520,180 L620,180 L625,183 M620,180 L620,220 L520,220 L520,180 M620,220 L625,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="570" y="205" text-anchor="middle" font-size="10">D3 sessions</text>
+
+  <!-- D3b sessions (read) -->
+  <path d="M1080,60 L1180,60 L1185,63 M1180,60 L1180,100 L1080,100 L1080,60 M1180,100 L1185,97" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1130" y="85" text-anchor="middle" font-size="10">D3 sessions</text>
+
+  <!-- D4a subtopics -->
+  <path d="M640,180 L740,180 L745,183 M740,180 L740,220 L640,220 L640,180 M740,220 L745,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="690" y="205" text-anchor="middle" font-size="10">D4 subtopics</text>
+
+  <!-- D4b subtopics (read by P2) -->
+  <path d="M1200,60 L1300,60 L1305,63 M1300,60 L1300,100 L1200,100 L1200,60 M1300,100 L1305,97" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1250" y="85" text-anchor="middle" font-size="10">D4 subtopics</text>
+
+  <!-- D4c subtopics (read by P3) -->
+  <path d="M1200,120 L1300,120 L1305,123 M1300,120 L1300,160 L1200,160 L1200,120 M1300,160 L1305,157" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1250" y="145" text-anchor="middle" font-size="10">D4 subtopics</text>
+
+  <!-- D4d subtopics (read by P5) -->
+  <path d="M1080,420 L1180,420 L1185,423 M1180,420 L1180,460 L1080,460 L1080,420 M1180,460 L1185,457" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1130" y="445" text-anchor="middle" font-size="10">D4 subtopics</text>
+
+  <!-- D5a registrations (write) -->
+  <path d="M1080,180 L1180,180 L1185,183 M1180,180 L1180,220 L1080,220 L1080,180 M1180,220 L1185,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1130" y="205" text-anchor="middle" font-size="10">D5 registrations</text>
+
+  <!-- D5b registrations (read) -->
+  <path d="M520,420 L620,420 L625,423 M620,420 L620,460 L520,460 L520,420 M620,460 L625,457" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="570" y="445" text-anchor="middle" font-size="10">D5 registrations</text>
+
+  <!-- D5c registrations (read by P6) -->
+  <path d="M240,650 L340,650 L345,653 M340,650 L340,690 L240,690 L240,650 M340,690 L345,687" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="290" y="675" text-anchor="middle" font-size="10">D5 registrations</text>
+
+  <!-- D6a attendance -->
+  <path d="M640,420 L740,420 L745,423 M740,420 L740,460 L640,460 L640,420 M740,460 L745,457" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="690" y="445" text-anchor="middle" font-size="10">D6 attendance</text>
+
+  <!-- D6b attendance (read by P6) -->
+  <path d="M370,650 L470,650 L475,653 M470,650 L470,690 L370,690 L370,650 M470,690 L475,687" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="420" y="675" text-anchor="middle" font-size="10">D6 attendance</text>
+
+  <!-- D7 modules -->
+  <path d="M800,420 L900,420 L905,423 M900,420 L900,460 L800,460 L800,420 M900,460 L905,457" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="850" y="445" text-anchor="middle" font-size="10">D7 modules</text>
+
+  <!-- D8a student_module_progress -->
+  <path d="M920,420 L1020,420 L1025,423 M1020,420 L1020,460 L920,460 L920,420 M1020,460 L1025,457" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="970" y="445" text-anchor="middle" font-size="9">D8 student_module_progress</text>
+
+  <!-- D8b student_module_progress (read by P6) -->
+  <path d="M500,650 L600,650 L605,653 M600,650 L600,690 L500,690 L500,650 M600,690 L605,687" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="550" y="675" text-anchor="middle" font-size="9">D8 student_module_progress</text>
+
+  <!-- D9 holidays & school_events -->
+  <path d="M760,180 L860,180 L865,183 M860,180 L860,220 L760,220 L760,180 M860,220 L865,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="810" y="205" text-anchor="middle" font-size="10">D9 holidays &amp; school_events</text>
+
+  <!-- D10a subtopic_section_capacity -->
+  <path d="M880,180 L980,180 L985,183 M980,180 L980,220 L880,220 L880,180 M980,220 L985,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="930" y="205" text-anchor="middle" font-size="9">D10 subtopic_section_capacity</text>
+
+  <!-- D10b subtopic_section_capacity (read by P3) -->
+  <path d="M1200,180 L1300,180 L1305,183 M1300,180 L1300,220 L1200,220 L1200,180 M1300,220 L1305,217" fill="#fff" stroke="#000" stroke-width="2"/>
+  <text x="1250" y="205" text-anchor="middle" font-size="9">D10 subtopic_section_capacity</text>
+
+  <!-- ===== FLOW ARROWS (every segment verified unique) ===== -->
+
+  <!-- 1. Student → P1 (Login) -->
+  <polyline points="90,85 160,85 160,87 240,87" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 2. P1 → Student (Login confirm) -->
+  <polyline points="240,100 180,100 180,105 140,105" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 3. Student → P3 (Subtopic selection) – now at y=137 to avoid collision -->
+  <polyline points="90,115 200,115 200,137 797,137 797,87 800,87" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 4. P3 → Student (Reg result) -->
+  <polyline points="800,100 600,100 600,125 140,125" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 5. Student → P5 (Quiz answers) -->
+  <polyline points="90,135 220,135 220,178 797,178 797,325 800,325" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 6. P5 → Student (Score) -->
+  <polyline points="800,350 600,350 600,165 140,165" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 7. P6 → Student (Compliance) -->
+  <polyline points="240,550 120,550 120,645 90,645" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 8. Admin → P2 -->
+  <polyline points="1260,85 1100,85 1100,87 680,87" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 9. P2 → Admin -->
+  <polyline points="680,100 1100,100 1100,110 1260,110" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 10. Admin → P4 -->
+  <polyline points="1260,115 1050,115 1050,330 680,330" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 11. P4 → Admin -->
+  <polyline points="680,355 1050,355 1050,135 1260,135" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 12. Admin → P5 -->
+  <polyline points="1260,145 1100,145 1100,325 960,325" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 13. Admin → P6 -->
+  <polyline points="1260,165 1150,165 1150,550 400,550" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 14. P6 → Admin -->
+  <polyline points="400,575 1150,575 1150,175 1260,175" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 15. Staff → P2 -->
+  <polyline points="1260,205 1100,205 1100,207 680,207" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 16. P2 → Staff -->
+  <polyline points="680,220 1100,220 1100,230 1260,230" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 17. Staff → P4 -->
+  <polyline points="1260,235 1050,235 1050,345 680,345" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 18. P4 → Staff -->
+  <polyline points="680,370 1050,370 1050,255 1260,255" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 19. Staff → P5 -->
+  <polyline points="1260,265 1100,265 1100,340 960,340" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 20. Staff → P6 -->
+  <polyline points="1260,285 1150,285 1150,565 400,565" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 21. P6 → Staff -->
+  <polyline points="400,590 1150,590 1150,295 1260,295" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 22. P1 → D1 (New user) -->
+  <polyline points="240,140 180,140 180,200 160,200" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 23. P1 → D2a (New student) -->
+  <polyline points="240,155 200,155 200,260 160,260" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 24. P2 → D3a (New session) -->
+  <polyline points="520,140 460,140 460,200 520,200" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 25. P2 → D4a (New subtopic) -->
+  <polyline points="520,155 440,155 440,210 640,210" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 26. P2 → D10a (Section capacity) -->
+  <polyline points="680,140 750,140 750,210 880,210" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 27. P3 → D5a (New registration) -->
+  <polyline points="800,140 900,140 900,210 1080,210" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 28. P4 → D6a (Attendance entry) -->
+  <polyline points="520,390 460,390 460,440 640,440" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 29. P5 → D7 (New module) -->
+  <polyline points="800,390 750,390 750,440 800,440" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 30. P5 → D8a (Student progress) -->
+  <polyline points="800,405 770,405 770,460 920,460" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 31. D1 → P1 (User credentials) -->
+  <polyline points="160,220 180,220 180,120 240,120" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 32. D2b → P3 (Student profile) – now using x=795 to avoid collision -->
+  <polyline points="960,80 960,110 795,110 795,120 800,120" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 33. D3b → P2 (Session details) -->
+  <polyline points="1080,80 1080,110 680,110 680,120" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 34. D3b → P3 (Session list) – now using x=796 and shifted y -->
+  <polyline points="1080,90 1080,128 796,128 796,133 800,133" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 35. D4b → P2 (Subtopic list) -->
+  <polyline points="1200,80 1200,125 710,125 680,125" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 36. D4c → P3 (Subtopic details) – now using x=794 to avoid collision -->
+  <polyline points="1200,130 1200,143 794,143 794,130 800,130" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 37. D4d → P5 (Subtopic details) -->
+  <polyline points="1080,440 1080,360 960,360 960,325" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 38. D5b → P3 (Registration status) – now using x=793 -->
+  <polyline points="520,440 480,440 480,160 793,160 793,135 800,135" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 39. D5b → P4 (Registered students) -->
+  <polyline points="520,460 520,450 600,450 600,390 680,390" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 40. D6a → P4 (Attendance records) -->
+  <polyline points="640,440 640,395 680,395" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 41. D6b → P6 (Attendance records) -->
+  <polyline points="370,650 370,575 400,575" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 42. D7 → P5 (Module details) -->
+  <polyline points="800,460 800,375" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 43. D8b → P6 (Progress data) -->
+  <polyline points="500,650 500,600 440,600 440,575 400,575" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 44. D9 → P2 (Holidays/events) -->
+  <polyline points="760,200 760,135 680,135" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 45. D10b → P3 (Capacities) – now using x=795 and avoiding 130-135 band -->
+  <polyline points="1200,200 1200,145 795,145 795,130 800,130" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- 46. P6 reads D5c (dashed) -->
+  <polyline points="240,560 200,560 200,670 240,670" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+
+  <!-- 47. P6 reads D6b (dashed) -->
+  <polyline points="240,575 220,575 220,690 370,690 370,670" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+
+  <!-- 48. P6 reads D8b (dashed) -->
+  <polyline points="240,590 240,610 500,610 500,670" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+</svg>
+</body>
+</html>

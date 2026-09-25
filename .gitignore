@@ -1,0 +1,49 @@
+# ============================================
+# ACES System — Git Ignore Rules
+# ============================================
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Config files with credentials (if not using .env)
+config/email.php
+config/database.php
+
+# Logs
+*.log
+logs/
+!logs/.gitkeep
+
+# Uploaded files (user data — do not commit)
+uploads/*
+!uploads/.gitkeep
+!uploads/.htaccess
+
+# Backups
+backups/
+*.sql
+*.sql.gz
+*.zip
+
+# Dependencies (if you add Composer later)
+/vendor/
+node_modules/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
