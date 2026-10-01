@@ -1,6 +1,8 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 
 // Only admins can access this page
 if (!isAdmin()) {
@@ -82,6 +84,7 @@ $staff_members = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             <span class="text-xs font-medium bg-gray-100 px-2 py-1 rounded"><?= htmlspecialchars($staff['staff_role']) ?></span>
                                         <?php else: ?>
                                             <form method="POST" action="edit_staff.php" class="flex items-center gap-2">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="update_role">
                                                 <input type="hidden" name="user_id" value="<?= $staff['user_id'] ?>">
                                                 <select name="staff_role" class="text-xs border rounded px-2 py-1" onchange="this.form.submit()">
@@ -102,6 +105,7 @@ $staff_members = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td class="py-4 px-4 text-center">
                                         <?php if ($staff['user_id'] != $_SESSION['user_id']): ?>
                                             <form method="POST" action="edit_staff.php" class="inline">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="<?= $staff['is_active'] ? 'deactivate' : 'reactivate' ?>">
                                                 <input type="hidden" name="user_id" value="<?= $staff['user_id'] ?>">
                                                 <button type="submit" class="text-xs <?= $staff['is_active'] ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800' ?> font-medium">
@@ -109,6 +113,7 @@ $staff_members = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 </button>
                                             </form>
                                             <form method="POST" action="edit_staff.php" class="inline ml-2" onsubmit="return confirm('Permanently delete this staff account?');">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="delete">
                                                 <input type="hidden" name="user_id" value="<?= $staff['user_id'] ?>">
                                                 <button type="submit" class="text-xs text-red-600 hover:text-red-800 font-medium">Delete</button>
