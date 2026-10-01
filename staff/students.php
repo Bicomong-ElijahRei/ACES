@@ -1,13 +1,26 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
+
+// Block Viewer POST actions
+if (isViewer() && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Location: students.php?msg=error&detail=' . urlencode('Access denied'));
+    exit;
+}
+
+// ---- CSRF check on any POST ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+}
 
 $staff_name = '';
 $stmt = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $staff = $stmt->fetch();
-$staff_name = $staff['full_name'];
+$staff_name = $staff['full_name'] ?? '';
 
 // Handle actions
 $action = $_POST['action'] ?? '';
@@ -109,8 +122,6 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
     exit;
 } elseif ($action === 'bulk_delete' && isset($_POST['ids'])) {
     $ids = explode(',', $_POST['ids']);
-    // Permanently delete students and users
-    // First get user_ids
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $stmt = $pdo->prepare("SELECT user_id FROM students WHERE student_id IN ($placeholders)");
     $stmt->execute($ids);
@@ -120,7 +131,6 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
         $stmt_del_users = $pdo->prepare("DELETE FROM users WHERE user_id IN ($placeholders_u)");
         $stmt_del_users->execute($user_ids);
     }
-    // Now delete students (CASCADE will handle, but we already deleted users)
     $stmt_del = $pdo->prepare("DELETE FROM students WHERE student_id IN ($placeholders)");
     $stmt_del->execute($ids);
     header('Location: students.php?msg=deleted');
@@ -161,11 +171,10 @@ $stmt_archived = $pdo->prepare($sql_archived);
 $stmt_archived->execute($arch_params);
 $archived_students = $stmt_archived->fetchAll();
 
-// FIXED: Correct name splitting – uses middle_name to strip it from first name
+// Parse student name into parts using middle name
 function parseStudentName($full_name, $middle_name) {
     $parts = explode(' ', trim($full_name));
-    
-    // Remove middle name parts from the array if they are known
+
     if (!empty($middle_name)) {
         $middle_parts = explode(' ', trim($middle_name));
         foreach ($middle_parts as $mp) {
@@ -174,7 +183,7 @@ function parseStudentName($full_name, $middle_name) {
                 unset($parts[$key]);
             }
         }
-        $parts = array_values($parts); // re-index
+        $parts = array_values($parts);
     }
 
     $last = '';
@@ -286,7 +295,7 @@ function parseStudentName($full_name, $middle_name) {
                                 <td class="py-4 px-2"><?= htmlspecialchars($student['section']) ?></td>
                                 <td class="py-4 px-2"><?= htmlspecialchars($student['email']) ?></td>
                                 <td class="py-4 px-2 text-center">
-                                    <button class="edit-student text-blue-500 hover:text-blue-700 mr-2" 
+                                    <button class="edit-student text-blue-500 hover:text-blue-700 mr-2"
                                         data-student-id="<?= $student['student_id'] ?>"
                                         data-last="<?= htmlspecialchars($name_parts['last']) ?>"
                                         data-first="<?= htmlspecialchars($name_parts['first']) ?>"
@@ -297,6 +306,7 @@ function parseStudentName($full_name, $middle_name) {
                                         <i class="fa-solid fa-pen"></i>
                                     </button>
                                     <form method="POST" style="display:inline;">
+                                        <?= csrf_field() ?>
                                         <input type="hidden" name="action" value="single_archive">
                                         <input type="hidden" name="id" value="<?= $student['student_id'] ?>">
                                         <button type="submit" class="text-red-500 hover:text-red-700" onclick="return confirm('Archive this student?')"><i class="fa-solid fa-archive"></i></button>
@@ -354,11 +364,13 @@ function parseStudentName($full_name, $middle_name) {
                                     <td class="py-3 px-4 border-b"><?= htmlspecialchars($arch['email']) ?></td>
                                     <td class="py-3 px-4 border-b">
                                         <form method="POST" style="display:inline;">
+                                            <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="single_restore">
                                             <input type="hidden" name="id" value="<?= $arch['student_id'] ?>">
                                             <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs">Restore</button>
                                         </form>
                                         <form method="POST" style="display:inline;" onsubmit="return confirm('Permanently delete this student? This cannot be undone.');">
+                                            <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="single_delete">
                                             <input type="hidden" name="id" value="<?= $arch['student_id'] ?>">
                                             <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs ml-1">Delete</button>
@@ -374,7 +386,6 @@ function parseStudentName($full_name, $middle_name) {
         </div>
     </main>
 
-    <!-- Modals (unchanged) -->
     <!-- Filter Modal -->
     <div class="modal" id="filterModal" tabindex="-1">
         <div class="modal-dialog modal-lg max-w-2xl">
@@ -414,7 +425,7 @@ function parseStudentName($full_name, $middle_name) {
         </div>
     </div>
 
-    <!-- Edit Student Modal (unchanged) -->
+    <!-- Edit Student Modal -->
     <div class="modal" id="editModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -423,6 +434,7 @@ function parseStudentName($full_name, $middle_name) {
                     <button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button>
                 </div>
                 <form method="POST" id="editForm">
+                    <?= csrf_field() ?>
                     <div class="modal-body p-4">
                         <input type="hidden" name="action" value="update_student">
                         <input type="hidden" name="student_id" id="edit_student_id">
@@ -432,12 +444,12 @@ function parseStudentName($full_name, $middle_name) {
                         <div class="mb-3"><label class="block text-sm font-medium">Course</label><input type="text" name="course" id="edit_course" class="w-full border rounded p-2" required></div>
                         <div class="mb-3"><label class="block text-sm font-medium">Section</label><input type="text" name="section" id="edit_section" class="w-full border rounded p-2" required></div>
                         <div class="mb-3"><label class="block text-sm font-medium">Email</label><input type="email" name="email" id="edit_email" class="w-full border rounded p-2" required></div>
-                            <div class="mb-3">
-                                <label class="block text-sm font-medium">New Student No. <span class="text-xs text-gray-500">(leave blank to keep current)</span></label>
-                                <input type="text" name="new_student_id" id="edit_new_student_id" class="w-full border rounded p-2" placeholder="Leave blank to keep current">
-                            </div>
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium">New Student No. <span class="text-xs text-gray-500">(leave blank to keep current)</span></label>
+                            <input type="text" name="new_student_id" id="edit_new_student_id" class="w-full border rounded p-2" placeholder="Leave blank to keep current">
                         </div>
-                        <div class="modal-footer p-4 border-t flex justify-end gap-2">
+                    </div>
+                    <div class="modal-footer p-4 border-t flex justify-end gap-2">
                         <button type="button" class="bg-gray-300 text-gray-800 px-4 py-2 rounded" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Save Changes</button>
                     </div>
@@ -446,7 +458,7 @@ function parseStudentName($full_name, $middle_name) {
         </div>
     </div>
 
-    <!-- Export Modal (unchanged) -->
+    <!-- Export Modal -->
     <div class="modal" id="exportModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -473,6 +485,8 @@ function parseStudentName($full_name, $middle_name) {
     <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+    const CSRF_TOKEN = '<?= csrf_token() ?>';
+
     $(document).ready(function() {
         var table = $('#studentsTable').DataTable({
             order: [[1, 'asc']],
@@ -485,35 +499,32 @@ function parseStudentName($full_name, $middle_name) {
         });
         $('#searchInput').on('keyup', function() { table.search($(this).val()).draw(); });
 
-        // Select All – only visible (current page + filter) rows
         $('#selectAllCheckbox').on('change', function() {
             var isChecked = $(this).prop('checked');
             $('.row-checkbox:visible').prop('checked', isChecked);
         });
-        // Update select all state when individual boxes change (on visible rows)
         $('#studentsTable tbody').on('change', '.row-checkbox', function() {
             var totalVisible = $('.row-checkbox:visible').length;
             var checkedVisible = $('.row-checkbox:visible:checked').length;
             $('#selectAllCheckbox').prop('checked', totalVisible > 0 && checkedVisible === totalVisible);
         });
 
-        // Bulk archive – only visible checked rows
         $('#bulkArchiveBtn').on('click', function() {
             var ids = [];
             $('.row-checkbox:visible:checked').each(function() { ids.push($(this).val()); });
             if (ids.length === 0) { alert('Please select at least one visible student.'); return; }
             if (confirm('Archive ' + ids.length + ' selected students?')) {
                 var form = $('<form method="POST"></form>');
+                form.append('<input type="hidden" name="csrf_token" value="' + CSRF_TOKEN + '">');
                 form.append('<input type="hidden" name="action" value="bulk_archive">');
                 form.append('<input type="hidden" name="ids" value="' + ids.join(',') + '">');
                 $('body').append(form); form.submit();
             }
         });
 
-        // Edit modal (unchanged)
         $('.edit-student').on('click', function() {
             $('#edit_student_id').val($(this).data('student-id'));
-            $('#edit_new_student_id').val($(this).data('student-id'));  // pre‑fill with current
+            $('#edit_new_student_id').val($(this).data('student-id'));
             $('#edit_last').val($(this).data('last'));
             $('#edit_first').val($(this).data('first'));
             $('#edit_middle').val($(this).data('middle'));
@@ -523,7 +534,6 @@ function parseStudentName($full_name, $middle_name) {
             $('#editModal').modal('show');
         });
 
-        // Archive section interactions
         $('#archiveHeader').on('click', function() {
             $('#archiveContent').toggleClass('hidden');
             $(this).find('.fa-chevron-down').toggleClass('rotate-180');
@@ -531,7 +541,6 @@ function parseStudentName($full_name, $middle_name) {
 
         var archiveTable = $('#archiveTable').DataTable({ order: [[1, 'desc']], paging: false, info: false, searching: false });
 
-        // Select All for archives
         $('#selectAllArchiveCheckbox').on('change', function() {
             var isChecked = $(this).prop('checked');
             $('.archive-checkbox:visible').prop('checked', isChecked);
@@ -542,33 +551,32 @@ function parseStudentName($full_name, $middle_name) {
             $('#selectAllArchiveCheckbox').prop('checked', total > 0 && checked === total);
         });
 
-        // Bulk restore
         $('#bulkRestoreBtn').on('click', function() {
             var ids = [];
             $('.archive-checkbox:visible:checked').each(function() { ids.push($(this).val()); });
             if (ids.length === 0) { alert('Select at least one archived student.'); return; }
             if (confirm('Restore ' + ids.length + ' students?')) {
                 var form = $('<form method="POST"></form>');
+                form.append('<input type="hidden" name="csrf_token" value="' + CSRF_TOKEN + '">');
                 form.append('<input type="hidden" name="action" value="bulk_restore">');
                 form.append('<input type="hidden" name="ids" value="' + ids.join(',') + '">');
                 $('body').append(form); form.submit();
             }
         });
 
-        // Bulk permanent delete
         $('#bulkDeleteBtn').on('click', function() {
             var ids = [];
             $('.archive-checkbox:visible:checked').each(function() { ids.push($(this).val()); });
             if (ids.length === 0) { alert('Select at least one archived student.'); return; }
             if (confirm('PERMANENTLY DELETE ' + ids.length + ' students? This cannot be undone!')) {
                 var form = $('<form method="POST"></form>');
+                form.append('<input type="hidden" name="csrf_token" value="' + CSRF_TOKEN + '">');
                 form.append('<input type="hidden" name="action" value="bulk_delete">');
                 form.append('<input type="hidden" name="ids" value="' + ids.join(',') + '">');
                 $('body').append(form); form.submit();
             }
         });
 
-        // Export (unchanged)
         $('#exportBtn').on('click', function() { $('#exportModal').modal('show'); });
         $('#doExport').on('click', function() {
             var format = $('#exportFormat').val();
@@ -599,9 +607,6 @@ function parseStudentName($full_name, $middle_name) {
             if (format === 'csv') window.location.href = 'export_students.php?' + params.toString();
             else window.open('export_students.php?' + params.toString(), '_blank');
         });
-
-        // Fix single permanent delete (already uses form submit, but need to adjust onsubmit for POST handling)
-        // The inline form already triggers POST with action=single_delete. Ensure PHP handler works.
     });
     </script>
 </body>
