@@ -1,12 +1,19 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 
 // Block Viewer POST actions
 if (isViewer() && $_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: modules.php?error=Access denied');
     exit;
+}
+
+// ---- CSRF check on any POST ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 }
 
 $staff_name = '';
@@ -98,7 +105,7 @@ if ($action === 'create') {
     if (isset($_POST['quiz_data']) && !empty($_POST['quiz_data'])) {
         $content = $_POST['quiz_data'];
     } else {
-        $content = trim($_POST['content']);
+        $content = trim($_POST['content'] ?? '');
     }
 
     if (!$subtopic_id || !$title) {
@@ -168,7 +175,7 @@ function renderContent($content) {
     } elseif (strpos($content, 'quiz:') === 0) {
         $json = substr($content, 5);
         $questions = json_decode($json, true);
-        $count = count($questions);
+        $count = is_array($questions) ? count($questions) : 0;
         return "<span class='inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full'>Quiz</span> {$count} question(s)";
     } else {
         return nl2br(htmlspecialchars($content));
@@ -269,9 +276,9 @@ function renderContent($content) {
             <?php endif; ?>
         </div>
 
-        <!-- Active Items – GRID 3 columns -->
+        <!-- Active Items -->
         <?php if (count($active_items) > 0): ?>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8" id="activeItemsContainer">
                 <?php foreach ($active_items as $item): ?>
                     <div class="session-card active-item-row"
                          data-id="<?= $item['module_id'] ?>"
@@ -293,8 +300,9 @@ function renderContent($content) {
                                     <button class="view-results" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>" title="View Results"><i class="fas fa-chart-bar"></i></button>
                                 <?php endif; ?>
                                 <?php if (!isViewer()): ?>
-                                    <button class="edit-item" data-id="<?= $item['module_id'] ?>" data-bs-toggle="modal" data-bs-target="#editModal" title="Edit"><i class="fas fa-edit"></i></button>
+                                    <button class="edit-item" data-id="<?= $item['module_id'] ?>" title="Edit"><i class="fas fa-edit"></i></button>
                                     <form method="POST" class="inline">
+                                        <?= csrf_field() ?>
                                         <input type="hidden" name="action" value="soft_delete">
                                         <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
                                         <button type="submit" onclick="return confirm('Archive this item?')" title="Archive"><i class="fas fa-trash-alt"></i></button>
@@ -380,11 +388,13 @@ function renderContent($content) {
                                     <?php if (!isViewer()): ?>
                                     <div class="flex items-center gap-2 ml-10">
                                         <form method="POST" class="inline">
+                                            <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="restore">
                                             <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
                                             <button type="submit" class="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded">Restore</button>
                                         </form>
                                         <form method="POST" class="inline" onsubmit="return confirm('Permanently delete? This cannot be undone.');">
+                                            <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="hard_delete">
                                             <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
                                             <button type="submit" class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded">Delete</button>
@@ -441,6 +451,7 @@ function renderContent($content) {
                     <!-- Module Tab -->
                     <div class="tab-pane fade show active" id="module" role="tabpanel">
                         <form method="POST" id="createModuleForm" enctype="multipart/form-data">
+                            <?= csrf_field() ?>
                             <input type="hidden" name="action" value="create">
                             <input type="hidden" name="type" value="module">
                             <div class="mb-3">
@@ -494,6 +505,7 @@ function renderContent($content) {
                     <!-- Assessment Tab -->
                     <div class="tab-pane fade" id="assessment" role="tabpanel">
                         <form method="POST" id="createAssessmentForm">
+                            <?= csrf_field() ?>
                             <input type="hidden" name="action" value="create">
                             <input type="hidden" name="type" value="assessment">
                             <div class="mb-3">
@@ -582,6 +594,9 @@ function renderContent($content) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// CSRF token for JS-generated forms
+const CSRF_TOKEN = '<?= csrf_token() ?>';
+
 // ========= FIX: CLEAN UP ALL BACKDROPS AFTER ANY MODAL CLOSE =========
 document.addEventListener('hidden.bs.modal', function () {
     document.body.classList.remove('modal-open');
@@ -646,7 +661,10 @@ document.getElementById('createAssessmentForm')?.addEventListener('submit', func
 });
 document.getElementById('createModal').addEventListener('show.bs.modal', () => {
     const c = document.getElementById('questions-container');
-    if (c) c.innerHTML = '';
+    if (c) {
+        // Remove only added question cards, keep the hidden template intact
+        c.querySelectorAll('.card').forEach(card => card.remove());
+    }
 });
 
 // ---------- Edit Item ----------
@@ -687,7 +705,10 @@ document.querySelectorAll('.edit-item').forEach(btn => {
 });
 
 function buildEditModalHtml(data) {
-    let h = `<form method="POST" id="editForm"><input type="hidden" name="action" value="update"><input type="hidden" name="id" value="${data.module_id}">
+    let h = `<form method="POST" id="editForm">
+        <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
+        <input type="hidden" name="action" value="update">
+        <input type="hidden" name="id" value="${data.module_id}">
         <div class="mb-3"><label class="form-label">Subtopic *</label><select name="subtopic_id" class="form-select" required>`;
     <?php foreach ($subtopics as $sub): ?>
         h += `<option value="<?= $sub['subtopic_id'] ?>" ${data.subtopic_id == <?= $sub['subtopic_id'] ?> ? 'selected' : ''}><?= addslashes($sub['title']) ?></option>`;
@@ -747,7 +768,7 @@ function setupQuizBuilder(form) {
 // ---------- View Status / Results ----------
 document.querySelectorAll('.view-module-status').forEach(btn => {
     btn.addEventListener('click', function(e) {
-        e.stopPropagation();  // prevent card click if any
+        e.stopPropagation();
         document.querySelector('#resultsModal .modal-title').innerText = `Module Status: ${this.dataset.moduleTitle}`;
         const body = document.getElementById('resultsModalBody'); body.innerHTML = 'Loading...';
         new bootstrap.Modal(document.getElementById('resultsModal')).show();
@@ -812,7 +833,7 @@ setupBulk('selectAllArchive', 'row-checkbox-archive', 'bulkRestoreBtn', 'bulkDel
 
 function bulkAction(action, ids) {
     const f = document.createElement('form'); f.method = 'POST';
-    f.innerHTML = `<input type="hidden" name="action" value="${action}"><input type="hidden" name="ids" value="${ids}">`;
+    f.innerHTML = `<input type="hidden" name="csrf_token" value="${CSRF_TOKEN}"><input type="hidden" name="action" value="${action}"><input type="hidden" name="ids" value="${ids}">`;
     document.body.appendChild(f); f.submit();
 }
 document.getElementById('bulkArchiveBtn')?.addEventListener('click', () => {
