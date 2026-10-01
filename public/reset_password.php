@@ -1,40 +1,78 @@
 <?php
-require_once '../config/database.php';
+/**
+ * ============================================================
+ * ACES System — Reset Password
+ * ============================================================
+ * Verifies the reset token from the email link, then lets the
+ * user set a new password. CSRF-protected.
+ * ============================================================
+ */
+
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/csrf.php';
 
 $error = '';
 $success = '';
 $token = $_GET['token'] ?? '';
 $show_form = false;
+$user = null;
 
-if ($token) {
-    // Validate token
-    $stmt = $pdo->prepare("SELECT user_id, email FROM users WHERE reset_token = ? AND reset_expires > NOW()");
+if ($token === '') {
+    $error = 'No reset token provided.';
+} else {
+    // Validate token (and expiry) BEFORE processing POST
+    $stmt = $pdo->prepare("
+        SELECT user_id, email 
+        FROM users 
+        WHERE reset_token = ? 
+          AND reset_expires IS NOT NULL 
+          AND reset_expires > NOW()
+        LIMIT 1
+    ");
     $stmt->execute([$token]);
     $user = $stmt->fetch();
 
-    if ($user) {
+    if (!$user) {
+        $error = 'Invalid or expired reset link. Please request a new one.';
+    } else {
         $show_form = true;
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $password = $_POST['password'] ?? '';
-            $confirm = $_POST['confirm_password'] ?? '';
 
-            if (!$password || strlen($password) < 6) {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+            // ---- CSRF check ----
+            csrf_verify();
+
+            $password = $_POST['password'] ?? '';
+            $confirm  = $_POST['confirm_password'] ?? '';
+
+            if (strlen($password) < 6) {
                 $error = 'Password must be at least 6 characters.';
             } elseif ($password !== $confirm) {
                 $error = 'Passwords do not match.';
             } else {
-                $hashed = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE user_id = ?");
-                $stmt->execute([$hashed, $user['user_id']]);
-                $success = 'Password updated successfully. You may now <a href="../index.php" class="text-[#0a6e2d] underline">log in</a>.';
+                // Hash with the same cost used in registration
+                $hashed = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+
+                $upd = $pdo->prepare("
+                    UPDATE users 
+                    SET password_hash = ?, 
+                        reset_token   = NULL, 
+                        reset_expires = NULL 
+                    WHERE user_id = ?
+                ");
+                $upd->execute([$hashed, $user['user_id']]);
+
+                // Best practice: invalidate any active session for safety
+                session_regenerate_id(true);
+                csrf_rotate();
+
+                $success = 'Password updated successfully. You may now '
+                         . '<a href="../index.php" class="text-[#0a6e2d] underline font-semibold">log in</a>.';
                 $show_form = false;
             }
         }
-    } else {
-        $error = 'Invalid or expired reset link. Please request a new one.';
     }
-} else {
-    $error = 'No reset token provided.';
 }
 ?>
 <!DOCTYPE html>
@@ -49,28 +87,47 @@ if ($token) {
     <div class="bg-white w-full max-w-md p-8 rounded-sm shadow-2xl">
         <img src="../assets/images/kld_logo.png" alt="Logo" class="w-14 h-14 mx-auto mb-4 object-contain">
         <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">Reset Password</h2>
+
         <?php if ($error): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"><?= htmlspecialchars($error) ?></div>
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                <?= htmlspecialchars($error) ?>
+            </div>
         <?php endif; ?>
+
         <?php if ($success): ?>
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4"><?= $success ?></div>
+            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                <?= $success ?>
+            </div>
         <?php endif; ?>
+
         <?php if ($show_form): ?>
             <form method="POST">
+                <?= csrf_field() ?>
+
                 <div class="mb-3">
                     <label class="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                    <input type="password" name="password" class="w-full border border-gray-400 p-2 rounded-sm text-sm" required minlength="6">
+                    <input type="password" name="password"
+                           class="w-full border border-gray-400 p-2 rounded-sm text-sm"
+                           required minlength="6" autocomplete="new-password">
                 </div>
+
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-                    <input type="password" name="confirm_password" class="w-full border border-gray-400 p-2 rounded-sm text-sm" required minlength="6">
+                    <input type="password" name="confirm_password"
+                           class="w-full border border-gray-400 p-2 rounded-sm text-sm"
+                           required minlength="6" autocomplete="new-password">
                 </div>
-                <button type="submit" class="w-full bg-[#00c07f] hover:bg-[#00a86f] text-white font-bold py-2 px-4 rounded-full transition-colors">
+
+                <button type="submit"
+                        class="w-full bg-[#00c07f] hover:bg-[#00a86f] text-white font-bold py-2 px-4 rounded-full transition-colors">
                     Update Password
                 </button>
             </form>
         <?php endif; ?>
-        <p class="text-center text-sm text-gray-500 mt-4"><a href="../index.php" class="text-[#0a6e2d] hover:underline">Back to Login</a></p>
+
+        <p class="text-center text-sm text-gray-500 mt-4">
+            <a href="../index.php" class="text-[#0a6e2d] hover:underline">Back to Login</a>
+        </p>
     </div>
 </body>
 </html>

@@ -1,5 +1,17 @@
 <?php
-session_start();
+/**
+ * ============================================================
+ * ACES System — Login Page
+ * ============================================================
+ * Public entry point. Shows the login form.
+ * Submits to login.php (POST) with CSRF protection.
+ * ============================================================
+ */
+
+require_once __DIR__ . '/config/env.php';
+require_once __DIR__ . '/includes/csrf.php';
+
+// If already logged in, redirect by role
 if (isset($_SESSION['user_id'])) {
     header('Location: ' . ($_SESSION['role'] === 'staff' ? 'staff/dashboard.php' : 'student/dashboard.php'));
     exit;
@@ -141,14 +153,21 @@ if (isset($_SESSION['user_id'])) {
                 <div class="error-message">Invalid student number / email or password.</div>
             <?php endif; ?>
         <?php endif; ?>
+
         <?php if (isset($_GET['registered'])): ?>
             <div class="error-message" style="background-color: #d4edda; color: #155724;">Registration successful! Please login.</div>
         <?php endif; ?>
 
+        <?php if (isset($_GET['timeout'])): ?>
+            <div class="error-message" style="background-color: #fff3cd; color: #856404;">Your session expired. Please log in again.</div>
+        <?php endif; ?>
+
         <form action="login.php" method="POST">
+            <?= csrf_field() ?>
+
             <div class="input-fields">
-                <input type="text" name="login_id" placeholder="Student Number or Email" required>
-                <input type="password" name="password" placeholder="Password" required>
+                <input type="text" name="login_id" placeholder="Student Number or Email" required autocomplete="username">
+                <input type="password" name="password" placeholder="Password" required autocomplete="current-password">
             </div>
 
             <div class="login-options">

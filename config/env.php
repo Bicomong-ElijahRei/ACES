@@ -106,3 +106,6 @@ function aces_env_has(string $key): bool
 
 // Auto-load on include
 aces_load_env();
+
+// Apply timezone from .env to PHP (must match MySQL's clock)
+date_default_timezone_set(aces_env('APP_TIMEZONE', 'Asia/Manila'));

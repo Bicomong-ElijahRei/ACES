@@ -1,29 +1,46 @@
 <?php
-require_once 'config/database.php';
+/**
+ * ============================================================
+ * ACES System — Student Registration
+ * ============================================================
+ * Handles both GET (show form) and POST (create account).
+ * Sends email verification link after successful registration.
+ * ============================================================
+ */
+
+require_once __DIR__ . '/config/env.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/csrf.php';
 
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Get form data
-    $first_name   = trim($_POST['first_name']);
-    $middle_name  = trim($_POST['middle_name']);
-    $last_name    = trim($_POST['last_name']);
-    $suffix       = trim($_POST['suffix']);
-    $course       = trim($_POST['course']);
-    $section      = trim($_POST['section']);
-    $student_id   = trim($_POST['student_id']);
-    $telephone    = trim($_POST['telephone']);
-    $mobile       = trim($_POST['mobile']);
-    $email        = trim($_POST['email']);
-    $username     = trim($_POST['username']);
-    $password     = $_POST['password'];
-    $confirm      = $_POST['confirm_password'];
-    $terms        = isset($_POST['terms']);
+
+    // ---- CSRF check ----
+    csrf_verify();
+
+    // Get form data (with null-safe defaults)
+    $first_name  = trim($_POST['first_name']  ?? '');
+    $middle_name = trim($_POST['middle_name'] ?? '');
+    $last_name   = trim($_POST['last_name']   ?? '');
+    $suffix      = trim($_POST['suffix']      ?? '');
+    $course      = trim($_POST['course']      ?? '');
+    $section     = trim($_POST['section']     ?? '');
+    $student_id  = trim($_POST['student_id']  ?? '');
+    $telephone   = trim($_POST['telephone']   ?? '');
+    $mobile      = trim($_POST['mobile']      ?? '');
+    $email       = trim($_POST['email']       ?? '');
+    $username    = trim($_POST['username']    ?? '');
+    $password    = $_POST['password']         ?? '';
+    $confirm     = $_POST['confirm_password'] ?? '';
+    $terms       = isset($_POST['terms']);
 
     // Basic validation
     if (!$first_name || !$last_name || !$course || !$section || !$student_id || !$email || !$password || !$confirm) {
         $error = "Please fill in all required fields.";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = "Please enter a valid email address.";
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match.";
     } elseif (strlen($password) < 6) {
@@ -34,79 +51,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Build full name
         $full_name = trim($first_name . ' ' . ($middle_name ? $middle_name . ' ' : '') . $last_name . ($suffix ? ' ' . $suffix : ''));
 
-        if (!$error) {
-            $pdo->beginTransaction();
-            try {
-                // Check if email already exists
-                $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
-                $check->execute([$email]);
-                if ($check->fetch()) {
-                    throw new Exception("Email already registered.");
-                }
-
-                // Check if student_id already exists
-                $check2 = $pdo->prepare("SELECT student_id FROM students WHERE student_id = ?");
-                $check2->execute([$student_id]);
-                if ($check2->fetch()) {
-                    throw new Exception("Student number already registered.");
-                }
-
-                // Insert into users (role = student) – is_verified defaults to 0
-                $hashed = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role) VALUES (?, ?, ?, 'student')");
-                $stmt->execute([$email, $hashed, $full_name]);
-                $user_id = $pdo->lastInsertId();
-
-                // Insert into students
-                $stmt2 = $pdo->prepare("INSERT INTO students 
-                    (student_id, user_id, section, program, middle_name, suffix, telephone, mobile, username) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt2->execute([
-                    $student_id, 
-                    $user_id, 
-                    $section, 
-                    $course, 
-                    $middle_name,
-                    $suffix,
-                    $telephone,
-                    $mobile,
-                    $username
-                ]);
-
-                // ---- EMAIL VERIFICATION ----
-                // Generate token and save it
-                $token = bin2hex(random_bytes(32));
-                $stmt_token = $pdo->prepare("UPDATE users SET verification_token = ? WHERE user_id = ?");
-                $stmt_token->execute([$token, $user_id]);
-
-                $pdo->commit();
-
-                // Send verification email
-                require_once __DIR__ . '/includes/send_email.php';
-                $verify_link = "http://localhost/cair-system/public/verify_student.php?token=$token";
-                $subject = "Verify your ACES account";
-                $body = "
-                    <p>Hi {$first_name},</p>
-                    <p>Thank you for registering! Please click the link below to verify your email address:</p>
-                    <p><a href='{$verify_link}'>{$verify_link}</a></p>
-                    <p>If you didn't create this account, please ignore this email.</p>
-                ";
-
-                // Attempt email send; do not prevent login if it fails (just log)
-                try {
-                    sendEmail($email, $subject, $body);
-                } catch (Exception $e) {
-                    // Log error but don't stop the flow – account was created
-                    error_log("Verification email failed for {$email}: " . $e->getMessage());
-                }
-
-                header('Location: index.php?registered=1');
-                exit;
-                // ---- END EMAIL VERIFICATION ----
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                $error = "Registration failed: " . $e->getMessage();
+        $pdo->beginTransaction();
+        try {
+            // Check if email already exists
+            $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
+            $check->execute([$email]);
+            if ($check->fetch()) {
+                throw new Exception("Email already registered.");
             }
+
+            // Check if student_id already exists
+            $check2 = $pdo->prepare("SELECT student_id FROM students WHERE student_id = ?");
+            $check2->execute([$student_id]);
+            if ($check2->fetch()) {
+                throw new Exception("Student number already registered.");
+            }
+
+            // Insert into users (role = student) — is_verified defaults to 0
+            $hashed = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+            $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role) VALUES (?, ?, ?, 'student')");
+            $stmt->execute([$email, $hashed, $full_name]);
+            $user_id = $pdo->lastInsertId();
+
+            // Insert into students
+            $stmt2 = $pdo->prepare("INSERT INTO students 
+                (student_id, user_id, section, program, middle_name, suffix, telephone, mobile, username) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt2->execute([
+                $student_id,
+                $user_id,
+                $section,
+                $course,
+                $middle_name,
+                $suffix,
+                $telephone,
+                $mobile,
+                $username
+            ]);
+
+            // ---- EMAIL VERIFICATION ----
+            $token = bin2hex(random_bytes(32));
+            $stmt_token = $pdo->prepare("UPDATE users SET verification_token = ? WHERE user_id = ?");
+            $stmt_token->execute([$token, $user_id]);
+
+            $pdo->commit();
+
+            // Send verification email
+            require_once __DIR__ . '/includes/send_email.php';
+
+            $baseUrl = rtrim(aces_env('APP_URL', 'http://localhost/cair-system'), '/');
+            $verify_link = $baseUrl . "/public/verify_student.php?token=" . urlencode($token);
+
+            $subject = "Verify your ACES account";
+            $safeFirst = htmlspecialchars($first_name, ENT_QUOTES, 'UTF-8');
+            $body = "
+                <p>Hi {$safeFirst},</p>
+                <p>Thank you for registering! Please click the link below to verify your email address:</p>
+                <p><a href='{$verify_link}'>{$verify_link}</a></p>
+                <p>If you didn't create this account, please ignore this email.</p>
+            ";
+
+            // Attempt email send; do not prevent login if it fails (just log)
+            try {
+                sendEmail($email, $subject, $body);
+            } catch (Exception $e) {
+                error_log("Verification email failed for {$email}: " . $e->getMessage());
+            }
+
+            header('Location: index.php?registered=1');
+            exit;
+
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $error = "Registration failed: " . $e->getMessage();
         }
     }
 }
@@ -122,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="bg-[radial-gradient(circle,_#2a5d1b_0%,_#0d1a0a_100%)] min-h-screen flex items-center justify-center p-4">
 
    <div class="bg-white w-full max-w-4xl p-6 md:p-8 rounded-sm shadow-2xl">
-        
+
         <div class="flex items-center gap-4 border-b border-gray-100 pb-4 mb-6">
             <img src="assets/images/kld_logo.png" alt="Logo" class="w-14 h-14 object-contain">
             <h1 class="text-lg font-bold text-gray-800 uppercase leading-tight">
@@ -137,10 +156,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" action="">
+            <?= csrf_field() ?>
+
             <!-- Student Information -->
             <div class="mb-8">
                 <h3 class="text-emerald-600 text-sm font-semibold border-b border-gray-100 mb-4">Student Information</h3>
-                
+
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                     <div class="flex flex-col">
                         <label class="text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
@@ -234,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </form>
         <p class="text-center text-sm text-gray-500 mt-4"><a href="index.php" class="text-[#0a6e2d] hover:underline">Back to Login</a></p>
-   </div> 
+   </div>
    <script>
         // Simple client-side password match check
         document.querySelector('form').addEventListener('submit', function(e) {
