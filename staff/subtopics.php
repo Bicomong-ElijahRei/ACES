@@ -1,11 +1,19 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 if (isViewer() && isset($_POST['action'])) {
     header('Location: subtopics.php?error=Access denied');
     exit;
 }
+
+// ---- CSRF check on any POST ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+}
+
 $staff_name = '';
 $stmt = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
@@ -223,6 +231,20 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section"
 $courses = $pdo->query("SELECT DISTINCT program FROM students ORDER BY program")->fetchAll(PDO::FETCH_COLUMN);
 $sections_json = json_encode($sections);
 $courses_json = json_encode($courses);
+
+// Build course → sections mapping (only sections that actually exist per course)
+$course_sections = [];
+$stmt_cs = $pdo->query("
+    SELECT program, section 
+    FROM students 
+    WHERE is_deleted = 0 AND program IS NOT NULL AND section IS NOT NULL
+    GROUP BY program, section
+    ORDER BY program, section
+");
+foreach ($stmt_cs->fetchAll() as $row) {
+    $course_sections[$row['program']][] = $row['section'];
+}
+$course_sections_json = json_encode($course_sections);
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
@@ -379,7 +401,7 @@ $courses_json = json_encode($courses);
                 </div>
             </div>
 
-            <!-- ==================== NOTIFY MODAL (CHECKBOXES + COURSE-FIRST) ==================== -->
+            <!-- ==================== NOTIFY MODAL ==================== -->
             <div class="modal fade" id="notifyModal" tabindex="-1">
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
@@ -450,9 +472,9 @@ $courses_json = json_encode($courses);
             </div>
             <div class="modal-body p-4 md:p-6 bg-gray-50">
                 <form method="POST" id="createSessionForm">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="create">
 
-                    <!-- Session Details -->
                     <div class="bg-white rounded-lg p-4 mb-4 shadow-sm">
                         <h6 class="font-semibold text-gray-700 mb-3"><i class="fas fa-info-circle mr-1"></i>Session Details</h6>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -482,7 +504,6 @@ $courses_json = json_encode($courses);
                         </div>
                     </div>
 
-                    <!-- Subtopics -->
                     <div class="bg-white rounded-lg p-4 shadow-sm">
                         <div class="flex justify-between items-center mb-4">
                             <h6 class="font-semibold text-gray-700"><i class="fas fa-list-ul mr-1"></i>Subtopics</h6>
@@ -525,7 +546,7 @@ $courses_json = json_encode($courses);
     </div>
 </div>
 
-<!-- ==================== HIDDEN TEMPLATE FOR SUBTOPIC CARDS ==================== -->
+<!-- ==================== HIDDEN TEMPLATE ==================== -->
 <div id="subtopic-template" style="display:none;">
     <div class="card mb-3 border border-gray-200 rounded-lg">
         <div class="card-body p-4">
@@ -557,11 +578,9 @@ $courses_json = json_encode($courses);
                 <div><span class="field-label">Location</span><input type="text" class="form-control subtopic-location" placeholder="e.g., Room 101"></div>
                 <div><span class="field-label">Attendance Type</span><select class="form-select subtopic-attendance-type"><option value="physical">Physical — student must be present</option><option value="module">Module — attendance marked when all modules complete</option></select></div>
             </div>
-
-            <!-- Visibility Checkboxes -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
-                    <span class="field-label">Visible to Courses <span class="text-xs text-gray-500">— check at least 1 to enable sections</span></span>
+                    <span class="field-label">Visible to Courses</span>
                     <p class="help-text">Only checked courses will see this subtopic. Leave all unchecked to show to everyone.</p>
                     <div class="checkbox-group">
                         <?php foreach ($courses as $crs): ?>
@@ -579,11 +598,9 @@ $courses_json = json_encode($courses);
                     </div>
                 </div>
             </div>
-
-            <!-- Required Checkboxes + "Required for All" -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
-                    <span class="field-label">Required for Courses <span class="text-xs text-gray-500">— check at least 1 to enable sections</span></span>
+                    <span class="field-label">Required for Courses</span>
                     <p class="help-text">Students in checked courses MUST attend this subtopic.</p>
                     <div class="checkbox-group">
                         <?php foreach ($courses as $crs): ?>
@@ -601,8 +618,6 @@ $courses_json = json_encode($courses);
                     </div>
                 </div>
             </div>
-
-            <!-- Required for All toggle -->
             <div class="mb-3">
                 <label class="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" class="subtopic-required-all w-4 h-4 accent-red-600">
@@ -610,7 +625,6 @@ $courses_json = json_encode($courses);
                 </label>
                 <p class="help-text ml-6">When checked, this subtopic becomes mandatory for every student regardless of section or course.</p>
             </div>
-
             <div class="mb-2">
                 <span class="field-label">Description</span>
                 <textarea rows="2" class="form-control subtopic-description" placeholder="Optional details about this subtopic"></textarea>
@@ -622,7 +636,13 @@ $courses_json = json_encode($courses);
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// ==================== BACKDROP CLEANUP (ALL MODALS) ====================
+// CSRF token for JS-generated forms and fetch calls
+const CSRF_TOKEN = '<?= csrf_token() ?>';
+
+// Course → sections mapping (from PHP)
+const COURSE_SECTIONS = <?= $course_sections_json ?>;
+
+// ==================== BACKDROP CLEANUP ====================
 document.addEventListener('hidden.bs.modal', function () {
     document.body.classList.remove('modal-open');
     document.body.style.overflow = '';
@@ -631,12 +651,10 @@ document.addEventListener('hidden.bs.modal', function () {
 
 // ==================== COURSE-FIRST HELPER ====================
 function linkCourseToSections(cardElement) {
-    // Link visible courses → visible sections
     const visCourses = cardElement.querySelectorAll('.subtopic-visible-course');
     const visSections = cardElement.querySelectorAll('.subtopic-visible-section');
     linkCheckboxGroups(visCourses, visSections);
 
-    // Link required courses → required sections
     const reqCourses = cardElement.querySelectorAll('.subtopic-required-course');
     const reqSections = cardElement.querySelectorAll('.subtopic-required-section');
     linkCheckboxGroups(reqCourses, reqSections);
@@ -646,13 +664,28 @@ function linkCheckboxGroups(courseCheckboxes, sectionCheckboxes) {
     if (!courseCheckboxes.length || !sectionCheckboxes.length) return;
 
     function updateSections() {
-        const anyCourseChecked = Array.from(courseCheckboxes).some(cb => cb.checked);
+        // Which courses are checked right now?
+        const checkedCourses = Array.from(courseCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+
+        // Build set of sections valid for those courses
+        const validSections = new Set();
+        checkedCourses.forEach(course => {
+            (COURSE_SECTIONS[course] || []).forEach(sec => validSections.add(String(sec)));
+        });
+
         sectionCheckboxes.forEach(cb => {
-            if (!anyCourseChecked) {
-                cb.checked = false;
-                cb.disabled = true;
-            } else {
+            const label = cb.closest('label');
+            const isVisible = checkedCourses.length > 0 && validSections.has(String(cb.value));
+
+            if (isVisible) {
+                if (label) label.style.display = '';
                 cb.disabled = false;
+            } else {
+                if (label) label.style.display = 'none';
+                cb.disabled = true;
+                cb.checked = false;
             }
         });
     }
@@ -698,7 +731,6 @@ function createSubtopicCard() {
         }
     });
 
-    // COURSE-FIRST: link the new card's checkboxes
     linkCourseToSections(card);
 
     return card;
@@ -753,7 +785,7 @@ document.getElementById('even-split-create')?.addEventListener('click', function
     fetch('subtopics.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `action=get_counts&sections=${encodeURIComponent(JSON.stringify([...allSections]))}&courses=${encodeURIComponent(JSON.stringify([...allCourses]))}`
+        body: `action=get_counts&csrf_token=${encodeURIComponent(CSRF_TOKEN)}&sections=${encodeURIComponent(JSON.stringify([...allSections]))}&courses=${encodeURIComponent(JSON.stringify([...allCourses]))}`
     })
     .then(r => r.json())
     .then(data => {
@@ -778,6 +810,7 @@ document.querySelectorAll('.edit-session').forEach(btn => {
 
             let html = `
             <form method="POST" id="editSessionForm">
+                <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
                 <input type="hidden" name="action" value="update">
                 <input type="hidden" name="id" value="${data.session_id}">
                 <div class="bg-white rounded-lg p-4 mb-4 shadow-sm">
@@ -852,7 +885,7 @@ document.querySelectorAll('.edit-session').forEach(btn => {
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                        <div><span class="field-label">Visible to Courses <span class="text-xs text-gray-500">— check at least 1 to enable sections</span></span><div class="checkbox-group">`;
+                        <div><span class="field-label">Visible to Courses</span><div class="checkbox-group">`;
                 <?= $courses_json ?>?.forEach(c => { html += `<label><input type="checkbox" value="${c}" class="subtopic-visible-course" ${vis_crs.includes(c)?'checked':''}> ${c}</label>`; });
                 html += `</div></div>
                         <div><span class="field-label">Visible to Sections</span><div class="checkbox-group">`;
@@ -861,7 +894,7 @@ document.querySelectorAll('.edit-session').forEach(btn => {
                 html += `</div></div></div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                        <div><span class="field-label">Required for Courses <span class="text-xs text-gray-500">— check at least 1 to enable sections</span></span><div class="checkbox-group">`;
+                        <div><span class="field-label">Required for Courses</span><div class="checkbox-group">`;
                 <?= $courses_json ?>?.forEach(c => { html += `<label><input type="checkbox" value="${c}" class="subtopic-required-course" ${req_crs.includes(c)?'checked':''} ${allRequired?'disabled':''}> ${c}</label>`; });
                 html += `</div></div>
                         <div><span class="field-label">Required for Sections</span><div class="checkbox-group">`;
@@ -886,7 +919,6 @@ document.querySelectorAll('.edit-session').forEach(btn => {
             document.getElementById('editModalBody').innerHTML = html;
             const editContainer = document.getElementById('edit-subtopics-container');
 
-            // COURSE-FIRST: link all loaded cards
             editContainer.querySelectorAll('.card').forEach(card => linkCourseToSections(card));
 
             document.getElementById('add-subtopic-edit')?.addEventListener('click', () => {
@@ -916,6 +948,7 @@ document.querySelectorAll('.edit-session').forEach(btn => {
             document.getElementById('even-split-btn')?.addEventListener('click', () => {
                 if (!confirm('Recalculate capacities for all subtopics?')) return;
                 const fd = new FormData();
+                fd.append('csrf_token', CSRF_TOKEN);
                 fd.append('action','even_split'); fd.append('session_id', data.session_id);
                 fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
             });
@@ -959,7 +992,7 @@ document.querySelectorAll('.edit-session').forEach(btn => {
             });
 
         } catch(err) {
-            console.error('Edit modal error:', err); 
+            console.error('Edit modal error:', err);
             document.getElementById('editModalBody').innerHTML = '<div class="alert alert-danger">Error loading session. Check console.</div>';
             new bootstrap.Modal(document.getElementById('editModal')).show();
         }
@@ -970,21 +1003,27 @@ document.querySelectorAll('.edit-session').forEach(btn => {
 document.querySelectorAll('.delete-session').forEach(btn => {
     btn.addEventListener('click', function() {
         if (!confirm('Move this session to archives?')) return;
-        const fd = new FormData(); fd.append('action','soft_delete'); fd.append('id', this.dataset.id);
+        const fd = new FormData();
+        fd.append('csrf_token', CSRF_TOKEN);
+        fd.append('action','soft_delete'); fd.append('id', this.dataset.id);
         fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
     });
 });
 document.querySelectorAll('.restore-session').forEach(btn => {
     btn.addEventListener('click', function() {
         if (!confirm('Restore this session?')) return;
-        const fd = new FormData(); fd.append('action','restore'); fd.append('id', this.dataset.id);
+        const fd = new FormData();
+        fd.append('csrf_token', CSRF_TOKEN);
+        fd.append('action','restore'); fd.append('id', this.dataset.id);
         fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
     });
 });
 document.querySelectorAll('.hard-delete-session').forEach(btn => {
     btn.addEventListener('click', function() {
         if (!confirm('PERMANENTLY delete? This cannot be undone.')) return;
-        const fd = new FormData(); fd.append('action','hard_delete'); fd.append('id', this.dataset.id);
+        const fd = new FormData();
+        fd.append('csrf_token', CSRF_TOKEN);
+        fd.append('action','hard_delete'); fd.append('id', this.dataset.id);
         fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
     });
 });
@@ -1000,7 +1039,11 @@ document.querySelectorAll('.notify-session-btn').forEach(btn => {
         if (!confirm('Send email to ALL registered students?')) return;
         const orig = this.innerHTML;
         this.disabled = true; this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        fetch('notify_session.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`session_id=${this.dataset.sessionId}`})
+        fetch('notify_session.php',{
+            method:'POST',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:`csrf_token=${encodeURIComponent(CSRF_TOKEN)}&session_id=${this.dataset.sessionId}`
+        })
         .then(r=>r.json()).then(d=>{alert(d.message);this.innerHTML=orig;this.disabled=false;})
         .catch(e=>{alert('Error: '+e);this.innerHTML=orig;this.disabled=false;});
     });
@@ -1029,10 +1072,10 @@ document.getElementById('notifyForm')?.addEventListener('submit', function(e) {
     const btn = document.getElementById('notifySendBtn');
     btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending…';
     const fd = new FormData();
+    fd.append('csrf_token', CSRF_TOKEN);
     fd.append('session_id', document.getElementById('notifySession').value);
     const selSub = Array.from(document.getElementById('notifySubtopic').selectedOptions).map(o=>o.value);
     if (selSub.length) fd.append('subtopics', JSON.stringify(selSub));
-    // UPDATED: read from checkboxes
     const selCrs = Array.from(document.querySelectorAll('#notifyCourseGroup input[type="checkbox"]:checked')).map(cb => cb.value);
     if (selCrs.length) fd.append('courses', JSON.stringify(selCrs));
     const selSec = Array.from(document.querySelectorAll('#notifySectionGroup input[type="checkbox"]:checked')).map(cb => cb.value);
@@ -1040,10 +1083,20 @@ document.getElementById('notifyForm')?.addEventListener('submit', function(e) {
     fd.append('message', document.getElementById('notifyMessage').value);
     fetch('notify_custom.php',{method:'POST',body:fd})
     .then(r=>r.json()).then(d=>{
-        alert(d.message);
-        bootstrap.Modal.getInstance(document.getElementById('notifyModal'))?.hide();
+        if (d.message) {
+            alert('✅ ' + d.message);
+            bootstrap.Modal.getInstance(document.getElementById('notifyModal'))?.hide();
+        } else if (d.error) {
+            alert('❌ ' + d.error);
+        } else {
+            alert('❓ Unexpected response: ' + JSON.stringify(d));
+        }
         btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> Send'; btn.disabled = false;
-    }).catch(e=>{alert('Error: '+e);btn.innerHTML='<i class="fas fa-paper-plane mr-1"></i> Send';btn.disabled=false;});
+    }).catch(e=>{
+        alert('Error: '+e);
+        btn.innerHTML='<i class="fas fa-paper-plane mr-1"></i> Send';
+        btn.disabled=false;
+    });
 });
 
 function escapeHtml(str) {
