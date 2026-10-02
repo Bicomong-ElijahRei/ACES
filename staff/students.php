@@ -600,12 +600,23 @@ function parseStudentName($full_name, $middle_name) {
                 if (studentIds.length === 0) { alert('No students to export.'); return; }
             }
 
-            var params = new URLSearchParams();
-            params.append('action', format === 'csv' ? 'export_csv' : 'export_pdf');
-            params.append('ids', studentIds.join(','));
-            params.append('cols', columns.join(','));
-            if (format === 'csv') window.location.href = 'export_students.php?' + params.toString();
-            else window.open('export_students.php?' + params.toString(), '_blank');
+            // Build POST form (CSRF-safe)
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'export_students.php';
+            form.target = format === 'csv' ? '_self' : '_blank';
+            form.style.display = 'none';
+
+            form.innerHTML = `
+                <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
+                <input type="hidden" name="action" value="${format === 'csv' ? 'export_csv' : 'export_pdf'}">
+                <input type="hidden" name="ids" value="${studentIds.join(',')}">
+                <input type="hidden" name="cols" value="${columns.join(',')}">
+            `;
+
+            document.body.appendChild(form);
+            form.submit();
+            form.remove();
         });
     });
     </script>
