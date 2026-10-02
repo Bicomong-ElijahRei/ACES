@@ -125,12 +125,20 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
         <?php include '../includes/header.php'; ?>
         <main class="flex-1 p-4 md:p-10 overflow-y-auto no-scrollbar">
             <div class="flex justify-between items-center mb-6">
-                <h1 class="text-2xl md:text-4xl font-bold text-[#0a6e2d]">Attendance Verification</h1>
-                <a href="dashboard.php" class="text-[#0a6e2d]">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 10.4V21h18V10.4l-9-6.3-9 6.3zM14.2 19h-4.4v-5.6h4.4V19z"/>
-                    </svg>
-                </a>
+                <div>
+                    <h1 class="text-2xl md:text-4xl font-bold text-[#0a6e2d]">Attendance Records</h1>
+                    <p class="text-sm text-gray-500 mt-1">Bulk actions, filters, and archives</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="student_progress.php" class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition">
+                        <i class="fas fa-chart-line text-[#0a6e2d]"></i> View Student Progress
+                    </a>
+                    <a href="dashboard.php" class="text-[#0a6e2d]" title="Home">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 10.4V21h18V10.4l-9-6.3-9 6.3zM14.2 19h-4.4v-5.6h4.4V19z"/>
+                        </svg>
+                    </a>
+                </div>
             </div>
 
             <?php if (isset($_GET['deleted'])): ?>
