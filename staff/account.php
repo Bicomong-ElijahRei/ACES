@@ -1,9 +1,24 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+/**
+ * ============================================================
+ * ACES System — Staff Account Settings
+ * ============================================================
+ * Two forms: profile update + password change. CSRF-protected.
+ * ============================================================
+ */
+
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 
-// Get staff details
+// ---- CSRF check on any POST ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+}
+
+// ---- Load staff record ----
 $stmt = $pdo->prepare("SELECT user_id, full_name, email, role, created_at FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $staff = $stmt->fetch();
@@ -15,24 +30,27 @@ if (!$staff) {
 $message = '';
 $error = '';
 
-// Handle profile update (name & email)
+// ============================================================
+// PROFILE UPDATE
+// ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
-    $full_name = trim($_POST['full_name']);
-    $email = trim($_POST['email']);
+    $full_name = trim($_POST['full_name'] ?? '');
+    $email     = trim($_POST['email'] ?? '');
 
     if (empty($full_name) || empty($email)) {
         $error = "Full name and email are required.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
     } else {
-        // Check if email is already taken by another user (staff or student)
         $stmt_check = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
         $stmt_check->execute([$email, $staff['user_id']]);
+
         if ($stmt_check->fetch()) {
             $error = "Email is already used by another account.";
         } else {
             $stmt_upd = $pdo->prepare("UPDATE users SET full_name = ?, email = ? WHERE user_id = ?");
             $stmt_upd->execute([$full_name, $email, $staff['user_id']]);
+
             $_SESSION['account_message'] = "Profile updated successfully.";
             header("Location: account.php");
             exit;
@@ -40,10 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     }
 }
 
-// Handle password change
+// ============================================================
+// PASSWORD CHANGE
+// ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     $current = $_POST['current_password'] ?? '';
-    $new = $_POST['new_password'] ?? '';
+    $new     = $_POST['new_password'] ?? '';
     $confirm = $_POST['confirm_password'] ?? '';
 
     if (empty($current) || empty($new) || empty($confirm)) {
@@ -56,10 +76,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         $stmt_check = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt_check->execute([$staff['user_id']]);
         $user = $stmt_check->fetch();
-        if (password_verify($current, $user['password_hash'])) {
-            $new_hash = password_hash($new, PASSWORD_DEFAULT);
+
+        if ($user && password_verify($current, $user['password_hash'])) {
+            $new_hash = password_hash($new, PASSWORD_BCRYPT, ['cost' => 12]);
+
             $stmt_update = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
             $stmt_update->execute([$new_hash, $staff['user_id']]);
+
+            // Best practice: rotate session + CSRF token after password change
+            session_regenerate_id(true);
+            csrf_rotate();
+
             $_SESSION['account_message'] = "Password changed successfully.";
             header("Location: account.php");
             exit;
@@ -69,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     }
 }
 
-// Retrieve flash message
+// ---- Flash message ----
 if (isset($_SESSION['account_message'])) {
     $message = $_SESSION['account_message'];
     unset($_SESSION['account_message']);
@@ -130,6 +157,7 @@ if (isset($_SESSION['account_message'])) {
             <div class="info-card">
                 <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">Profile Information</h3>
                 <form method="POST">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="update_profile" value="1">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -163,17 +191,18 @@ if (isset($_SESSION['account_message'])) {
             <div class="password-card">
                 <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">Change Password</h3>
                 <form method="POST" class="max-w-md">
+                    <?= csrf_field() ?>
                     <div class="mb-3">
                         <label class="form-label">Current Password</label>
-                        <input type="password" name="current_password" class="form-control" required>
+                        <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">New Password (min. 6 characters)</label>
-                        <input type="password" name="new_password" class="form-control" required>
+                        <input type="password" name="new_password" class="form-control" required autocomplete="new-password">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password</label>
-                        <input type="password" name="confirm_password" class="form-control" required>
+                        <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
                     </div>
                     <button type="submit" name="change_password" class="btn btn-primary">Update Password</button>
                 </form>
