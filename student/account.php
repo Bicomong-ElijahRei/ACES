@@ -1,9 +1,24 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+/**
+ * ============================================================
+ * ACES System — Student Account Settings
+ * ============================================================
+ * Two forms: profile update + password change. CSRF-protected.
+ * ============================================================
+ */
+
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStudent();
 
-// Get student details with user info
+// ---- CSRF check on any POST ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+}
+
+// ---- Load student record ----
 $stmt = $pdo->prepare("
     SELECT s.student_id, s.section, s.program, s.middle_name, s.suffix, s.mobile, s.telephone,
            u.full_name, u.email, u.user_id
@@ -21,43 +36,59 @@ if (!$student) {
 $message = '';
 $error = '';
 
-// Handle profile update
+// ============================================================
+// PROFILE UPDATE
+// ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
-    $full_name = trim($_POST['full_name']);
-    $email = trim($_POST['email']);
-    $middle_name = trim($_POST['middle_name']);
-    $suffix = trim($_POST['suffix']);
-    $mobile = trim($_POST['mobile']);
-    $telephone = trim($_POST['telephone']);
+    $full_name   = trim($_POST['full_name']   ?? '');
+    $email       = trim($_POST['email']       ?? '');
+    $middle_name = trim($_POST['middle_name'] ?? '');
+    $suffix      = trim($_POST['suffix']      ?? '');
+    $mobile      = trim($_POST['mobile']      ?? '');
+    $telephone   = trim($_POST['telephone']   ?? '');
 
     if (empty($full_name) || empty($email)) {
         $error = "Full name and email are required.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
     } else {
-        // Check if email is already taken by another user
         $stmt_check = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
         $stmt_check->execute([$email, $student['user_id']]);
+
         if ($stmt_check->fetch()) {
             $error = "Email is already used by another account.";
         } else {
-            // Update users table
-            $stmt_upd_user = $pdo->prepare("UPDATE users SET full_name = ?, email = ? WHERE user_id = ?");
-            $stmt_upd_user->execute([$full_name, $email, $student['user_id']]);
-            // Update students table
-            $stmt_upd_student = $pdo->prepare("UPDATE students SET middle_name = ?, suffix = ?, mobile = ?, telephone = ? WHERE student_id = ?");
-            $stmt_upd_student->execute([$middle_name, $suffix, $mobile, $telephone, $student['student_id']]);
-            $_SESSION['account_message'] = "Profile updated successfully.";
-            header("Location: account.php");
-            exit;
+            $pdo->beginTransaction();
+            try {
+                $upd_user = $pdo->prepare("UPDATE users SET full_name = ?, email = ? WHERE user_id = ?");
+                $upd_user->execute([$full_name, $email, $student['user_id']]);
+
+                $upd_student = $pdo->prepare("
+                    UPDATE students
+                    SET middle_name = ?, suffix = ?, mobile = ?, telephone = ?
+                    WHERE student_id = ?
+                ");
+                $upd_student->execute([$middle_name, $suffix, $mobile, $telephone, $student['student_id']]);
+
+                $pdo->commit();
+
+                $_SESSION['account_message'] = "Profile updated successfully.";
+                header("Location: account.php");
+                exit;
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $error = "Update failed: " . $e->getMessage();
+            }
         }
     }
 }
 
-// Handle password change (same as before)
+// ============================================================
+// PASSWORD CHANGE
+// ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     $current = $_POST['current_password'] ?? '';
-    $new = $_POST['new_password'] ?? '';
+    $new     = $_POST['new_password']     ?? '';
     $confirm = $_POST['confirm_password'] ?? '';
 
     if (empty($current) || empty($new) || empty($confirm)) {
@@ -70,10 +101,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         $stmt_check = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt_check->execute([$student['user_id']]);
         $user = $stmt_check->fetch();
-        if (password_verify($current, $user['password_hash'])) {
-            $new_hash = password_hash($new, PASSWORD_DEFAULT);
-            $stmt_update = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
-            $stmt_update->execute([$new_hash, $student['user_id']]);
+
+        if ($user && password_verify($current, $user['password_hash'])) {
+            $new_hash = password_hash($new, PASSWORD_BCRYPT, ['cost' => 12]);
+
+            $upd = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
+            $upd->execute([$new_hash, $student['user_id']]);
+
+            // Rotate session + CSRF token after password change
+            session_regenerate_id(true);
+            csrf_rotate();
+
             $_SESSION['account_message'] = "Password changed successfully.";
             header("Location: account.php");
             exit;
@@ -83,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     }
 }
 
-// Retrieve flash message
+// ---- Flash message ----
 if (isset($_SESSION['account_message'])) {
     $message = $_SESSION['account_message'];
     unset($_SESSION['account_message']);
@@ -144,6 +182,8 @@ if (isset($_SESSION['account_message'])) {
             <div class="info-card">
                 <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">Profile Information</h3>
                 <form method="POST">
+                    <?= csrf_field() ?>
+                    <input type="text" name="username" autocomplete="username" value="<?= htmlspecialchars($student['email']) ?>" hidden>
                     <input type="hidden" name="update_profile" value="1">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -156,11 +196,11 @@ if (isset($_SESSION['account_message'])) {
                         </div>
                         <div>
                             <label class="form-label fw-bold">Middle Name</label>
-                            <input type="text" name="middle_name" class="form-control" value="<?= htmlspecialchars($student['middle_name']) ?>">
+                            <input type="text" name="middle_name" class="form-control" value="<?= htmlspecialchars($student['middle_name'] ?? '') ?>">
                         </div>
                         <div>
                             <label class="form-label fw-bold">Suffix</label>
-                            <input type="text" name="suffix" class="form-control" value="<?= htmlspecialchars($student['suffix']) ?>">
+                            <input type="text" name="suffix" class="form-control" value="<?= htmlspecialchars($student['suffix'] ?? '') ?>">
                         </div>
                         <div>
                             <label class="form-label fw-bold">Program (read-only)</label>
@@ -176,11 +216,11 @@ if (isset($_SESSION['account_message'])) {
                         </div>
                         <div>
                             <label class="form-label fw-bold">Mobile Number</label>
-                            <input type="text" name="mobile" class="form-control" value="<?= htmlspecialchars($student['mobile']) ?>">
+                            <input type="text" name="mobile" class="form-control" value="<?= htmlspecialchars($student['mobile'] ?? '') ?>">
                         </div>
                         <div>
                             <label class="form-label fw-bold">Telephone</label>
-                            <input type="text" name="telephone" class="form-control" value="<?= htmlspecialchars($student['telephone']) ?>">
+                            <input type="text" name="telephone" class="form-control" value="<?= htmlspecialchars($student['telephone'] ?? '') ?>">
                         </div>
                     </div>
                     <div class="mt-4">
@@ -189,21 +229,23 @@ if (isset($_SESSION['account_message'])) {
                 </form>
             </div>
 
-            <!-- Change Password (same as before) -->
+            <!-- Change Password -->
             <div class="password-card">
                 <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">Change Password</h3>
                 <form method="POST" class="max-w-md">
+                    <?= csrf_field() ?>
+                    <input type="text" name="username" autocomplete="username" value="<?= htmlspecialchars($student['email']) ?>" hidden>
                     <div class="mb-3">
                         <label class="form-label">Current Password</label>
-                        <input type="password" name="current_password" class="form-control" required>
+                        <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">New Password (min. 6 characters)</label>
-                        <input type="password" name="new_password" class="form-control" required>
+                        <input type="password" name="new_password" class="form-control" required autocomplete="new-password">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password</label>
-                        <input type="password" name="confirm_password" class="form-control" required>
+                        <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
                     </div>
                     <button type="submit" name="change_password" class="btn btn-primary">Update Password</button>
                 </form>
