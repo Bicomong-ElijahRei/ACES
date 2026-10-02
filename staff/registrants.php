@@ -254,14 +254,37 @@ $(document).ready(function() {
         subtopicSelect.value = '';
     });
 
-    // Export CSV
+    // Export CSV — POST with CSRF token
     <?php if (!isViewer()): ?>
     $('#exportCSVBtn').on('click', function() {
         const params = new URLSearchParams(window.location.search);
-        // Append filters if not already present
-        if (!params.has('export')) params.set('export', 'csv');
-        const url = 'export_registrants_csv.php?' + params.toString();
-        window.location.href = url;
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'export_registrants_csv.php';
+        form.style.display = 'none';
+
+        // Copy all current filters (skip unrelated query params)
+        ['session_id', 'subtopic_id', 'course', 'section'].forEach(key => {
+            if (params.has(key)) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = params.get(key);
+                form.appendChild(input);
+            }
+        });
+
+        // CSRF token
+        const token = document.createElement('input');
+        token.type = 'hidden';
+        token.name = 'csrf_token';
+        token.value = CSRF_TOKEN;
+        form.appendChild(token);
+
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
     });
     <?php endif; ?>
 });
