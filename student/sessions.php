@@ -1,9 +1,29 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/auth.php';
+/**
+ * ============================================================
+ * ACES System — Student Sessions & Subtopic Selection (Redesigned)
+ * ============================================================
+ * Design principles applied:
+ *   1. Clear visual hierarchy (date, title, status prominent)
+ *   2. Progressive disclosure (collapsed cards → expand for details)
+ *   3. Progress tracking (how many sessions registered)
+ *   4. Frictionless CTAs (clear "Register" buttons)
+ *   5. Responsive event cards (mobile-friendly)
+ *   6. Immediate feedback (capacity bars, status badges)
+ * ============================================================
+ */
+
+require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStudent();
 
-// Student details
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+}
+
+// ---- Student details ----
 $stmt = $pdo->prepare("
     SELECT u.full_name, s.section, s.program
     FROM students s
@@ -12,19 +32,10 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$_SESSION['student_id']]);
 $student = $stmt->fetch();
+$full_name = $student['full_name'] ?? 'Student';
+$first_name = explode(' ', $full_name)[0];
 
-$full_name = $student['full_name'];
-$name_parts = explode(' ', $full_name);
-$first_name = $name_parts[0];
-
-if (!isset($_SESSION['student_id'])) {
-    $stmt_id = $pdo->prepare("SELECT student_id FROM students WHERE user_id = ?");
-    $stmt_id->execute([$_SESSION['user_id']]);
-    $row = $stmt_id->fetch();
-    $_SESSION['student_id'] = $row['student_id'];
-}
-
-// Current module
+// ---- Current module (first incomplete) ----
 $stmt_module = $pdo->prepare("
     SELECT m.module_id, m.title, m.description, m.due_date
     FROM modules m
@@ -41,7 +52,7 @@ $stmt_module = $pdo->prepare("
 $stmt_module->execute([$_SESSION['student_id']]);
 $current_module = $stmt_module->fetch();
 
-// Upcoming sessions
+// ---- Upcoming sessions ----
 $today = date('Y-m-d');
 $stmt_sessions = $pdo->prepare("
     SELECT s.*, u.full_name as creator_name
@@ -59,7 +70,6 @@ foreach ($sessions as &$session) {
     $student_program = $student['program'] ?? '';
     $student_section = $student['section'] ?? '';
 
-    // Fetch ALL subtopics for the session
     $stmt_sub = $pdo->prepare("
         SELECT sub.*,
                (SELECT COUNT(*) FROM registrations WHERE subtopic_id = sub.subtopic_id) AS attendee_count,
@@ -71,7 +81,7 @@ foreach ($sessions as &$session) {
     $stmt_sub->execute([$session['session_id']]);
     $all_subtopics = $stmt_sub->fetchAll();
 
-    // Filter subtopics visible/required for this student
+    // Filter visible subtopics
     $visible_subtopics = [];
     foreach ($all_subtopics as $sub) {
         $visible  = false;
@@ -82,18 +92,13 @@ foreach ($sessions as &$session) {
         $req_sections = json_decode($sub['required_for'] ?? '[]', true) ?: [];
         $req_courses  = json_decode($sub['required_courses'] ?? '[]', true) ?: [];
 
-        // Public
         if (empty($vis_sections) && empty($vis_courses) && empty($req_sections) && empty($req_courses)) {
             $visible = true;
         }
-
-        // Required → always visible
         if (in_array($student_section, $req_sections) || in_array($student_program, $req_courses)) {
             $required = true;
             $visible  = true;
         }
-
-        // Explicitly visible
         if (in_array($student_section, $vis_sections) || in_array($student_program, $vis_courses)) {
             $visible = true;
         }
@@ -104,7 +109,7 @@ foreach ($sessions as &$session) {
         }
     }
 
-    // Auto‑register required subtopics (respects allow_multiple)
+    // Auto-register required subtopics
     $stmt_check_reg = $pdo->prepare("
         SELECT r.registration_id FROM registrations r
         JOIN subtopics st ON r.subtopic_id = st.subtopic_id
@@ -115,7 +120,6 @@ foreach ($sessions as &$session) {
 
     foreach ($visible_subtopics as &$sub) {
         if (!$sub['required']) continue;
-
         if (!($session['allow_multiple'] ?? 0) && $already_registered) continue;
 
         $stmt_already = $pdo->prepare("SELECT registration_id FROM registrations WHERE student_id = ? AND subtopic_id = ?");
@@ -131,29 +135,37 @@ foreach ($sessions as &$session) {
     }
     unset($sub);
 
-    // Assign visible subtopics to the session
     $session['subtopics'] = $visible_subtopics;
 
     if (count($visible_subtopics) > 0) {
         $all_dates[] = $session['date'];
     }
 
-    // Fetch registered subtopics for the student
     $stmt_reg = $pdo->prepare("
         SELECT subtopic_id FROM registrations WHERE student_id = ? AND session_id = ?
     ");
     $stmt_reg->execute([$student_id, $session['session_id']]);
     $session['registered_subtopics'] = $stmt_reg->fetchAll(PDO::FETCH_COLUMN);
 }
-unset($session); // break reference
+unset($session);
 
 $all_dates = array_unique($all_dates);
 
-// How many sessions has the student registered in?
-$registered_sessions_count = $pdo->prepare("SELECT COUNT(DISTINCT session_id) FROM registrations WHERE student_id = ?");
-$registered_sessions_count->execute([$_SESSION['student_id']]);
-$reg_sessions = $registered_sessions_count->fetchColumn();
+// ---- Registration progress (only counts upcoming sessions) ----
 $total_sessions = count($sessions);
+
+// Count how many of the UPCOMING sessions this student has registered in
+$reg_sessions = 0;
+foreach ($sessions as $s) {
+    if (!empty($s['registered_subtopics'])) {
+        $reg_sessions++;
+    }
+}
+
+// Cap percentage at 100% to avoid edge cases
+$progress_pct = $total_sessions > 0
+    ? min(100, round(($reg_sessions / $total_sessions) * 100))
+    : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
@@ -161,23 +173,137 @@ $total_sessions = count($sessions);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sessions | ACES Student</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        html, body { height: 100%; margin: 0; padding: 0; }
+        html, body { height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* ============================================================
+           DESIGN SYSTEM — matches staff pages
+           ============================================================ */
+        :root {
+            --primary: #0a6e2d;
+            --primary-dark: #054018;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --neutral-50: #f9fafb;
+            --neutral-100: #f3f4f6;
+            --neutral-200: #e5e7eb;
+            --neutral-400: #9ca3af;
+            --neutral-600: #6b7280;
+            --neutral-800: #1f2937;
+        }
+
+        /* ---------- SUBTOPIC CARDS ---------- */
+        .subtopic-card {
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid var(--neutral-200);
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+        .subtopic-card:hover { border-color: var(--primary); box-shadow: 0 4px 12px rgba(10,110,45,0.08); }
+        .subtopic-card.is-registered { border-color: var(--success); background: #f0fdf4; }
+        .subtopic-card.is-full { opacity: 0.75; }
+
+        /* ---------- CAPACITY BAR ---------- */
+        .capacity-track { height: 6px; background: var(--neutral-100); border-radius: 9999px; overflow: hidden; }
+        .capacity-fill { height: 100%; border-radius: 9999px; transition: width 0.4s ease; }
+
+        /* ---------- STATUS PILLS ---------- */
+        .status-pill {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 9999px;
+            font-size: 11px; font-weight: 600;
+        }
+        .status-registered { background: #d1fae5; color: #065f46; }
+        .status-available   { background: #dbeafe; color: #1e40af; }
+        .status-filling     { background: #fef3c7; color: #92400e; }
+        .status-full        { background: #fee2e2; color: #991b1b; }
+        .status-required    { background: #ede9fe; color: #5b21b6; }
+
+        /* ---------- SESSION CARDS ---------- */
+        .session-card {
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid var(--neutral-200);
+            overflow: hidden;
+            transition: all 0.2s;
+            margin-bottom: 20px;
+        }
+        .session-card:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.06); }
+
+        .session-header {
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+            color: #fff;
+            padding: 18px 22px;
+        }
+
+        /* ---------- DATE BADGE ---------- */
+        .date-badge {
+            width: 60px; height: 60px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .date-badge .month { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.9; }
+        .date-badge .day { font-size: 24px; font-weight: 800; line-height: 1; }
+
+        /* ---------- PROGRESS RING ---------- */
+        .progress-ring { transition: stroke-dashoffset 0.5s ease-out; }
+
+        /* ---------- CALENDAR ---------- */
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-        .calendar-weekday { text-align: center; font-weight: 600; padding: 6px; background: #f0fdf4; color: #065f46; font-size: 0.8rem; }
-        .calendar-day { min-height: 50px; border: 1px solid #e5e7eb; padding: 4px; position: relative; cursor: pointer; font-size: 0.8rem; }
-        .calendar-day.empty { background: #f9fafb; cursor: default; }
-        .calendar-day.has-event { background: #e9ecef; font-weight: 700; }
-        .calendar-day.has-event::after { content: "•"; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); color: #0a6e2d; font-size: 1rem; }
-        .calendar-day.selected { background: #0a6e2d; color: white; }
-        .calendar-day:hover { background: #e2e8f0; }
-        .modal-backdrop { z-index: 1040 !important; }
-        .modal { z-index: 1050 !important; }
+        .calendar-weekday {
+            text-align: center; font-weight: 700; padding: 8px 4px;
+            background: var(--neutral-100); color: var(--neutral-600);
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+            border-radius: 6px;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; cursor: pointer; font-size: 0.8rem;
+            font-weight: 500; color: var(--neutral-600);
+            transition: all 0.15s;
+            position: relative;
+        }
+        .calendar-day:hover:not(.empty) { background: var(--neutral-100); }
+        .calendar-day.empty { cursor: default; color: transparent; }
+        .calendar-day.has-event {
+            background: #dcfce7; color: var(--primary);
+            font-weight: 700;
+        }
+        .calendar-day.has-event::after {
+            content: ''; position: absolute; bottom: 4px;
+            width: 4px; height: 4px; border-radius: 50%;
+            background: var(--primary);
+        }
+        .calendar-day.today {
+            background: var(--primary); color: #fff;
+        }
+        .calendar-day.selected {
+            background: var(--warning); color: #fff;
+            box-shadow: 0 0 0 2px rgba(245,158,11,0.3);
+        }
+
+        /* ---------- HERO PROGRESS ---------- */
+        .hero-card {
+            background: linear-gradient(135deg, #e6f5ed 0%, #c8ecd9 100%);
+            border-radius: 14px;
+            padding: 24px;
+            border: 1px solid rgba(10,110,45,0.1);
+            margin-bottom: 24px;
+        }
+
+        /* ---------- MODAL ---------- */
+        .modal-content { border-radius: 14px; border: none; overflow: hidden; }
     </style>
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
@@ -185,141 +311,331 @@ $total_sessions = count($sessions);
 <?php include '../includes/student_sidebar.php'; ?>
 
 <div class="flex-1 flex flex-col overflow-hidden">
-    <div class="h-14 bg-white shadow flex items-center justify-between px-6 border-b">
-        <div class="font-bold text-xl text-[#0a6e2d]">ACES</div>
-        <a href="dashboard.php" class="text-gray-600"><i class="fas fa-home fa-lg"></i></a>
-    </div>
+    <?php include '../includes/student_header.php'; ?>
 
     <main class="flex-1 p-4 md:p-6 overflow-y-auto no-scrollbar">
 
-        <!-- ============= OPTION B HERO BANNER ============= -->
-        <div class="bg-gradient-to-r from-[#e6f5ed] to-[#c8ecd9] rounded-xl p-6 mb-6 shadow-lg border border-green-100">
-            <div class="flex flex-col md:flex-row gap-6 items-center">
-                <div class="flex-1 text-center md:text-left">
-                    <h1 class="text-3xl md:text-4xl font-extrabold text-[#0a6e2d] mb-2">
+        <!-- ============================================================
+             HERO: Welcome + Progress
+             ============================================================ -->
+        <div class="hero-card">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div class="flex-1">
+                    <h1 class="text-2xl md:text-3xl font-extrabold text-[#0a6e2d] mb-2">
                         <i class="fas fa-hand-pointer mr-2"></i>Select Your Subtopics
                     </h1>
-                    <p class="text-lg text-gray-700 font-medium">
-                        Please choose <span class="underline decoration-[#0a6e2d] decoration-2">one subtopic</span> for each session below.
+                    <p class="text-gray-700 text-sm md:text-base">
+                        Choose <strong>one subtopic</strong> for each upcoming session. Required subtopics are auto-assigned.
                     </p>
-                    <div class="mt-3 text-sm text-gray-600 flex items-center justify-center md:justify-start gap-2">
-                        <i class="fas fa-check-circle text-green-600"></i>
-                        <span>Registered for <strong><?= $reg_sessions ?></strong> of <strong><?= $total_sessions ?></strong> sessions</span>
+                    <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                        <span class="status-pill status-registered">
+                            <i class="fas fa-check-circle"></i> <?= $reg_sessions ?> registered
+                        </span>
+                        <span class="status-pill status-available">
+                            <i class="fas fa-calendar-alt"></i> <?= $total_sessions ?> upcoming
+                        </span>
                     </div>
                 </div>
-                <!-- Compact calendar inline -->
-                <div class="w-full md:w-48 bg-white rounded-xl shadow p-4 border border-gray-200">
-                    <div class="text-center font-bold text-sm text-[#0a6e2d]"><?= date('F Y') ?></div>
-                    <div class="mt-1 text-xs text-gray-500 text-center">Tap a date to expand subtopics</div>
-                    <div class="mt-2 text-xs text-center text-gray-400">
-                        <i class="fas fa-calendar-alt text-3xl text-green-200"></i>
+
+                <!-- Progress ring -->
+                <div class="flex items-center gap-4">
+                    <div class="relative w-20 h-20 flex items-center justify-center">
+                        <svg class="w-full h-full" viewBox="0 0 36 36">
+                            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.6"></circle>
+                            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0a6e2d" stroke-width="3"
+                                    stroke-dasharray="<?= $progress_pct ?> 100" stroke-dashoffset="0"
+                                    stroke-linecap="round" class="progress-ring"></circle>
+                        </svg>
+                        <div class="absolute text-base font-extrabold text-[#0a6e2d]"><?= $progress_pct ?>%</div>
+                    </div>
+                    <div class="text-sm">
+                        <div class="font-bold text-gray-800">Your Progress</div>
+                        <div class="text-gray-600"><?= $reg_sessions ?> of <?= $total_sessions ?> sessions</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Current Module + Full Calendar below -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Clickable Current Module Card -->
+        <!-- ============================================================
+             TWO-COLUMN: Current Module + Calendar
+             ============================================================ -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+
+            <!-- Current Module -->
             <?php if ($current_module): ?>
-            <a href="modules.php?module_id=<?= $current_module['module_id'] ?>" class="md:col-span-2 bg-white rounded shadow-xl overflow-hidden hover:shadow-2xl transition block" style="text-decoration: none; color: inherit;">
+                <a href="modules.php?module_id=<?= $current_module['module_id'] ?>"
+                   class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition overflow-hidden block" style="text-decoration:none; color:inherit;">
             <?php else: ?>
-            <div class="md:col-span-2 bg-white rounded shadow-xl overflow-hidden">
+                <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <?php endif; ?>
-                <div class="bg-[#054018] px-4 py-3 font-bold text-white text-sm md:text-base">Current Module</div>
-                <div class="p-4">
+
+                <div class="bg-[#054018] px-5 py-3 flex items-center justify-between">
+                    <span class="text-white font-bold text-sm">
+                        <i class="fas fa-book-open mr-2"></i>Current Module
+                    </span>
                     <?php if ($current_module): ?>
-                        <h4 class="font-semibold text-lg"><?= htmlspecialchars($current_module['title']) ?></h4>
-                        <p class="text-gray-600 mt-1"><?= nl2br(htmlspecialchars($current_module['description'] ?? '')) ?></p>
-                        <p class="text-sm text-gray-500 mt-2"><i class="fas fa-calendar-alt"></i> Due: <?= date('M d, Y', strtotime($current_module['due_date'])) ?></p>
-                        <span class="text-xs text-green-700 font-medium mt-2 inline-block"><i class="fas fa-arrow-right"></i> Open module</span>
-                    <?php else: ?>
-                        <p class="text-gray-500">No pending modules. You're all caught up!</p>
+                        <span class="text-white/70 text-xs">Click to open →</span>
                     <?php endif; ?>
                 </div>
-            <?php if ($current_module): ?>
-            </a>
-            <?php else: ?>
-            </div>
-            <?php endif; ?>
+                <div class="p-5">
+                    <?php if ($current_module): ?>
+                        <h4 class="font-bold text-lg text-gray-800"><?= htmlspecialchars($current_module['title']) ?></h4>
+                        <p class="text-gray-600 text-sm mt-2 leading-relaxed">
+                            <?= nl2br(htmlspecialchars(substr($current_module['description'] ?? '', 0, 200))) ?>
+                        </p>
+                        <div class="flex items-center gap-2 mt-3 text-xs text-gray-500">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Due: <?= date('M d, Y', strtotime($current_module['due_date'])) ?></span>
+                        </div>
+                    <?php else: ?>
+                        <div class="text-center py-4">
+                            <i class="fas fa-check-circle text-4xl text-green-400 mb-2"></i>
+                            <p class="text-gray-500 text-sm">No pending modules. You're all caught up!</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
 
-            <!-- Full Mini Calendar Card -->
-            <div class="bg-white rounded shadow-xl overflow-hidden">
-                <div class="bg-[#054018] px-4 py-3 font-bold text-white text-sm md:text-base">Calendar</div>
+            <?php if ($current_module): ?></a><?php else: ?></div><?php endif; ?>
+
+            <!-- Mini Calendar -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-[#054018] px-5 py-3 flex items-center justify-between">
+                    <span class="text-white font-bold text-sm">
+                        <i class="fas fa-calendar-alt mr-2"></i><?= date('F Y') ?>
+                    </span>
+                    <div class="flex gap-1">
+                        <button id="prevMonthBtn" class="text-white/70 hover:text-white p-1">
+                            <i class="fas fa-chevron-left text-xs"></i>
+                        </button>
+                        <button id="nextMonthBtn" class="text-white/70 hover:text-white p-1">
+                            <i class="fas fa-chevron-right text-xs"></i>
+                        </button>
+                    </div>
+                </div>
                 <div class="p-4" id="miniCalendar"></div>
+                <div class="px-4 pb-4 text-xs text-gray-500 text-center">
+                    <i class="fas fa-info-circle mr-1"></i>Click a highlighted date to expand its sessions
+                </div>
             </div>
         </div>
 
-        <!-- Sessions & Subtopics (unchanged, includes capacity warning) -->
+        <!-- ============================================================
+             SESSIONS LIST
+             ============================================================ -->
         <?php if (count($sessions) == 0): ?>
-            <div class="bg-white rounded shadow-xl p-6 text-center text-gray-500">No upcoming sessions.</div>
+            <div class="bg-white rounded-xl shadow-sm p-12 text-center">
+                <i class="fas fa-inbox text-5xl text-gray-300 mb-4"></i>
+                <h3 class="text-lg font-semibold text-gray-700">No Upcoming Sessions</h3>
+                <p class="text-gray-500 text-sm mt-1">Check back soon for new career development activities.</p>
+            </div>
         <?php else: ?>
-            <?php foreach ($sessions as $session): ?>
-                <div class="bg-white rounded shadow-xl overflow-hidden mb-6" data-session-date="<?= $session['date'] ?>">
-                    <div class="bg-[#054018] px-4 py-3 flex justify-between items-center">
-                        <h3 class="text-white font-bold text-lg"><i class="fas fa-calendar-alt mr-2"></i><?= htmlspecialchars($session['title']) ?></h3>
-                        <span class="text-white/80 text-sm"><?= date('M d, Y', strtotime($session['date'])) ?> | <?= $session['start_time'] ?> - <?= $session['end_time'] ?></span>
+            <?php foreach ($sessions as $session):
+                $session_date = strtotime($session['date']);
+                $is_registered_session = !empty($session['registered_subtopics']);
+                $visible_subs = $session['subtopics'];
+            ?>
+                <div class="session-card" data-session-date="<?= $session['date'] ?>">
+
+                    <!-- Session Header -->
+                    <div class="session-header">
+                        <div class="flex flex-wrap items-center gap-4">
+                            <!-- Date badge -->
+                            <div class="date-badge">
+                                <span class="month"><?= date('M', $session_date) ?></span>
+                                <span class="day"><?= date('d', $session_date) ?></span>
+                            </div>
+
+                            <!-- Title + meta -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                                          style="background: rgba(255,255,255,0.2);">
+                                        <?= htmlspecialchars($session['phase'] ?? 'Session') ?>
+                                    </span>
+                                    <?php if ($is_registered_session): ?>
+                                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-green-400/30">
+                                            <i class="fas fa-check mr-1"></i>Registered
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                                <h3 class="text-lg font-bold leading-tight truncate">
+                                    <?= htmlspecialchars($session['title']) ?>
+                                </h3>
+                                <div class="text-xs text-white/80 mt-1 flex flex-wrap items-center gap-3">
+                                    <span><i class="far fa-clock mr-1"></i><?= date('g:i A', strtotime($session['start_time'])) ?> – <?= date('g:i A', strtotime($session['end_time'])) ?></span>
+                                    <?php if (!empty($session['location'])): ?>
+                                        <span><i class="fas fa-map-marker-alt mr-1"></i><?= htmlspecialchars($session['location']) ?></span>
+                                    <?php endif; ?>
+                                    <span><i class="fas fa-list-ul mr-1"></i><?= count($visible_subs) ?> subtopic<?= count($visible_subs) !== 1 ? 's' : '' ?></span>
+                                </div>
+                            </div>
+
+                            <!-- Session-level status -->
+                            <div class="text-right">
+                                <?php
+                                $registered_count = count($session['registered_subtopics']);
+                                $total_subs = count($visible_subs);
+                                ?>
+                                <div class="text-xs uppercase tracking-wider text-white/70">Registered</div>
+                                <div class="text-xl font-bold"><?= $registered_count ?>/<?= $total_subs ?></div>
+                            </div>
+                        </div>
+
+                        <?php if (!empty($session['description'])): ?>
+                            <p class="text-white/80 text-xs mt-3 leading-relaxed">
+                                <?= htmlspecialchars(substr($session['description'], 0, 180)) ?>
+                            </p>
+                        <?php endif; ?>
                     </div>
-                    <div class="p-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <?php if (count($session['subtopics']) == 0): ?>
-                                <div class="col-span-full text-gray-500">No subtopics available yet.</div>
-                            <?php else: ?>
-                                <?php foreach ($session['subtopics'] as $sub): ?>
-                                    <?php
-                                    $percent_full = ($sub['capacity'] > 0) ? round(($sub['attendee_count'] / $sub['capacity']) * 100) : 0;
-                                    if ($percent_full >= 100) {
-                                        $capacity_color = '#ef4444';
-                                        $capacity_label = 'Full';
+
+                    <!-- Subtopic Grid -->
+                    <div class="p-4 md:p-5">
+                        <?php if (count($visible_subs) == 0): ?>
+                            <div class="text-center py-6 text-gray-500 text-sm">
+                                <i class="fas fa-hourglass-half mr-2"></i>No subtopics available yet.
+                            </div>
+                        <?php else: ?>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <?php foreach ($visible_subs as $sub):
+                                    $is_registered = in_array($sub['subtopic_id'], $session['registered_subtopics']);
+                                    $percent_full = ($sub['capacity'] > 0)
+                                        ? round(($sub['attendee_count'] / $sub['capacity']) * 100)
+                                        : 0;
+                                    $is_full = $percent_full >= 100;
+
+                                    if ($is_registered) {
+                                        $status_class = 'status-registered';
+                                        $status_label = 'Registered';
+                                        $status_icon = 'fa-check-circle';
+                                        $bar_color = '#10b981';
+                                    } elseif ($sub['required']) {
+                                        $status_class = 'status-required';
+                                        $status_label = 'Required';
+                                        $status_icon = 'fa-star';
+                                        $bar_color = '#8b5cf6';
+                                    } elseif ($is_full) {
+                                        $status_class = 'status-full';
+                                        $status_label = 'Full';
+                                        $status_icon = 'fa-times-circle';
+                                        $bar_color = '#ef4444';
                                     } elseif ($percent_full >= 70) {
-                                        $capacity_color = '#f59e0b';
-                                        $capacity_label = 'Filling up';
+                                        $status_class = 'status-filling';
+                                        $status_label = 'Filling up';
+                                        $status_icon = 'fa-exclamation-circle';
+                                        $bar_color = '#f59e0b';
                                     } else {
-                                        $capacity_color = '#10b981';
-                                        $capacity_label = 'Available';
+                                        $status_class = 'status-available';
+                                        $status_label = 'Available';
+                                        $status_icon = 'fa-check';
+                                        $bar_color = '#10b981';
                                     }
-                                    ?>
-                                    <div class="border rounded-lg p-3 subtopic-card cursor-pointer" data-subtopic-id="<?= $sub['subtopic_id'] ?>" data-session-date="<?= $session['date'] ?>">
-                                        <div class="subtopic-title flex justify-between items-center font-medium text-sm mb-2">
-                                            <?= htmlspecialchars($sub['title']) ?>
-                                            <i class="fas fa-chevron-down text-gray-500 text-xs"></i>
+
+                                    $card_class = 'subtopic-card';
+                                    if ($is_registered) $card_class .= ' is-registered';
+                                    if ($is_full && !$is_registered) $card_class .= ' is-full';
+                                ?>
+                                    <div class="<?= $card_class ?>"
+                                         data-subtopic-id="<?= $sub['subtopic_id'] ?>"
+                                         data-session-date="<?= $session['date'] ?>">
+
+                                        <!-- Card header -->
+                                        <div class="p-4 subtopic-title cursor-pointer">
+                                            <div class="flex items-start justify-between gap-2 mb-2">
+                                                <h4 class="font-bold text-sm text-gray-800 leading-snug flex-1 min-w-0">
+                                                    <?= htmlspecialchars($sub['title']) ?>
+                                                </h4>
+                                                <i class="fas fa-chevron-down text-gray-400 text-xs transition-transform subtopic-chevron flex-shrink-0 mt-1"></i>
+                                            </div>
+
+                                            <div class="flex items-center gap-2 flex-wrap">
+                                                <span class="status-pill <?= $status_class ?>">
+                                                    <i class="fas <?= $status_icon ?>"></i> <?= $status_label ?>
+                                                </span>
+                                                <?php if (($sub['attendance_type'] ?? 'physical') === 'module'): ?>
+                                                    <span class="status-pill" style="background:#dbeafe; color:#1e40af;">
+                                                        <i class="fas fa-laptop"></i> Module-based
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+
+                                            <!-- Capacity bar -->
+                                            <div class="mt-3 flex items-center gap-2">
+                                                <div class="capacity-track flex-1">
+                                                    <div class="capacity-fill" style="width: <?= min(100, $percent_full) ?>%; background: <?= $bar_color ?>;"></div>
+                                                </div>
+                                                <span class="text-[11px] font-semibold text-gray-500 whitespace-nowrap">
+                                                    <?= $sub['attendee_count'] ?>/<?= $sub['capacity'] ?>
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div class="subtopic-details hidden text-xs text-gray-600 space-y-2">
-                                        <?php if (($sub['attendance_type'] ?? 'physical') === 'module'): ?>
-                                            <div class="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-700 font-medium">
-                                                <i class="fas fa-laptop mr-1"></i> Module‑Based – complete all modules to be marked Present.
-                                            </div>
-                                        <?php else: ?>
-                                            <div><span class="font-semibold">Date &amp; Time:</span> <?= date('M d, Y', strtotime($session['date'])) ?> | <?= $session['start_time'] ?> - <?= $session['end_time'] ?></div>
-                                            <div><span class="font-semibold">Proctor:</span> <?= htmlspecialchars($session['proctor'] ?? $session['creator_name'] ?? 'TBA') ?></div>
-                                            <div><span class="font-semibold">Location:</span> <?= htmlspecialchars($session['location'] ?? 'TBA') ?></div>
-                                        <?php endif; ?>
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-semibold">Attendees:</span>
-                                                <span class="px-2 py-0.5 rounded-full text-white text-xs font-semibold" style="background-color:<?= $capacity_color ?>;"><?= $sub['attendee_count'] ?> / <?= $sub['capacity'] ?></span>
-                                                <span class="text-xs font-medium" style="color:<?= $capacity_color ?>;"><?= $capacity_label ?></span>
-                                            </div>
-                                            <div class="w-full bg-gray-200 rounded-full h-1.5"><div class="h-1.5 rounded-full" style="width:<?= $percent_full ?>%; background-color:<?= $capacity_color ?>;"></div></div>
-                                            <?php if ($sub['module_count'] > 0): ?><div><i class="fas fa-book text-gray-400 mr-1"></i><?= $sub['module_count'] ?> module(s)</div><?php endif; ?>
-                                            <?php if (!empty($sub['description'])): ?><div class="text-gray-500 italic mt-1"><?= nl2br(htmlspecialchars($sub['description'])) ?></div><?php endif; ?>
-                                            <div class="mt-2">
-                                                <?php if (in_array($sub['subtopic_id'], $session['registered_subtopics'])): ?>
-                                                    <button class="bg-gray-300 text-gray-800 py-1 px-3 rounded text-xs w-full" disabled>Already Registered</button>
-                                                <?php elseif ($percent_full >= 100): ?>
-                                                    <button class="bg-red-500 text-white py-1 px-3 rounded text-xs w-full" disabled>Full – No Slots</button>
+
+                                        <!-- Expandable details -->
+                                        <div class="subtopic-details hidden border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600 space-y-2">
+                                            <?php if (($sub['attendance_type'] ?? 'physical') === 'module'): ?>
+                                                <div class="flex items-start gap-2">
+                                                    <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+                                                    <span>Complete all modules to be marked <strong>Present</strong> automatically.</span>
+                                                </div>
+                                            <?php else: ?>
+                                                <div class="flex items-start gap-2">
+                                                    <i class="far fa-clock text-gray-400 mt-0.5"></i>
+                                                    <span><?= date('M d, Y', $session_date) ?> · <?= date('g:i A', strtotime($session['start_time'])) ?> – <?= date('g:i A', strtotime($session['end_time'])) ?></span>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <?php if (!empty($session['proctor']) || !empty($session['creator_name'])): ?>
+                                                <div class="flex items-start gap-2">
+                                                    <i class="fas fa-user text-gray-400 mt-0.5"></i>
+                                                    <span>Proctor: <?= htmlspecialchars($session['proctor'] ?? $session['creator_name']) ?></span>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <?php if (!empty($session['location'])): ?>
+                                                <div class="flex items-start gap-2">
+                                                    <i class="fas fa-map-marker-alt text-gray-400 mt-0.5"></i>
+                                                    <span><?= htmlspecialchars($session['location']) ?></span>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <?php if ($sub['module_count'] > 0): ?>
+                                                <div class="flex items-start gap-2">
+                                                    <i class="fas fa-book text-gray-400 mt-0.5"></i>
+                                                    <span><?= $sub['module_count'] ?> module<?= $sub['module_count'] !== 1 ? 's' : '' ?> included</span>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <?php if (!empty($sub['description'])): ?>
+                                                <div class="pt-2 border-t border-gray-200 mt-2 text-gray-500 italic">
+                                                    <?= nl2br(htmlspecialchars($sub['description'])) ?>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <!-- Action button -->
+                                            <div class="pt-3">
+                                                <?php if ($is_registered): ?>
+                                                    <button disabled class="w-full bg-green-100 text-green-700 py-2 rounded-lg text-xs font-semibold cursor-default">
+                                                        <i class="fas fa-check-circle mr-1"></i>Already Registered
+                                                    </button>
+                                                <?php elseif ($is_full): ?>
+                                                    <button disabled class="w-full bg-red-100 text-red-700 py-2 rounded-lg text-xs font-semibold cursor-not-allowed">
+                                                        <i class="fas fa-times-circle mr-1"></i>No Slots Available
+                                                    </button>
                                                 <?php else: ?>
                                                     <form method="POST" action="choose_subtopic.php">
+                                                        <?= csrf_field() ?>
                                                         <input type="hidden" name="session_id" value="<?= $session['session_id'] ?>">
                                                         <input type="hidden" name="subtopic_id" value="<?= $sub['subtopic_id'] ?>">
-                                                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded text-xs w-full">Register</button>
+                                                        <button type="submit" class="w-full bg-[#0a6e2d] hover:bg-[#054018] text-white py-2 rounded-lg text-xs font-semibold transition">
+                                                            <i class="fas fa-plus-circle mr-1"></i>Register for this Subtopic
+                                                        </button>
                                                     </form>
                                                 <?php endif; ?>
                                             </div>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
-                            <?php endif; ?>
-                        </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endforeach; ?>
@@ -330,79 +646,103 @@ $total_sessions = count($sessions);
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    const eventDates = <?= json_encode($all_dates) ?>;
-    let currentYear = new Date().getFullYear();
-    let currentMonth = new Date().getMonth();
+const eventDates = <?= json_encode(array_values($all_dates)) ?>;
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth();
 
-    function generateCalendar(year, month) {
-        const firstDay = new Date(year, month, 1);
-        const startWeekday = firstDay.getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        let html = `<div class="flex justify-between items-center mb-2">
-                        <button class="btn btn-sm btn-outline-secondary" id="prevMonthBtn">&lt;</button>
-                        <span class="font-bold">${firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
-                        <button class="btn btn-sm btn-outline-secondary" id="nextMonthBtn">&gt;</button>
-                    </div>`;
-        html += `<div class="calendar-grid">`;
-        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => html += `<div class="calendar-weekday">${d}</div>`);
-        for (let i = 0; i < startWeekday; i++) html += `<div class="calendar-day empty"></div>`;
-        for (let d = 1; d <= daysInMonth; d++) {
-            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            const hasEvent = eventDates.includes(dateStr);
-            html += `<div class="calendar-day${hasEvent ? ' has-event' : ''}" data-date="${dateStr}">${d}</div>`;
-        }
-        html += `</div>`;
-        return html;
+function generateCalendar(year, month) {
+    const firstDay = new Date(year, month, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+    let html = '<div class="calendar-grid">';
+    ['S','M','T','W','T','F','S'].forEach(d => html += `<div class="calendar-weekday">${d}</div>`);
+
+    for (let i = 0; i < startWeekday; i++) html += '<div class="calendar-day empty"></div>';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const hasEvent = eventDates.includes(dateStr);
+        const isToday = dateStr === todayStr;
+        let cls = 'calendar-day';
+        if (hasEvent) cls += ' has-event';
+        if (isToday) cls += ' today';
+        html += `<div class="${cls}" data-date="${dateStr}">${d}</div>`;
     }
+    html += '</div>';
+    return html;
+}
 
-    function renderCalendar() {
-        const cal = document.getElementById('miniCalendar');
-        if (!cal) return;
-        cal.innerHTML = generateCalendar(currentYear, currentMonth);
-        document.getElementById('prevMonthBtn')?.addEventListener('click', () => { currentMonth--; if (currentMonth < 0) { currentMonth = 11; currentYear--; } renderCalendar(); });
-        document.getElementById('nextMonthBtn')?.addEventListener('click', () => { currentMonth++; if (currentMonth > 11) { currentMonth = 0; currentYear++; } renderCalendar(); });
-        document.querySelectorAll('.calendar-day:not(.empty)').forEach(day => {
-            day.addEventListener('click', () => {
-                const date = day.getAttribute('data-date');
-                if (date) {
-                    filterByDate(date);
-                    document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('selected'));
-                    day.classList.add('selected');
-                }
-            });
-        });
-    }
+function renderCalendar() {
+    const cal = document.getElementById('miniCalendar');
+    if (!cal) return;
+    cal.innerHTML = generateCalendar(currentYear, currentMonth);
 
-    function filterByDate(date) {
-        document.querySelectorAll('.subtopic-card').forEach(card => {
-            card.querySelector('.subtopic-details')?.classList.add('hidden');
-            card.querySelector('.subtopic-title i')?.classList.replace('fa-chevron-up','fa-chevron-down');
-        });
-        document.querySelectorAll(`.subtopic-card[data-session-date="${date}"]`).forEach(card => {
-            card.querySelector('.subtopic-details')?.classList.remove('hidden');
-            card.querySelector('.subtopic-title i')?.classList.replace('fa-chevron-down','fa-chevron-up');
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('prevMonthBtn')?.addEventListener('click', () => {
+        currentMonth--;
+        if (currentMonth < 0) { currentMonth = 11; currentYear--; }
         renderCalendar();
-        document.querySelectorAll('.subtopic-title').forEach(title => {
-            title.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const card = this.closest('.subtopic-card');
-                const details = card.querySelector('.subtopic-details');
-                const icon = this.querySelector('i');
-                const hidden = details.classList.contains('hidden');
-                if (hidden) {
-                    details.classList.remove('hidden');
-                    icon.classList.replace('fa-chevron-down','fa-chevron-up');
-                } else {
-                    details.classList.add('hidden');
-                    icon.classList.replace('fa-chevron-up','fa-chevron-down');
-                }
-            });
+    });
+    document.getElementById('nextMonthBtn')?.addEventListener('click', () => {
+        currentMonth++;
+        if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+        renderCalendar();
+    });
+
+    document.querySelectorAll('.calendar-day.has-event').forEach(day => {
+        day.addEventListener('click', () => {
+            const date = day.getAttribute('data-date');
+            if (!date) return;
+            document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('selected'));
+            day.classList.add('selected');
+            filterByDate(date);
         });
     });
+}
+
+function filterByDate(date) {
+    // Collapse all subtopics first
+    document.querySelectorAll('.subtopic-details').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.subtopic-chevron').forEach(el => el.style.transform = '');
+
+    // Expand matching session
+    document.querySelectorAll(`.subtopic-card[data-session-date="${date}"]`).forEach(card => {
+        const details = card.querySelector('.subtopic-details');
+        const chevron = card.querySelector('.subtopic-chevron');
+        if (details) details.classList.remove('hidden');
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+    });
+
+    // Scroll to first matching session
+    const firstCard = document.querySelector(`.subtopic-card[data-session-date="${date}"]`);
+    if (firstCard) {
+        firstCard.closest('.session-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderCalendar();
+
+    // Toggle subtopic details on click
+    document.querySelectorAll('.subtopic-title').forEach(title => {
+        title.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const card = this.closest('.subtopic-card');
+            const details = card.querySelector('.subtopic-details');
+            const chevron = card.querySelector('.subtopic-chevron');
+            const hidden = details.classList.contains('hidden');
+            if (hidden) {
+                details.classList.remove('hidden');
+                chevron.style.transform = 'rotate(180deg)';
+            } else {
+                details.classList.add('hidden');
+                chevron.style.transform = '';
+            }
+        });
+    });
+});
 </script>
 </body>
 </html>
