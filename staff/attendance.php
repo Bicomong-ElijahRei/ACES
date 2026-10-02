@@ -613,11 +613,23 @@ $(document).ready(function() {
         params.append('ids', ids.join(','));
         params.append('cols', JSON.stringify(selectedCols.map(c => c.key)));
 
-        if (format === 'csv') {
-            window.location.href = 'export_attendance.php?' + params.toString();
-        } else {
-            window.open('export_attendance.php?' + params.toString(), '_blank');
-        }
+        // Build POST form (CSRF-safe)
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'export_attendance.php';
+        form.target = format === 'pdf' ? '_blank' : '_self';
+        form.style.display = 'none';
+
+        form.innerHTML = `
+            <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
+            <input type="hidden" name="format" value="${format}">
+            <input type="hidden" name="ids" value="${ids.join(',')}">
+            <input type="hidden" name="cols" value='${JSON.stringify(selectedCols.map(c => c.key))}'>
+        `;
+
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
     });
 });
 </script>
