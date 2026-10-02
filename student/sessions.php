@@ -142,10 +142,15 @@ foreach ($sessions as &$session) {
     }
 
     $stmt_reg = $pdo->prepare("
-        SELECT subtopic_id FROM registrations WHERE student_id = ? AND session_id = ?
+        SELECT r.subtopic_id, st.title AS subtopic_title
+        FROM registrations r
+        JOIN subtopics st ON r.subtopic_id = st.subtopic_id
+        WHERE r.student_id = ? AND r.session_id = ?
     ");
     $stmt_reg->execute([$student_id, $session['session_id']]);
-    $session['registered_subtopics'] = $stmt_reg->fetchAll(PDO::FETCH_COLUMN);
+    $reg_rows = $stmt_reg->fetchAll(PDO::FETCH_ASSOC);
+    $session['registered_subtopics']      = array_column($reg_rows, 'subtopic_id');  // keeps original shape
+    $session['registered_subtopics_full'] = $reg_rows;                                 // new: has titles
 }
 unset($session);
 
@@ -314,6 +319,22 @@ $progress_pct = $total_sessions > 0
     <?php include '../includes/student_header.php'; ?>
 
     <main class="flex-1 p-4 md:p-6 overflow-y-auto no-scrollbar">
+        <?php if (!empty($_SESSION['flash'])): 
+            $flash = $_SESSION['flash'];
+            unset($_SESSION['flash']);
+            $colors = [
+                'success' => ['bg-green-50', 'border-green-400', 'text-green-700', 'fa-check-circle'],
+                'error'   => ['bg-red-50',   'border-red-400',   'text-red-700',   'fa-exclamation-circle'],
+                'info'    => ['bg-blue-50',  'border-blue-400',  'text-blue-700',  'fa-info-circle'],
+                'warning' => ['bg-amber-50', 'border-amber-400', 'text-amber-800', 'fa-exclamation-triangle'],
+            ];
+            [$bg, $border, $text, $icon] = $colors[$flash['type']] ?? $colors['info'];
+        ?>
+            <div class="<?= $bg ?> border-l-4 <?= $border ?> <?= $text ?> p-4 rounded-r-lg mb-5 flex items-start gap-3 fade-in">
+                <i class="fas <?= $icon ?> mt-0.5"></i>
+                <span class="text-sm font-medium"><?= htmlspecialchars($flash['text']) ?></span>
+            </div>
+        <?php endif; ?>
 
         <!-- ============================================================
              HERO: Welcome + Progress
@@ -434,7 +455,16 @@ $progress_pct = $total_sessions > 0
                 $is_registered_session = !empty($session['registered_subtopics']);
                 $visible_subs = $session['subtopics'];
             ?>
-                <div class="session-card" data-session-date="<?= $session['date'] ?>">
+                <?php
+                $existing_name = !empty($session['registered_subtopics_full'])
+                    ? $session['registered_subtopics_full'][0]['subtopic_title']
+                    : '';
+                ?>
+                <div class="session-card"
+                    data-session-date="<?= $session['date'] ?>"
+                    data-allow-multiple="<?= (int)($session['allow_multiple'] ?? 0) ?>"
+                    data-registered-count="<?= count($session['registered_subtopics']) ?>"
+                    data-registered-title="<?= htmlspecialchars($existing_name) ?>">
 
                     <!-- Session Header -->
                     <div class="session-header">
@@ -620,13 +650,25 @@ $progress_pct = $total_sessions > 0
                                                     <button disabled class="w-full bg-red-100 text-red-700 py-2 rounded-lg text-xs font-semibold cursor-not-allowed">
                                                         <i class="fas fa-times-circle mr-1"></i>No Slots Available
                                                     </button>
-                                                <?php else: ?>
-                                                    <form method="POST" action="choose_subtopic.php">
+                                                <?php else:
+                                                    $has_existing = !empty($session['registered_subtopics']) && !($session['allow_multiple'] ?? 0);
+                                                ?>
+                                                    <?php if ($has_existing): ?>
+                                                        <div class="mb-2 flex items-start gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                                                            <i class="fas fa-exchange-alt mt-0.5"></i>
+                                                            <span>Selecting this will <strong>replace</strong> your current pick: "<?= htmlspecialchars($existing_name) ?>"</span>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <form method="POST" action="choose_subtopic.php" class="register-form">
                                                         <?= csrf_field() ?>
                                                         <input type="hidden" name="session_id" value="<?= $session['session_id'] ?>">
                                                         <input type="hidden" name="subtopic_id" value="<?= $sub['subtopic_id'] ?>">
-                                                        <button type="submit" class="w-full bg-[#0a6e2d] hover:bg-[#054018] text-white py-2 rounded-lg text-xs font-semibold transition">
-                                                            <i class="fas fa-plus-circle mr-1"></i>Register for this Subtopic
+                                                        <button type="submit" class="w-full <?= $has_existing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#0a6e2d] hover:bg-[#054018]' ?> text-white py-2 rounded-lg text-xs font-semibold transition">
+                                                            <?php if ($has_existing): ?>
+                                                                <i class="fas fa-exchange-alt mr-1"></i>Switch to this Subtopic
+                                                            <?php else: ?>
+                                                                <i class="fas fa-plus-circle mr-1"></i>Register for this Subtopic
+                                                            <?php endif; ?>
                                                         </button>
                                                     </form>
                                                 <?php endif; ?>
@@ -740,6 +782,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 details.classList.add('hidden');
                 chevron.style.transform = '';
             }
+        });
+    });
+
+    // ============================================================
+    // SWAP CONFIRMATION
+    // When a student clicks "Switch to this Subtopic" in a
+    // single-choice session, show a confirm dialog and (if approved)
+    // add a hidden `replace=1` field so the backend performs the swap.
+    // ============================================================
+    document.querySelectorAll('.register-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const sessionCard = this.closest('.session-card');
+            if (!sessionCard) return;
+
+            const allowMultiple  = sessionCard.dataset.allowMultiple === '1';
+            const registeredCount = parseInt(sessionCard.dataset.registeredCount || '0', 10);
+            const existingTitle   = sessionCard.dataset.registeredTitle || '';
+
+            // Only intervene for single-choice sessions with an existing pick
+            if (allowMultiple || registeredCount === 0 || !existingTitle) return;
+
+            // Get the new subtopic's title (from its card)
+            const subtopicCard = this.closest('.subtopic-card');
+            const newTitle = subtopicCard?.querySelector('h4')?.textContent.trim() || 'this subtopic';
+
+            const ok = confirm(
+                `You're currently registered for:\n\n"${existingTitle}"\n\n` +
+                `Switch to "${newTitle}"?\n\n` +
+                `Your previous registration will be removed.`
+            );
+
+            if (!ok) {
+                e.preventDefault();
+                return false;
+            }
+
+            // Inject the replace flag so the backend knows to swap
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'replace';
+            hidden.value = '1';
+            this.appendChild(hidden);
         });
     });
 });
