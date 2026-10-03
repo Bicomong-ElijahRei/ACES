@@ -21,6 +21,7 @@ function sendEmail(string $to, string $subject, string $body): array
     $config = require __DIR__ . '/../config/email.php';
 
     $mail = new PHPMailer(true);
+    $mail->CharSet = 'UTF-8';
 
     try {
         // Server settings
