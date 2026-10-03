@@ -25,6 +25,12 @@ backups/
 *.sql.gz
 *.zip
 
+# Allow the shipped database dump + migrations
+!database/
+!database/aces_db.sql
+!migrations/
+!migrations/*.sql
+
 # Dependencies
 /vendor/
 node_modules/
