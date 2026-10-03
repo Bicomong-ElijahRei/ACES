@@ -7,9 +7,6 @@
 .env.local
 .env.*.local
 
-# Config files with credentials
-config/email.php
-config/database.php
 
 # Logs
 *.log
