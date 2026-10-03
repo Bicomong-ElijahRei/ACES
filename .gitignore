@@ -1,5 +1,5 @@
 # ============================================
-# ACES System — Git Ignore Rules
+# ACES System - Git Ignore Rules
 # ============================================
 
 # Environment files (contain secrets)
@@ -7,7 +7,7 @@
 .env.local
 .env.*.local
 
-# Config files with credentials (if not using .env)
+# Config files with credentials
 config/email.php
 config/database.php
 
@@ -16,10 +16,11 @@ config/database.php
 logs/
 !logs/.gitkeep
 
-# Uploaded files (user data — do not commit)
+# Uploaded files (user data - do not commit)
 uploads/*
-!uploads/.gitkeep
 !uploads/.htaccess
+!uploads/modules/
+!uploads/modules/.htaccess
 
 # Backups
 backups/
@@ -27,7 +28,7 @@ backups/
 *.sql.gz
 *.zip
 
-# Dependencies (if you add Composer later)
+# Dependencies
 /vendor/
 node_modules/
 
