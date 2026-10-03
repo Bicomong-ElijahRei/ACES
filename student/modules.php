@@ -223,7 +223,12 @@ if ($module_id) {
         $content_raw = $current_module['content'];
         if (strpos($content_raw, 'file:') === 0) {
             $file = substr($content_raw, 5);
-            $file_path = "../uploads/$file";
+            // Support both legacy flat files and new subfolder uploads
+            if (file_exists(__DIR__ . '/../uploads/' . $file)) {
+                $file_path = "../uploads/$file";
+            } else {
+                $file_path = "../uploads/modules/$file";
+            }
             if (file_exists($file_path)) {
                 $ext = pathinfo($file, PATHINFO_EXTENSION);
                 if (strtolower($ext) == 'pdf') {

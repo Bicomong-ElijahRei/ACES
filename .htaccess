@@ -1,0 +1,36 @@
+# ============================================================
+# ACES System — Apache Security Configuration
+# ============================================================
+
+# Disable directory listing
+Options -Indexes
+
+# Block sensitive files
+<FilesMatch "^\.env|\.git|.*\.sql$|.*\.bak$">
+    Require all denied
+</FilesMatch>
+
+# Block direct access to config / logs / migrations
+RedirectMatch 403 ^/(config|logs|migrations)/
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Force HTTPS (uncomment AFTER SSL is configured)
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} off
+#     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>
+
+# PHP upload limits
+<IfModule mod_php.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 12M
+    php_value max_execution_time 60
+</IfModule>
