@@ -5,13 +5,15 @@
 # Disable directory listing
 Options -Indexes
 
-# Block sensitive files
-<FilesMatch "^\.env|\.git|.*\.sql$|.*\.bak$">
+# Block sensitive file extensions anywhere
+<FilesMatch "\.(env|git|sql|bak|log|sh)$">
     Require all denied
 </FilesMatch>
 
-# Block direct access to config / logs / migrations
-RedirectMatch 403 ^/(config|logs|migrations)/
+# Block .env specifically (dotfiles)
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
 
 # Security headers
 <IfModule mod_headers.c>

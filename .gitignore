@@ -48,3 +48,7 @@ desktop.ini
 *.tmp
 *.bak
 *.orig
+# Legacy files (deleted)
+student.php
+att_verification.php
+api/toggle_task.php
