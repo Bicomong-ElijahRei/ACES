@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/session.php';
 
 function isLoggedIn() {
     return isset($_SESSION['user_id']);

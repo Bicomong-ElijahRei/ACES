@@ -109,6 +109,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         // ---- End IP logging ----
 
+        // Handle "remember me" checkbox
+        if (!empty($_POST['remember'])) {
+            require_once __DIR__ . '/includes/session.php';
+            aces_set_remember_cookie($user['user_id'], $pdo, (int) aces_env('SESSION_REMEMBER_DAYS', 30), isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on');
+        } else {
+            // Clear any existing cookie if user didn't check the box
+            require_once __DIR__ . '/includes/session.php';
+            aces_clear_remember_cookie();
+        }
+
         // Regenerate session ID (prevent fixation) BEFORE writing session data
         session_regenerate_id(true);
 
