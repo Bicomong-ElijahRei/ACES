@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/env.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
+require_once __DIR__ . '/../includes/upload.php';
 redirectIfNotStaff();
 
 // Block Viewer POST actions
@@ -62,14 +63,13 @@ if ($action === 'create') {
     if ($type == 'module') {
         $content_type = $_POST['content_type'];
         if ($content_type == 'file' && isset($_FILES['module_file']) && $_FILES['module_file']['error'] == UPLOAD_ERR_OK) {
-            $upload_dir = '../uploads/';
-            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-            $filename = time() . '_' . basename($_FILES['module_file']['name']);
-            $target = $upload_dir . $filename;
-            if (move_uploaded_file($_FILES['module_file']['tmp_name'], $target)) {
-                $content = 'file:' . $filename;
+            $upload_result = aces_upload('module_file', 'modules');
+
+            if ($upload_result['ok']) {
+                $filename = basename($upload_result['path']);
+                $content  = 'file:' . $filename;
             } else {
-                $error = "File upload failed.";
+                $error = 'File upload failed: ' . $upload_result['error'];
             }
         } elseif ($content_type == 'link') {
             $content = 'link:' . trim($_POST['module_link']);
@@ -159,12 +159,16 @@ $deleted_items = $stmt_deleted->fetchAll();
 // Fetch all subtopics for dropdowns
 $subtopics = $pdo->query("SELECT subtopic_id, title FROM subtopics ORDER BY title")->fetchAll();
 
-// Content helper
+// Content helper — supports both legacy and new upload paths
 function renderContent($content) {
     if (empty($content)) return '';
     if (strpos($content, 'file:') === 0) {
         $file = substr($content, 5);
-        return "<a href='../uploads/$file' target='_blank' class='text-blue-600 underline'>Download File</a>";
+        // Support both legacy flat files (uploads/) and new subfolder (uploads/modules/)
+        $url = file_exists(__DIR__ . '/../uploads/' . $file)
+            ? '../uploads/' . $file
+            : '../uploads/modules/' . $file;
+        return "<a href='{$url}' target='_blank' class='text-blue-600 underline'>Download File</a>";
     } elseif (strpos($content, 'link:') === 0) {
         $url = substr($content, 5);
         return "<a href='$url' target='_blank' class='text-blue-600 underline'>Open Link</a>";
@@ -212,6 +216,10 @@ function renderContent($content) {
         .phase-badge { font-size: 0.7rem; padding: 2px 10px; border-radius: 20px; font-weight: 600; text-transform: uppercase; }
         .phase-Module { background: #dbeafe; color: #1e40af; }
         .phase-Assessment { background: #f3e8ff; color: #6b21a8; }
+        @keyframes slideInToast {
+            from { transform: translateX(120%); opacity: 0; }
+            to   { transform: translateX(0); opacity: 1; }
+        }
     </style>
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
@@ -264,6 +272,17 @@ function renderContent($content) {
                     <option value="module">Module</option>
                     <option value="assessment">Assessment</option>
                 </select>
+                <select id="sortBy" class="bg-white border border-gray-300 rounded px-2 py-1 text-xs">
+                    <option value="due-asc">Sort: Due date (earliest)</option>
+                    <option value="due-desc">Sort: Due date (latest)</option>
+                    <option value="title-asc">Sort: Title (A → Z)</option>
+                    <option value="title-desc">Sort: Title (Z → A)</option>
+                    <option value="type-module">Sort: Modules first</option>
+                    <option value="type-assessment">Sort: Assessments first</option>
+                    <option value="subtopic">Sort: Subtopic</option>
+                    <option value="created-desc">Sort: Recently created</option>
+                    <option value="created-asc">Sort: Oldest first</option>
+                </select>
                 <div class="relative">
                     <input type="text" id="searchActiveInput" placeholder="Search..." class="border border-gray-300 rounded-full px-3 py-1 text-xs w-36">
                     <i class="fas fa-search absolute right-3 top-1.5 text-gray-400 text-[10px]"></i>
@@ -284,7 +303,10 @@ function renderContent($content) {
                          data-id="<?= $item['module_id'] ?>"
                          data-subtopic="<?= $item['subtopic_id'] ?>"
                          data-type="<?= $item['type'] ?>"
-                         data-title="<?= htmlspecialchars($item['title']) ?>">
+                         data-title="<?= htmlspecialchars($item['title']) ?>"
+                         data-due="<?= htmlspecialchars($item['due_date'] ?? '') ?>"
+                         data-created="<?= htmlspecialchars($item['created_at'] ?? '') ?>"
+                         data-subtopic-title="<?= htmlspecialchars($item['subtopic_title']) ?>">
                         <div class="card-header">
                             <div class="title-block">
                                 <h3><?= htmlspecialchars($item['title']) ?></h3>
@@ -491,7 +513,11 @@ function renderContent($content) {
                                 </div>
                             </div>
                             <div id="module_file_div">
-                                <div class="mb-3"><label class="form-label">File (PDF, DOC, etc.)</label><input type="file" name="module_file" class="form-control"></div>
+                                <div class="mb-3">
+                                    <label class="form-label">File (PDF, DOC, etc. — max 10 MB)</label>
+                                    <input type="file" name="module_file" class="form-control">
+                                    <small class="text-gray-500 text-xs">Allowed: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, JPG, PNG, GIF, MP4, ZIP</small>
+                                </div>
                             </div>
                             <div id="module_link_div" style="display:none;">
                                 <div class="mb-3"><label class="form-label">URL</label><input type="text" name="module_link" class="form-control" placeholder="https://..."></div>
@@ -596,7 +622,71 @@ function renderContent($content) {
 <script>
 // CSRF token for JS-generated forms
 const CSRF_TOKEN = '<?= csrf_token() ?>';
+// ============================================================
+// ERROR / SUCCESS HELPERS
+// ============================================================
+function extractError(html) {
+    // Look for the red error banner in the response HTML
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const banner = doc.querySelector('.bg-red-100');
+    if (banner) {
+        // Strip the trailing × close button character
+        return banner.textContent.replace(/×\s*$/, '').trim();
+    }
+    return null;
+}
 
+function extractSuccess(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const banner = doc.querySelector('.bg-green-100');
+    if (banner) {
+        return banner.textContent.replace(/×\s*$/, '').trim();
+    }
+    return null;
+}
+
+function showToast(message, type = 'info') {
+    // Remove any existing toasts
+    document.querySelectorAll('.aces-toast').forEach(t => t.remove());
+
+    const colors = {
+        error:   { bg: '#fee2e2', border: '#dc2626', text: '#991b1b', icon: 'fa-exclamation-circle' },
+        success: { bg: '#dcfce7', border: '#16a34a', text: '#166534', icon: 'fa-check-circle' },
+        info:    { bg: '#dbeafe', border: '#2563eb', text: '#1e40af', icon: 'fa-info-circle' },
+    };
+    const c = colors[type] || colors.info;
+
+    const toast = document.createElement('div');
+    toast.className = 'aces-toast';
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 99999;
+        background: ${c.bg};
+        color: ${c.text};
+        border-left: 4px solid ${c.border};
+        padding: 14px 20px;
+        border-radius: 8px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        max-width: 420px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        font-size: 14px;
+        font-weight: 500;
+        animation: slideInToast 0.3s ease;
+    `;
+    toast.innerHTML = `
+        <i class="fas ${c.icon}" style="margin-top:2px; font-size:16px;"></i>
+        <div style="flex:1;">${message}</div>
+        <button onclick="this.parentElement.remove()" style="background:none; border:none; font-size:18px; cursor:pointer; color:${c.text}; opacity:0.6; padding:0; line-height:1;">&times;</button>
+    `;
+    document.body.appendChild(toast);
+
+    // Auto-remove after 6 seconds (errors stay longer)
+    setTimeout(() => toast.remove(), type === 'error' ? 8000 : 4000);
+}
 // ========= FIX: CLEAN UP ALL BACKDROPS AFTER ANY MODAL CLOSE =========
 document.addEventListener('hidden.bs.modal', function () {
     document.body.classList.remove('modal-open');
@@ -636,12 +726,32 @@ let isCreating = false;
 document.getElementById('createModuleForm')?.addEventListener('submit', function(e) {
     e.preventDefault(); if (isCreating) return; isCreating = true;
     const btn = this.querySelector('button[type="submit"]'); btn.disabled = true;
+
     fetch('modules.php', { method: 'POST', body: new FormData(this) })
-        .then(() => location.reload()).catch(err => alert(err)).finally(() => { isCreating = false; btn.disabled = false; });
-});
+            .then(async (res) => {
+                const html = await res.text();
+                const err = extractError(html);
+                if (err) {
+                    showToast(err, 'error');
+                    btn.disabled = false;
+                    isCreating = false;
+                    return;
+                }
+                const ok = extractSuccess(html);
+                if (ok) showToast(ok, 'success');
+                setTimeout(() => location.reload(), ok ? 1800 : 0);
+            })
+            .catch(err => {
+                showToast('Network error: ' + err, 'error');
+                btn.disabled = false;
+                isCreating = false;
+            });
+    });
 document.getElementById('createAssessmentForm')?.addEventListener('submit', function(e) {
     e.preventDefault(); if (isCreating) return; isCreating = true;
     const btn = this.querySelector('button[type="submit"]'); btn.disabled = true;
+
+    // Build quiz_data if needed (existing logic preserved)
     if (document.querySelector('input[name="assessment_type"]:checked').value === 'quiz') {
         const qs = [];
         document.querySelectorAll('#questions-container .card:not(.question-template)').forEach(div => {
@@ -650,19 +760,33 @@ document.getElementById('createAssessmentForm')?.addEventListener('submit', func
                 type: div.querySelector('.question-type').value,
                 correct: div.querySelector('.question-correct-answer').value,
                 points: div.querySelector('.question-points').value,
-                options: div.querySelector('.question-type').value === 'multiple_choice' ? div.querySelector('.question-options-list').value.split(',').map(o => o.trim()) : null
+                options: div.querySelector('.question-type').value === 'multiple_choice'
+                    ? div.querySelector('.question-options-list').value.split(',').map(o => o.trim())
+                    : null
             });
         });
         if (!qs.length) { alert('Add at least one question.'); btn.disabled = false; isCreating = false; return; }
         document.getElementById('quiz_data').value = 'quiz:' + JSON.stringify(qs);
     }
+
     fetch('modules.php', { method: 'POST', body: new FormData(this) })
-        .then(() => location.reload()).catch(err => alert(err)).finally(() => { isCreating = false; btn.disabled = false; });
+        .then(async (res) => {
+            const html = await res.text();
+            const err = extractError(html);
+            if (err) { showToast(err, 'error'); btn.disabled = false; isCreating = false; return; }
+            const ok = extractSuccess(html);
+            if (ok) showToast(ok, 'success');
+            setTimeout(() => location.reload(), ok ? 1800 : 0);
+        })
+        .catch(err => {
+            showToast('Network error: ' + err, 'error');
+            btn.disabled = false;
+            isCreating = false;
+        });
 });
 document.getElementById('createModal').addEventListener('show.bs.modal', () => {
     const c = document.getElementById('questions-container');
     if (c) {
-        // Remove only added question cards, keep the hidden template intact
         c.querySelectorAll('.card').forEach(card => card.remove());
     }
 });
@@ -797,6 +921,55 @@ document.querySelectorAll('.view-results').forEach(btn => {
     });
 });
 
+// ============================================================
+// SORTING
+// ============================================================
+function sortItems() {
+    const sortBy = document.getElementById('sortBy')?.value || 'due-asc';
+    const container = document.getElementById('activeItemsContainer');
+    if (!container) return;
+
+    const cards = Array.from(container.querySelectorAll('.active-item-row'));
+
+    cards.sort((a, b) => {
+        const getA = (k) => (a.dataset[k] || '').toString();
+        const getB = (k) => (b.dataset[k] || '').toString();
+
+        switch (sortBy) {
+            case 'due-asc': {
+                const da = getA('due') || '9999-12-31';
+                const db = getB('due') || '9999-12-31';
+                return da.localeCompare(db);
+            }
+            case 'due-desc': {
+                const da = getA('due') || '0000-01-01';
+                const db = getB('due') || '0000-01-01';
+                return db.localeCompare(da);
+            }
+            case 'title-asc':
+                return getA('title').toLowerCase().localeCompare(getB('title').toLowerCase());
+            case 'title-desc':
+                return getB('title').toLowerCase().localeCompare(getA('title').toLowerCase());
+            case 'type-module':
+                return getA('type') === 'module' ? -1 : (getB('type') === 'module' ? 1 : getA('title').localeCompare(getB('title')));
+            case 'type-assessment':
+                return getA('type') === 'assessment' ? -1 : (getB('type') === 'assessment' ? 1 : getA('title').localeCompare(getB('title')));
+            case 'subtopic':
+                return getA('subtopic-title').toLowerCase().localeCompare(getB('subtopic-title').toLowerCase());
+            case 'created-desc':
+                return (getB('created') || '').localeCompare(getA('created') || '');
+            case 'created-asc':
+                return (getA('created') || '').localeCompare(getB('created') || '');
+            default:
+                return 0;
+        }
+    });
+
+    cards.forEach(card => container.appendChild(card));
+}
+
+document.getElementById('sortBy')?.addEventListener('change', sortItems);
+
 // ---------- Filters & Bulk Actions ----------
 function filterContainer(containerId, subtopicId, typeId, searchId) {
     const rows = document.getElementById(containerId)?.querySelectorAll('.active-item-row, .archive-item-row') || [];
@@ -856,6 +1029,26 @@ document.getElementById('bulkDeleteBtn')?.addEventListener('click', () => {
 document.getElementById('archiveHeader')?.addEventListener('click', function() {
     document.getElementById('archiveContent').classList.toggle('hidden');
     this.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
+});
+
+// ============================================================
+// INIT — Restore sort from URL + apply on load
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    // Restore sort choice from URL
+    const urlSort = new URL(window.location).searchParams.get('sort');
+    const sortSelect = document.getElementById('sortBy');
+    if (urlSort && sortSelect) sortSelect.value = urlSort;
+
+    // Apply sort
+    sortItems();
+
+    // Persist sort in URL when changed
+    sortSelect?.addEventListener('change', () => {
+        const url = new URL(window.location);
+        url.searchParams.set('sort', sortSelect.value);
+        history.replaceState({}, '', url);
+    });
 });
 </script>
 </body>
