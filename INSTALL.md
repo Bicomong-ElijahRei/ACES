@@ -31,15 +31,66 @@ git clone https://github.com/Bicomong-ElijahRei/ACES.git cair-system
 cd cair-system
 ```
 
-### 2. Create the Database
+---
 
-Open phpMyAdmin or MySQL command line and run:
+### 2. Create the Database and Import the Dump
 
-```sql
-CREATE DATABASE aces_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+A full schema + data dump is included in the repo at `database/aces_db.sql`.
+
+**Option A — Command line (recommended):**
+
+On Linux / macOS (bash):
+
+```bash
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS aces_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p aces_db < database/aces_db.sql
 ```
 
-Import the schema (contact the development team for the SQL dump).
+On Windows (PowerShell):
+
+```powershell
+C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE IF NOT EXISTS aces_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+C:\xampp\mysql\bin\mysql.exe -u root aces_db -e "source C:/xampp/htdocs/cair-system/database/aces_db.sql"
+```
+
+**Windows note:** PowerShell does not support the `<` redirection operator — it is reserved for future use. Use MySQL's `source` directive instead, and use forward slashes in the path (`C:/...`, not `C:\...`).
+
+**Option B — phpMyAdmin:**
+
+1. Open `http://localhost/phpmyadmin`
+2. Click **New** → name it `aces_db` → Collation `utf8mb4_unicode_ci` → **Create**
+3. Click `aces_db` → **Import** tab → **Choose File** → `database/aces_db.sql` → **Go**
+
+**Test data warning:** The included dump contains demo/test data (sessions prefixed with `TEST:`, sample students, sample staff). It also contains the following default staff accounts, all with the password `password`:
+
+| Email | Role |
+|-------|------|
+| `staff@aces.edu` | admin |
+| `adminstaff@aces.edu` | admin |
+| `lead.staff@kld.edu.ph` | lead |
+| `viewer.staff@kld.edu.ph` | viewer |
+
+Change all passwords immediately after first login. Do not deploy to production without doing this.
+
+**Strict-mode warning:** On MySQL 8.0+ / MariaDB 10.6+ the default `sql_mode` includes `STRICT_TRANS_TABLES`, which rejects the placeholder date `'0000-00-00'` present in one test row. If the import fails with:
+
+```
+ERROR 1525 (HY000): Incorrect DATE value: '0000-00-00'
+```
+
+Either:
+
+1. Run this before the import in the same session:
+
+```sql
+SET SESSION sql_mode = '';
+```
+
+2. Or edit `database/aces_db.sql` and replace the `0000-00-00` value with a valid date (e.g. `2026-06-05`), then re-import.
+
+XAMPP on Windows uses a lenient `sql_mode` by default, so this error does not appear locally — only on production Linux servers.
+
+---
 
 ### 3. Configure Environment
 
@@ -50,10 +101,18 @@ nano .env
 
 Fill in these values in `.env`:
 
-- `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` — Database credentials
-- `MAIL_HOST`, `MAIL_USERNAME`, `MAIL_PASSWORD` — Gmail SMTP (enable 2FA on the Gmail account, then generate an App Password)
-- `CSRF_SECRET`, `CRON_SECRET` — random 64-character strings
-- `APP_URL` — the production URL (e.g., `https://aces.kld.edu.ph`)
+| Key | Purpose |
+|-----|---------|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | Database connection |
+| `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION` | Gmail SMTP (enable 2FA, then generate an App Password at https://myaccount.google.com/apppasswords) |
+| `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | Sender identity |
+| `CSRF_SECRET`, `CRON_SECRET` | Random 64-character strings — generate with `openssl rand -hex 32` |
+| `SESSION_IDLE_TIMEOUT` | Idle timeout in seconds (default `3600`) |
+| `APP_URL` | The base URL of the deployment (e.g. `https://aces.kld.edu.ph`) |
+| `APP_ENV` | `development` locally, `production` on the live server |
+| `APP_DEBUG` | `true` locally, `false` on the live server |
+
+---
 
 ### 4. Set File Permissions (Linux only)
 
@@ -64,9 +123,11 @@ chmod -R 775 /var/www/html/cair-system/uploads
 chmod 600 /var/www/html/cair-system/.env
 ```
 
-### 5. Run Database Migrations
+---
 
-These SQL statements add the columns and tables that ACES needs. Run them once after the initial database import:
+### 5. Verify Database Migrations (optional — safety check)
+
+The included `database/aces_db.sql` already contains every table and column the system needs, so this step is normally unnecessary. Run it only if you imported an older dump, or you want to be certain the schema is complete.
 
 ```sql
 -- Password reset support
@@ -97,6 +158,8 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 );
 ```
 
+---
+
 ### 6. Configure Apache
 
 Create a virtual host file at `/etc/apache2/sites-available/aces.conf`:
@@ -124,6 +187,8 @@ sudo a2enmod rewrite headers
 sudo systemctl restart apache2
 ```
 
+---
+
 ### 7. Enable HTTPS
 
 ```bash
@@ -132,6 +197,8 @@ sudo certbot --apache -d aces.kld.edu.ph
 ```
 
 Then uncomment the HTTPS redirect block in the root `.htaccess` file.
+
+---
 
 ### 8. Set Up Cron Jobs
 
@@ -148,7 +215,18 @@ Add these two lines:
 0 */6 * * * /usr/bin/php /var/www/html/cair-system/cron/send_reminders.php
 ```
 
-### 9. Create the Initial Super Admin
+Both scripts authenticate with the `CRON_SECRET` value from `.env`. If your cron implementation passes the secret as a query parameter, use:
+
+```
+0 * * * * /usr/bin/curl -s "https://aces.kld.edu.ph/cron/auto_assign.php?secret=YOUR_CRON_SECRET" > /dev/null
+0 */6 * * * /usr/bin/curl -s "https://aces.kld.edu.ph/cron/send_reminders.php?secret=YOUR_CRON_SECRET" > /dev/null
+```
+
+---
+
+### 9. Create the Initial Super Admin (optional — a default admin exists)
+
+The imported dump already contains an admin account at `staff@aces.edu` with password `password`. If you prefer to create a fresh one instead:
 
 Generate a bcrypt hash of the password:
 
@@ -177,15 +255,36 @@ Log in at `https://aces.kld.edu.ph/login.php` to verify.
 
 ## Post-Installation Checklist
 
+### Functional
+
 - [ ] Home page loads
-- [ ] Login works with the Super Admin account
+- [ ] Login works with an admin account
 - [ ] Student registration creates a new account
 - [ ] Verification email arrives
 - [ ] Password reset flow works
-- [ ] Staff can create sessions
+- [ ] Staff can create sessions and subtopics
 - [ ] Students can select subtopics
 - [ ] File uploads work and are validated
+- [ ] CSV export opens in Excel without encoding issues
+- [ ] PDF export produces clean tables
 - [ ] Cron jobs run (check `logs/cron.log`)
+
+### Security
+
+- [ ] All default passwords changed (especially `staff@aces.edu`, `adminstaff@aces.edu`)
+- [ ] `.env` is not web-accessible (`https://yoursite/.env` → 403)
+- [ ] `config/database.php` is not web-accessible (`https://yoursite/config/database.php` → 403)
+- [ ] PHP execution blocked in `uploads/` (`https://yoursite/uploads/test.php` → 403)
+- [ ] `APP_ENV=production` and `APP_DEBUG=false` in `.env`
+- [ ] `APP_URL` matches the actual deployed domain
+- [ ] HTTPS enforced and cert valid
+- [ ] Gmail App Password rotated from any value used during development
+- [ ] `CSRF_SECRET` and `CRON_SECRET` regenerated (do not reuse defaults)
+
+### Data
+
+- [ ] Test data (`TEST:` sessions, sample students) removed or hidden
+- [ ] Database backup strategy in place
 
 ---
 
@@ -194,11 +293,14 @@ Log in at `https://aces.kld.edu.ph/login.php` to verify.
 | Issue | Fix |
 |-------|-----|
 | Database connection failed | Check `.env` credentials; ensure MySQL is running |
+| Import fails: `Incorrect DATE value '0000-00-00'` | Run `SET SESSION sql_mode='';` before import, or edit the invalid date in the dump |
+| PowerShell error: `< operator is reserved for future use` | Use `mysql -e "source path/to/file.sql"` instead of `<` redirection |
 | Uploads permission denied | `chmod -R 775 uploads/` |
 | Emails not sending | Verify Gmail App Password; 2FA must be enabled |
-| CSRF token failed | Ensure sessions work; check `session.save_path` |
-| 500 error | Check `logs/error.log`; set `APP_DEBUG=true` temporarily |
+| CSRF token failed | Ensure sessions work; check `session.save_path` is writable |
+| 500 error | Check `logs/error.log`; temporarily set `APP_DEBUG=true` in `.env` |
 | Cannot modify header info | No whitespace before `<?php` in any file |
+| Remember-me cookie not persisting | Ensure HTTPS is enabled (cookie is `Secure` when `APP_ENV=production`) |
 
 ---
 
