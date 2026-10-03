@@ -1,6 +1,77 @@
 # ACES System — Installation Guide
 
-This document explains how to install the ACES Activity Tracking System on a web server. It is meant for the IT staff or developer deploying the system for the ACES Unit.
+This document explains how to install the ACES Activity Tracking System. It covers two scenarios:
+
+- **Local development** (Windows + XAMPP) — for developers, groupmates, and testing
+- **Production deployment** (Linux server) — for the ACES Unit's IT staff
+
+Read the Quick Start below if you just want to run the system on your own machine.
+
+---
+
+## Quick Start — Local Development (Windows + XAMPP)
+
+If you just want to run ACES locally for development or testing, follow these 5 steps. **You can skip every section below marked "Production only."**
+
+### 1. Install XAMPP
+
+Download from https://www.apachefriends.org and install. Then open the XAMPP Control Panel and click **Start** next to both **Apache** and **MySQL**. Both should show green.
+
+### 2. Clone the project into htdocs
+
+XAMPP only serves files inside `C:\xampp\htdocs`. Open PowerShell:
+
+```powershell
+cd C:\xampp\htdocs
+git clone https://github.com/Bicomong-ElijahRei/ACES.git cair-system
+cd cair-system
+```
+
+### 3. Create the database and import the dump
+
+```powershell
+C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE IF NOT EXISTS aces_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+C:\xampp\mysql\bin\mysql.exe -u root aces_db -e "source C:/xampp/htdocs/cair-system/database/aces_db.sql"
+```
+
+> **Note:** PowerShell does not support the `<` redirection operator — that's why we use MySQL's `source` directive. The path must use **forward slashes** (`C:/...`), not backslashes.
+
+### 4. Create the environment file
+
+```powershell
+copy .env.example .env
+```
+
+Open `.env` in VS Code and set these values for local development:
+
+```
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=aces_db
+DB_USER=root
+DB_PASS=
+
+APP_URL=http://localhost/cair-system
+APP_ENV=development
+APP_DEBUG=true
+```
+
+Leave the `MAIL_*` values blank if you don't need email features (registration verification, password reset). Everything else will work.
+
+### 5. Open in browser
+
+```
+http://localhost/cair-system/login.php
+```
+
+Log in with a default account:
+
+| Email | Password | Role |
+|-------|----------|------|
+| `staff@aces.edu` | `password` | admin |
+| `adminstaff@aces.edu` | `password` | admin |
+
+That's it. You do **not** need sections 4, 6, 7, or 8 below for local development — those are for production servers.
 
 ---
 
@@ -22,7 +93,9 @@ This document explains how to install the ACES Activity Tracking System on a web
 
 ---
 
-## Setup Steps
+## Setup Steps (Production)
+
+The sections below are for deploying on a real web server. If you're doing local development, see the Quick Start above.
 
 ### 1. Clone the Project
 
@@ -52,8 +125,6 @@ On Windows (PowerShell):
 C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE IF NOT EXISTS aces_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 C:\xampp\mysql\bin\mysql.exe -u root aces_db -e "source C:/xampp/htdocs/cair-system/database/aces_db.sql"
 ```
-
-**Windows note:** PowerShell does not support the `<` redirection operator — it is reserved for future use. Use MySQL's `source` directive instead, and use forward slashes in the path (`C:/...`, not `C:\...`).
 
 **Option B — phpMyAdmin:**
 
@@ -114,7 +185,7 @@ Fill in these values in `.env`:
 
 ---
 
-### 4. Set File Permissions (Linux only)
+### 4. Set File Permissions (Production only — Linux)
 
 ```bash
 chown -R www-data:www-data /var/www/html/cair-system
@@ -160,7 +231,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 
 ---
 
-### 6. Configure Apache
+### 6. Configure Apache (Production only — Linux)
 
 Create a virtual host file at `/etc/apache2/sites-available/aces.conf`:
 
@@ -189,7 +260,7 @@ sudo systemctl restart apache2
 
 ---
 
-### 7. Enable HTTPS
+### 7. Enable HTTPS (Production only — Linux)
 
 ```bash
 sudo apt install certbot python3-certbot-apache
@@ -200,7 +271,7 @@ Then uncomment the HTTPS redirect block in the root `.htaccess` file.
 
 ---
 
-### 8. Set Up Cron Jobs
+### 8. Set Up Cron Jobs (Production only — Linux)
 
 Open the crontab:
 
@@ -249,7 +320,7 @@ VALUES (
 );
 ```
 
-Log in at `https://aces.kld.edu.ph/login.php` to verify.
+Log in at your deployment URL + `/login.php` (e.g. `http://localhost/cair-system/login.php` locally, or the domain assigned by IT in production) to verify.
 
 ---
 
@@ -267,7 +338,7 @@ Log in at `https://aces.kld.edu.ph/login.php` to verify.
 - [ ] File uploads work and are validated
 - [ ] CSV export opens in Excel without encoding issues
 - [ ] PDF export produces clean tables
-- [ ] Cron jobs run (check `logs/cron.log`)
+- [ ] Cron jobs run (check `logs/cron.log`) — production only
 
 ### Security
 
@@ -277,7 +348,7 @@ Log in at `https://aces.kld.edu.ph/login.php` to verify.
 - [ ] PHP execution blocked in `uploads/` (`https://yoursite/uploads/test.php` → 403)
 - [ ] `APP_ENV=production` and `APP_DEBUG=false` in `.env`
 - [ ] `APP_URL` matches the actual deployed domain
-- [ ] HTTPS enforced and cert valid
+- [ ] HTTPS enforced and cert valid — production only
 - [ ] Gmail App Password rotated from any value used during development
 - [ ] `CSRF_SECRET` and `CRON_SECRET` regenerated (do not reuse defaults)
 
