@@ -13,6 +13,28 @@ $name_parts = explode(' ', $full_name);
 $first_name = $name_parts[0];
 $current = basename($_SERVER['PHP_SELF']);
 ?>
+<style>
+    @media (max-width: 767px) {
+        #studentSidebar.mobile-open {
+            display: flex !important;
+            position: fixed !important;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 50;
+            box-shadow: 2px 0 15px rgba(0,0,0,0.4);
+        }
+        #studentSidebarBackdrop.active { display: block; }
+    }
+    #studentSidebarBackdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 40;
+    }
+</style>
 <aside id="studentSidebar" class="hidden md:flex w-64 bg-[#0a6e2d] text-white flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 overflow-hidden">
     <div>
         <!-- Top brand & collapse toggle -->
@@ -59,12 +81,19 @@ $current = basename($_SERVER['PHP_SELF']);
     </div>
 </aside>
 
+<div id="studentSidebarBackdrop"></div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('studentSidebar');
+    if (!sidebar) return;
+
     const toggleBtn = document.getElementById('studentSidebarToggleBtn');
+    const mobileBtn = document.getElementById('studentMobileMenuBtn');
+    const backdrop = document.getElementById('studentSidebarBackdrop');
     const textElements = sidebar.querySelectorAll('.sidebar-text');
 
+    // Desktop collapse toggle (existing behavior)
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
             sidebar.classList.toggle('w-64');
@@ -72,5 +101,29 @@ document.addEventListener('DOMContentLoaded', function() {
             textElements.forEach(el => el.classList.toggle('hidden'));
         });
     }
+
+    // Mobile open / close
+    function openMobile() {
+        sidebar.classList.add('mobile-open');
+        if (backdrop) backdrop.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeMobile() {
+        sidebar.classList.remove('mobile-open');
+        if (backdrop) backdrop.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    if (mobileBtn) mobileBtn.addEventListener('click', openMobile);
+    if (backdrop) backdrop.addEventListener('click', closeMobile);
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && sidebar.classList.contains('mobile-open')) closeMobile();
+    });
+
+    // Close when any nav link is tapped
+    sidebar.querySelectorAll('nav a').forEach(function(a) {
+        a.addEventListener('click', closeMobile);
+    });
 });
 </script>

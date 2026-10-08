@@ -7,6 +7,28 @@ if (!isset($staff_name)) {
 }
 $current = basename($_SERVER['PHP_SELF']);
 ?>
+<style>
+    @media (max-width: 767px) {
+        #staffSidebar.mobile-open {
+            display: flex !important;
+            position: fixed !important;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 50;
+            box-shadow: 2px 0 15px rgba(0,0,0,0.4);
+        }
+        #staffSidebarBackdrop.active { display: block; }
+    }
+    #staffSidebarBackdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 40;
+    }
+</style>
 <aside id="staffSidebar" class="hidden md:flex w-64 bg-[#0a6e2d] text-white flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 overflow-hidden">
     <!-- Top brand & collapse toggle -->
     <div>
@@ -121,16 +143,20 @@ $current = basename($_SERVER['PHP_SELF']);
     </div>
 </aside>
 
+<div id="staffSidebarBackdrop"></div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('staffSidebar');
     if (!sidebar) return;
 
     const toggleBtn = document.getElementById('sidebarToggleBtn');
+    const mobileBtn = document.getElementById('staffMobileMenuBtn');
+    const backdrop = document.getElementById('staffSidebarBackdrop');
     const textElements = sidebar.querySelectorAll('.sidebar-text');
     const groups = sidebar.querySelectorAll('.sidebar-group');
 
-    // Whole sidebar collapse
+    // Whole sidebar collapse (desktop)
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
             sidebar.classList.toggle('w-64');
@@ -139,6 +165,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Mobile open / close
+    function openMobile() {
+        sidebar.classList.add('mobile-open');
+        if (backdrop) backdrop.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeMobile() {
+        sidebar.classList.remove('mobile-open');
+        if (backdrop) backdrop.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    if (mobileBtn) mobileBtn.addEventListener('click', openMobile);
+    if (backdrop) backdrop.addEventListener('click', closeMobile);
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && sidebar.classList.contains('mobile-open')) closeMobile();
+    });
+
+    // Close mobile sidebar when a nav link is tapped (only on mobile)
+    sidebar.querySelectorAll('nav a').forEach(function(a) {
+        a.addEventListener('click', function() {
+            if (window.innerWidth < 768) closeMobile();
+        });
+    });
+
+    // ---------- GROUP HOVER BEHAVIOR (DESKTOP) ----------
     let openGroup = null;
     let closeTimeout = null;
 
@@ -152,7 +205,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function openGroupOnly(group) {
-        // Close any other open group
         if (openGroup && openGroup !== group) {
             closeGroup(openGroup);
         }
@@ -163,7 +215,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (chevron) chevron.classList.add('rotate-180');
         }
         openGroup = group;
-        // Cancel any pending close timer
         if (closeTimeout) {
             clearTimeout(closeTimeout);
             closeTimeout = null;
@@ -171,12 +222,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function scheduleClose(group) {
-        // Only schedule if this group is the currently open one
         if (openGroup === group) {
             closeTimeout = setTimeout(() => {
                 closeGroup(group);
                 openGroup = null;
-            }, 3000); // 3 seconds
+            }, 3000);
         }
     }
 
@@ -184,17 +234,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const header = group.querySelector('.group-header');
         if (!header) return;
 
-        // Hover over the group header → open immediately
         header.addEventListener('mouseenter', function() {
-            openGroupOnly(group);
+            if (window.innerWidth >= 768) openGroupOnly(group);
         });
 
-        // When leaving the entire group, start the close timer
         group.addEventListener('mouseleave', function() {
-            scheduleClose(group);
+            if (window.innerWidth >= 768) scheduleClose(group);
         });
 
-        // Cancel close timer if mouse re-enters the group (even without touching header)
         group.addEventListener('mouseenter', function() {
             if (closeTimeout) {
                 clearTimeout(closeTimeout);
@@ -202,7 +249,5 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-
-    // All groups remain closed on page load (already hidden via "hidden" class)
 });
 </script>
