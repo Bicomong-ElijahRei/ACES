@@ -787,7 +787,10 @@ document.getElementById('createAssessmentForm')?.addEventListener('submit', func
 document.getElementById('createModal').addEventListener('show.bs.modal', () => {
     const c = document.getElementById('questions-container');
     if (c) {
-        c.querySelectorAll('.card').forEach(card => card.remove());
+        // Only remove cards that are NOT inside the hidden .question-template
+        c.querySelectorAll('.card').forEach(card => {
+            if (!card.closest('.question-template')) card.remove();
+        });
     }
 });
 
