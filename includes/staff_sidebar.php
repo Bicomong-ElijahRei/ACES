@@ -18,6 +18,7 @@ $current = basename($_SERVER['PHP_SELF']);
             height: 100vh;
             z-index: 50;
             box-shadow: 2px 0 15px rgba(0,0,0,0.4);
+            overflow-y: auto;
         }
         #staffSidebarBackdrop.active { display: block; }
     }
@@ -191,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // ---------- GROUP HOVER BEHAVIOR (DESKTOP) ----------
+    // ---------- GROUP EXPANSION BEHAVIOR ----------
     let openGroup = null;
     let closeTimeout = null;
 
@@ -234,6 +235,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const header = group.querySelector('.group-header');
         if (!header) return;
 
+        // DESKTOP: hover to open
         header.addEventListener('mouseenter', function() {
             if (window.innerWidth >= 768) openGroupOnly(group);
         });
@@ -246,6 +248,30 @@ document.addEventListener('DOMContentLoaded', function() {
             if (closeTimeout) {
                 clearTimeout(closeTimeout);
                 closeTimeout = null;
+            }
+        });
+
+        // MOBILE: tap to toggle
+        header.addEventListener('click', function(e) {
+            if (window.innerWidth < 768) {
+                e.preventDefault();
+                e.stopPropagation();
+                const links = group.querySelector('.group-links');
+                const chevron = group.querySelector('.fa-chevron-down');
+                if (!links) return;
+                const isHidden = links.classList.contains('hidden');
+                if (isHidden) {
+                    // Close others, open this one
+                    if (openGroup && openGroup !== group) closeGroup(openGroup);
+                    links.classList.remove('hidden');
+                    if (chevron) chevron.classList.add('rotate-180');
+                    openGroup = group;
+                } else {
+                    // Toggle close
+                    links.classList.add('hidden');
+                    if (chevron) chevron.classList.remove('rotate-180');
+                    openGroup = null;
+                }
             }
         });
     });
