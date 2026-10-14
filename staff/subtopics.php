@@ -33,7 +33,7 @@ if ($action === 'create') {
         $error = "Title and phase are required.";
     } else {
         $allow_multiple = isset($_POST['allow_multiple']) ? 1 : 0;
-        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, description, allow_multiple, created_by) VALUES (?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, description, allow_multiple, created_by) VALUES (?, ?, CURDATE(), ?, ?, ?)");
         $stmt->execute([$title, $phase, $description, $allow_multiple, $_SESSION['user_id']]);
         $session_id = $pdo->lastInsertId();
 
