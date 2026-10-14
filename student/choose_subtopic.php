@@ -166,6 +166,22 @@ $stmt3 = $pdo->prepare("
 ");
 $stmt3->execute([$student_id, $session_id, $subtopic_id]);
 
+// ---------- ENSURE ATTENDANCE RECORD EXISTS ----------
+// If the student doesn't yet have an attendance row for this new subtopic, create one as pending.
+$att_check = $pdo->prepare("
+    SELECT attendance_id FROM attendance 
+    WHERE student_id = ? AND subtopic_id = ?
+");
+$att_check->execute([$student_id, $subtopic_id]);
+if (!$att_check->fetch()) {
+    $pdo->prepare("
+        INSERT INTO attendance 
+            (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, recorded_by, is_deleted)
+        VALUES 
+            (?, ?, ?, CURDATE(), 'pending', 0, NULL, 0)
+    ")->execute([$student_id, $session_id, $subtopic_id]);
+}
+
 $_SESSION['flash'] = ['type' => 'success', 'text' => 'Successfully registered for the subtopic!'];
 header('Location: sessions.php');
 exit;
