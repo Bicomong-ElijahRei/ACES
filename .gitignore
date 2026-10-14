@@ -55,3 +55,9 @@ desktop.ini
 student.php
 att_verification.php
 api/toggle_task.php
+tailwindcss.exe
+tailwindcss-windows-x64.exe
+node_modules/
+
+uploads/modules/*.pdf
+assets/css/tailwind.src.css
