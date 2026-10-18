@@ -156,10 +156,10 @@ unset($session);
 
 $all_dates = array_unique($all_dates);
 
-// ---- Registration progress (only counts upcoming sessions) ----
+// ---- Combined Progress Calculation (Sessions + Modules) ----
 $total_sessions = count($sessions);
 
-// Count how many of the UPCOMING sessions this student has registered in
+// Count how many upcoming sessions this student has registered in
 $reg_sessions = 0;
 foreach ($sessions as $s) {
     if (!empty($s['registered_subtopics'])) {
@@ -167,9 +167,39 @@ foreach ($sessions as $s) {
     }
 }
 
-// Cap percentage at 100% to avoid edge cases
-$progress_pct = $total_sessions > 0
-    ? min(100, round(($reg_sessions / $total_sessions) * 100))
+// Fetch total DISTINCT modules expected for the student
+$stmt_total_mods = $pdo->prepare("
+    SELECT COUNT(DISTINCT m.module_id)
+    FROM modules m
+    JOIN registrations r ON m.subtopic_id = r.subtopic_id
+    WHERE r.student_id = ? AND m.is_deleted = 0
+");
+$stmt_total_mods->execute([$student_id]);
+$total_modules_expected = (int)$stmt_total_mods->fetchColumn();
+
+// Fetch total DISTINCT modules completed by the student
+$stmt_done_mods = $pdo->prepare("
+    SELECT COUNT(DISTINCT smp.module_id)
+    FROM student_module_progress smp
+    JOIN modules m ON smp.module_id = m.module_id
+    JOIN registrations r ON m.subtopic_id = r.subtopic_id
+    WHERE r.student_id = ? AND smp.completed = 1 AND m.is_deleted = 0
+");
+$stmt_done_mods->execute([$student_id]);
+$total_modules_done = (int)$stmt_done_mods->fetchColumn();
+
+// Calculate total items
+$total_items_expected = $total_sessions + $total_modules_expected;
+$total_items_completed = $reg_sessions + $total_modules_done;
+
+// Prevent "27 of 4" by capping completed at expected
+if ($total_items_completed > $total_items_expected) {
+    $total_items_completed = $total_items_expected;
+}
+
+// Cap percentage at 100%
+$progress_pct = $total_items_expected > 0
+    ? min(100, round(($total_items_completed / $total_items_expected) * 100))
     : 0;
 ?>
 <!DOCTYPE html>
@@ -350,10 +380,10 @@ $progress_pct = $total_sessions > 0
                     </p>
                     <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
                         <span class="status-pill status-registered">
-                            <i class="fas fa-check-circle"></i> <?= $reg_sessions ?> registered
+                            <i class="fas fa-check-circle"></i> <?= $reg_sessions ?>/<?= $total_sessions ?> sessions
                         </span>
                         <span class="status-pill status-available">
-                            <i class="fas fa-calendar-alt"></i> <?= $total_sessions ?> upcoming
+                            <i class="fas fa-book"></i> <?= $total_modules_done ?>/<?= $total_modules_expected ?> modules
                         </span>
                     </div>
                 </div>
@@ -370,8 +400,8 @@ $progress_pct = $total_sessions > 0
                         <div class="absolute text-base font-extrabold text-[#0a6e2d]"><?= $progress_pct ?>%</div>
                     </div>
                     <div class="text-sm">
-                        <div class="font-bold text-gray-800">Your Progress</div>
-                        <div class="text-gray-600"><?= $reg_sessions ?> of <?= $total_sessions ?> sessions</div>
+                        <div class="font-bold text-gray-800">Overall Progress</div>
+                        <div class="text-gray-600"><?= $total_items_completed ?> of <?= $total_items_expected ?> total tasks</div>
                     </div>
                 </div>
             </div>

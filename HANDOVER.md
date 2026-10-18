@@ -20,9 +20,12 @@ The system replaces a manual bingo-card process with a digital workflow covering
 
 **What was delivered:**
 
-- Complete working system (PHP 8+, MySQL, Bootstrap 5)
+- Complete working system (PHP 8+, MySQL, Bootstrap 5, **Tailwind CSS v3.4.17**)
 - Full source code on GitHub: `https://github.com/Bicomong-ElijahRei/ACES`
 - Database schema + data dump: `database/aces_db.sql`
+- **Compiled CSS stylesheet:** `assets/css/tailwind.css`
+- **Standalone Tailwind CLI:** `tailwindcss.exe` (in project root, for future updates)
+- **Institutional Policies Page:** `public/policies.php`
 - Installation guide: `INSTALL.md`
 - Environment template: `.env.example`
 - This handover document
@@ -35,6 +38,7 @@ The system replaces a manual bingo-card process with a digital workflow covering
 - Data migration from legacy Excel/manual records
 - Mobile native application
 - Integration with the school registrar system
+- **Official legal text for Terms and Data Privacy** (See Section 5)
 
 ---
 
@@ -78,6 +82,7 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | `CSRF_SECRET` | Generate a new 64-character random string |
 | `CRON_SECRET` | Generate a new 64-character random string |
 | All default passwords | Change via Staff → Account Settings |
+| **Terms & Privacy Text** | Update `public/policies.php` with official KLD documents |
 
 ---
 
@@ -87,7 +92,7 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | HTML5, CSS3, JavaScript, Bootstrap 5, Tailwind CSS |
+| Frontend | HTML5, CSS3, JavaScript, Bootstrap 5, Tailwind CSS (v3.4.17) |
 | Backend | PHP 8.0+ |
 | Database | MySQL 8.0+ / MariaDB 10.4+ |
 | Local Development | XAMPP (Apache + MySQL + PHP) |
@@ -102,13 +107,14 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | `includes/` | Shared functions: auth, CSRF, session, upload, email |
 | `staff/` | Staff-facing pages (dashboard, sessions, attendance, reports) |
 | `student/` | Student-facing pages (dashboard, sessions, modules, progress) |
-| `public/` | Public pages (registration, verification, password reset) |
+| `public/` | Public pages (registration, verification, password reset, **policies**) |
 | `api/` | AJAX endpoints for live data |
 | `cron/` | Scheduled tasks (auto-assignment, reminders) |
 | `database/` | SQL schema and data dump |
 | `migrations/` | Individual migration scripts (historical) |
 | `uploads/` | User-uploaded files (gitignored) |
 | `lib/` | Third-party libraries (PHPMailer, FPDF) |
+| `assets/css/` | **Source and compiled Tailwind CSS files** |
 
 ### Database Tables (18)
 
@@ -163,20 +169,23 @@ git add .
 git commit -m "Description of change"
 git push origin main
 ```
-
 ```bash
 # On the production server
 cd /var/www/html/cair-system
 git pull origin main
 # If .env or database changed, re-import or update as needed
 ```
-
 For shared hosting (cPanel): upload changed files via File Manager or FTP.
+
+> **CRITICAL: Tailwind CSS Compilation**
+> If you change any HTML classes in the `.php` files, you **must** rebuild the CSS before pushing to production. Run this on your Windows machine:
+> ```powershell
+> .\tailwindcss.exe -i .\assets\css\tailwind.src.css -o .\assets\css\tailwind.css --minify
+> ```
 
 ### 4.2 Applying a Database Migration
 
 If a new migration file is added to `migrations/`:
-
 1. Open phpMyAdmin
 2. Select the `aces_db` database
 3. Click the **SQL** tab
@@ -184,7 +193,6 @@ If a new migration file is added to `migrations/`:
 5. Click **Go**
 
 Alternatively, if the migration is idempotent:
-
 ```bash
 mysql -u root -p aces_db < migrations/003_new_migration.sql
 ```
@@ -206,7 +214,6 @@ php /path/to/cair-system/cron/send_reminders.php
 ```
 
 Or via curl (if CRON_SECRET is set):
-
 ```bash
 curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 ```
@@ -231,6 +238,7 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 | CSRF token failed | Session not persisting | Check `session.save_path` is writable |
 | 500 error | `.htaccess` issue | Check permissions (should be `644`) |
 | Remember-me not working | HTTPS not enabled | Cookie is `Secure` in production |
+| **CSS styles missing/broken** | Tailwind not compiled | Run `.\tailwindcss.exe -i .\assets\css\tailwind.src.css -o .\assets\css\tailwind.css --minify` |
 
 ---
 
@@ -245,6 +253,7 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 | No automated clearance triggers | Clearance processing remains manual |
 | No mobile native app | Responsive web only |
 | No registrar sync | Data entry is manual |
+| **Placeholder Policies** | `public/policies.php` contains placeholder text and must be updated by KLD legal/IT |
 
 ### Known Technical Debt
 
@@ -320,7 +329,6 @@ The research team will provide bug fixes for **[X] months** after handover, star
 ### Escalation
 
 For issues that block ACES Unit operations:
-
 1. Contact the research team lead: [Name, email]
 2. If unavailable, contact the BSIS Department: [Insert contact]
 3. For infrastructure issues (server down, domain expired), contact the school's IT department directly
@@ -366,6 +374,7 @@ Date: ____________________________
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | October 2026 | Elijah Rei Z. Bicomong | Initial handover document |
+| 1.1 | October 2026 | Elijah Rei Z. Bicomong | Added Tailwind CSS compilation workflow, Policies page, and updated troubleshooting |
 
 ---
 

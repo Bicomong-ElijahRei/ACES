@@ -93,26 +93,31 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
         html, body { height: 100%; margin: 0; padding: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .status-badge {
-            padding: 0.25rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-block;
-        }
-        .status-pending { background-color: #fbbf24; color: #000; }
-        .status-present { background-color: #10b981; color: #fff; }
-        .status-absent  { background-color: #ef4444; color: #fff; }
+        
+        /* DataTables Overrides */
         .dataTables_wrapper .dataTables_paginate .paginate_button.current {
             background: #0a6e2d !important;
             color: white !important;
             border: none !important;
+            border-radius: 0.375rem;
         }
-        .dataTables_wrapper .dataTables_filter input {
-            border-radius: 9999px;
-            padding: 0.25rem 1rem;
-            border: 1px solid #ddd;
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: #054018 !important;
+            color: white !important;
+            border: none !important;
         }
+        .dataTables_length select {
+            border-radius: 0.375rem;
+            border: 1px solid #d1d5db;
+            padding: 0.25rem 0.5rem;
+        }
+        .dataTables_wrapper .dataTables_info {
+            font-size: 0.875rem;
+            color: #6b7280;
+            padding-top: 1rem;
+        }
+
+        /* Modal Backdrop Fix */
         .modal-backdrop { z-index: 1040 !important; }
         .modal { z-index: 1050 !important; }
     </style>
@@ -123,60 +128,97 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
     <?php include '../includes/staff_sidebar.php'; ?>
     <div class="flex-1 flex flex-col overflow-hidden">
         <?php include '../includes/header.php'; ?>
-        <main class="flex-1 p-4 md:p-10 overflow-y-auto no-scrollbar">
-            <div class="flex justify-between items-center mb-6">
+        
+        <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
+            
+            <!-- Header -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
-                    <h1 class="text-2xl md:text-4xl font-bold text-[#0a6e2d]">Attendance Records</h1>
-                    <p class="text-sm text-gray-500 mt-1">Bulk actions, filters, and archives</p>
+                    <h1 class="text-3xl font-bold text-[#0a6e2d]">Attendance Records</h1>
+                    <p class="text-sm text-gray-600 mt-1">Manage, filter, and verify student attendance.</p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <a href="student_progress.php" class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition">
+                    <a href="student_progress.php" class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition shadow-sm">
                         <i class="fas fa-chart-line text-[#0a6e2d]"></i> View Student Progress
                     </a>
-                    <a href="dashboard.php" class="text-[#0a6e2d]" title="Home">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                    <a href="dashboard.php" class="text-[#0a6e2d] bg-white p-2 rounded-full shadow-sm hover:shadow-md transition-shadow" title="Home">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M3 10.4V21h18V10.4l-9-6.3-9 6.3zM14.2 19h-4.4v-5.6h4.4V19z"/>
                         </svg>
                     </a>
                 </div>
             </div>
 
+            <!-- Flash Messages -->
             <?php if (isset($_GET['deleted'])): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4">Selected records archived.<button type="button" class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">×</button></div>
+                <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                    <i class="fas fa-check-circle"></i> Selected records archived.
+                    <button type="button" class="ml-auto text-green-700 hover:text-green-900" onclick="this.parentElement.remove()">&times;</button>
+                </div>
             <?php elseif (isset($_GET['restored'])): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4">Records restored.<button type="button" class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">×</button></div>
+                <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                    <i class="fas fa-check-circle"></i> Records restored.
+                    <button type="button" class="ml-auto text-green-700 hover:text-green-900" onclick="this.parentElement.remove()">&times;</button>
+                </div>
             <?php elseif (isset($_GET['permanently_deleted'])): ?>
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">Records permanently deleted.<button type="button" class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">×</button></div>
+                <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                    <i class="fas fa-exclamation-circle"></i> Records permanently deleted.
+                    <button type="button" class="ml-auto text-red-700 hover:text-red-900" onclick="this.parentElement.remove()">&times;</button>
+                </div>
             <?php elseif (isset($_GET['status_updated'])): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4">Attendance status updated.<button type="button" class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">×</button></div>
+                <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                    <i class="fas fa-check-circle"></i> Attendance status updated.
+                    <button type="button" class="ml-auto text-green-700 hover:text-green-900" onclick="this.parentElement.remove()">&times;</button>
+                </div>
             <?php endif; ?>
 
-            <!-- Main attendance table card -->
-            <div class="bg-white rounded shadow-xl overflow-hidden mb-10">
-                <?php if (!isViewer()): ?>
-                <div class="bg-[#054018] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex gap-2">
-                        <button id="selectAllBtn" class="text-white text-xs md:text-sm font-semibold flex items-center gap-2"><i class="fa-regular fa-square"></i> Select All</button>
-                        <select id="bulkStatusSelect" class="bg-white text-black rounded px-2 py-1 text-xs"><option value="">Change Status...</option><option value="pending">Pending</option><option value="present">Present</option><option value="absent">Absent</option></select>
-                        <button id="bulkChangeStatusBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">Apply Status</button>
-                        <button id="bulkArchiveBtn" class="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded">Archive Selected</button>
-                        <span class="text-white text-xs ml-2">Selected: <span id="selectedCount">0</span></span>
+            <!-- Main Attendance Table Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-10">
+                
+                <!-- Toolbar -->
+                <div class="p-4 border-b border-gray-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <?php if (!isViewer()): ?>
+                            <button id="selectAllBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                                <i class="fa-regular fa-square-check text-gray-500"></i> Select All
+                            </button>
+                            <div class="h-6 w-px bg-gray-300 mx-1 hidden sm:block"></div>
+                            <select id="bulkStatusSelect" class="bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="">Change Status...</option>
+                                <option value="pending">Pending</option>
+                                <option value="present">Present</option>
+                                <option value="absent">Absent</option>
+                            </select>
+                            <button id="bulkChangeStatusBtn" class="bg-[#0a6e2d] hover:bg-[#054018] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
+                                Apply Status
+                            </button>
+                            <button id="bulkArchiveBtn" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-sm font-medium px-3 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                                <i class="fa-solid fa-box-archive"></i> Archive
+                            </button>
+                            <span class="text-gray-500 text-sm ml-2">Selected: <span id="selectedCount" class="font-bold text-gray-800">0</span></span>
+                        <?php endif; ?>
                     </div>
-                    <div class="flex gap-2">
-                        <button type="button" class="text-white text-xs md:text-sm flex items-center gap-1" data-bs-toggle="modal" data-bs-target="#filterModal"><i class="fa-solid fa-filter"></i> <span class="hidden sm:inline">Filter</span></button>
-                        <button id="exportAttendanceBtn" class="text-white text-xs md:text-sm flex items-center gap-1"><i class="fa-solid fa-download"></i> Export</button>
-                        <div class="relative">
-                            <input type="text" id="searchInput" placeholder="Search" class="w-full max-w-[150px] md:max-w-[250px] py-1 px-3 rounded-full text-xs outline-none border border-white/30 bg-white/10 text-white placeholder-white/70">
-                            <i class="fa-solid fa-magnifying-glass absolute right-3 top-2 text-white/50 text-[10px]"></i>
+                    
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
+                            <i class="fa-solid fa-filter text-gray-500"></i> Filter
+                        </button>
+                        <button id="exportAttendanceBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                            <i class="fa-solid fa-download text-gray-500"></i> Export
+                        </button>
+                        <div class="relative w-full md:w-64">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="searchInput" placeholder="Search records..." class="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow">
                         </div>
                     </div>
                 </div>
-                <?php endif; ?>
+
+                <!-- Table Container -->
                 <div class="overflow-x-auto">
-                    <table id="attendanceTable" class="min-w-full bg-white text-left text-xs md:text-sm">
-                        <thead>
-                            <tr class="text-gray-800 font-bold border-b border-gray-100">
-                                <th class="py-4 px-4 w-10"><input type="checkbox" id="selectAllCheckbox"></th>
+                    <table id="attendanceTable" class="min-w-full text-left text-sm whitespace-nowrap">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr class="text-gray-500 font-semibold uppercase tracking-wider text-xs">
+                                <th class="py-4 px-4 w-10 text-center"><input type="checkbox" id="selectAllCheckbox" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"></th>
                                 <th class="py-4 px-4">Student No.</th>
                                 <th class="py-4 px-4">Student Name</th>
                                 <th class="py-4 px-4">Date</th>
@@ -185,11 +227,11 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                 <th class="py-4 px-4">Subtopic / Session</th>
                                 <th class="py-4 px-4 text-center">Status</th>
                                 <?php if (!isViewer()): ?>
-                                <th class="py-4 px-4">Action</th>
+                                <th class="py-4 px-4 text-center">Action</th>
                                 <?php endif; ?>
                             </tr>
                         </thead>
-                        <tbody class="text-gray-600">
+                        <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
                             <?php
                             $sql = "SELECT a.attendance_id, a.attendance_status, a.attendance_date,
                                            st.student_id, u.full_name, st.program, st.section,
@@ -211,22 +253,39 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                             $attendances = $stmt->fetchAll();
                             ?>
                             <?php foreach ($attendances as $att): ?>
-                                <tr class="border-b border-gray-50 hover:bg-gray-50 transition" data-id="<?= $att['attendance_id'] ?>">
-                                    <td class="py-4 px-4 text-center"><input type="checkbox" class="row-checkbox" value="<?= $att['attendance_id'] ?>"></td>
-                                    <td class="py-4 px-4 font-mono"><?= htmlspecialchars($att['student_id']) ?></td>
-                                    <td class="py-4 px-4 font-semibold"><?= htmlspecialchars($att['full_name']) ?></td>
-                                    <td class="py-4 px-4"><?= date('Y-m-d', strtotime($att['attendance_date'])) ?></td>
-                                    <td class="py-4 px-4"><?= htmlspecialchars($att['program']) ?></td>
-                                    <td class="py-4 px-4"><?= htmlspecialchars($att['section']) ?></td>
-                                    <td class="py-4 px-4 italic"><?= htmlspecialchars($att['subtopic_title']) ?> (<?= htmlspecialchars($att['session_title']) ?>)</td>
-                                    <td class="py-4 px-4 text-center"><span class="status-badge status-<?= $att['attendance_status'] ?>"><?= ucfirst($att['attendance_status']) ?></span></td>
-                                    <?php if (!isViewer()): ?>
+                                <tr class="hover:bg-gray-50 transition-colors duration-150" data-id="<?= $att['attendance_id'] ?>">
+                                    <td class="py-4 px-4 text-center"><input type="checkbox" class="row-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $att['attendance_id'] ?>"></td>
+                                    <td class="py-4 px-4 font-mono text-xs text-gray-600"><?= htmlspecialchars($att['student_id']) ?></td>
+                                    <td class="py-4 px-4 font-medium text-gray-900"><?= htmlspecialchars($att['full_name']) ?></td>
+                                    <td class="py-4 px-4 text-xs"><?= date('M d, Y', strtotime($att['attendance_date'])) ?></td>
+                                    <td class="py-4 px-4 text-xs"><?= htmlspecialchars($att['program']) ?></td>
                                     <td class="py-4 px-4">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                            <?= htmlspecialchars($att['section']) ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-4 px-4 text-xs">
+                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($att['subtopic_title']) ?></span><br>
+                                        <span class="text-gray-500"><?= htmlspecialchars($att['session_title']) ?></span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <?php 
+                                            $badgeClass = 'bg-gray-100 text-gray-800';
+                                            if ($att['attendance_status'] === 'present') $badgeClass = 'bg-green-100 text-green-800';
+                                            elseif ($att['attendance_status'] === 'absent') $badgeClass = 'bg-red-100 text-red-800';
+                                            elseif ($att['attendance_status'] === 'pending') $badgeClass = 'bg-yellow-100 text-yellow-800';
+                                        ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold <?= $badgeClass ?>">
+                                            <?= ucfirst($att['attendance_status']) ?>
+                                        </span>
+                                    </td>
+                                    <?php if (!isViewer()): ?>
+                                    <td class="py-4 px-4 text-center">
                                         <form method="POST" class="inline">
                                             <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="single_change">
                                             <input type="hidden" name="id" value="<?= $att['attendance_id'] ?>">
-                                            <select name="status" class="text-xs border rounded px-2 py-1" onchange="this.form.submit()">
+                                            <select name="status" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" onchange="this.form.submit()">
                                                 <option value="pending" <?= $att['attendance_status'] == 'pending' ? 'selected' : '' ?>>Pending</option>
                                                 <option value="present" <?= $att['attendance_status'] == 'present' ? 'selected' : '' ?>>Present</option>
                                                 <option value="absent"  <?= $att['attendance_status'] == 'absent'  ? 'selected' : '' ?>>Absent</option>
@@ -242,126 +301,127 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
             </div>
 
             <!-- Archives Section -->
-            <div class="mt-8">
-                <div id="archiveHeader" class="flex justify-between items-center cursor-pointer bg-white rounded-t-lg px-6 py-3 shadow-md border border-gray-200">
-                    <div class="font-bold text-[#0a6e2d]"><i class="fas fa-archive mr-2"></i> Archives <span class="bg-gray-500 text-white rounded-full px-2 py-0.5 text-xs ml-2"><?= $pdo->query("SELECT COUNT(*) FROM attendance WHERE is_deleted = 1")->fetchColumn() ?></span></div>
-                    <i class="fas fa-chevron-down transition-transform duration-200 text-gray-500"></i>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div id="archiveHeader" class="px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors">
+                    <div class="flex items-center gap-2 font-bold text-gray-800">
+                        <i class="fas fa-archive text-gray-400"></i> Archived Records 
+                        <span class="bg-gray-100 text-gray-600 py-0.5 px-2.5 rounded-full text-xs font-semibold ml-1"><?= $pdo->query("SELECT COUNT(*) FROM attendance WHERE is_deleted = 1")->fetchColumn() ?></span>
+                    </div>
+                    <i class="fas fa-chevron-down text-gray-400 transition-transform duration-200"></i>
                 </div>
-                <div id="archiveContent" class="hidden mt-1">
-                    <div class="bg-white rounded-b-lg shadow-md overflow-hidden border border-t-0 border-gray-200">
-
-                        <!-- Archive toolbar -->
-                        <div class="bg-[#054018] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                            <div class="flex gap-2 items-center flex-wrap">
-                                <?php if (!isViewer()): ?>
-                                    <button id="archiveSelectAllBtn" class="text-white text-xs md:text-sm font-semibold flex items-center gap-2">
-                                        <i class="fa-regular fa-square"></i> Select All
-                                    </button>
-                                    <button id="archiveBulkRestoreBtn" class="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded">
-                                        <i class="fas fa-undo"></i> Restore Selected
-                                    </button>
-                                    <button id="archiveBulkDeleteBtn" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1 rounded">
-                                        <i class="fas fa-trash-alt"></i> Delete Permanently
-                                    </button>
-                                    <span class="text-white text-xs ml-2">Selected: <span id="archiveSelectedCount">0</span></span>
-                                <?php endif; ?>
-                            </div>
-                            <div class="flex gap-2">
-                                <button type="button"
-                                        class="text-white text-xs md:text-sm flex items-center gap-1"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#archiveFilterModal">
-                                    <i class="fas fa-filter"></i> Filter Archives
+                
+                <div id="archiveContent" class="hidden border-t border-gray-200">
+                    
+                    <!-- Archive Toolbar -->
+                    <div class="p-4 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <?php if (!isViewer()): ?>
+                                <button id="archiveSelectAllBtn" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
+                                    <i class="fa-regular fa-square-check text-gray-500"></i> Select All
                                 </button>
-                            </div>
+                                <button id="archiveBulkRestoreBtn" class="bg-white border border-gray-300 hover:bg-green-50 text-green-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
+                                    <i class="fas fa-undo"></i> Restore
+                                </button>
+                                <button id="archiveBulkDeleteBtn" class="bg-white border border-gray-300 hover:bg-red-50 text-red-600 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
+                                    <i class="fas fa-trash-alt"></i> Delete Permanently
+                                </button>
+                                <span class="text-gray-500 text-sm ml-2">Selected: <span id="archiveSelectedCount" class="font-bold text-gray-800">0</span></span>
+                            <?php endif; ?>
                         </div>
+                        <div class="flex gap-2">
+                            <button type="button" class="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#archiveFilterModal">
+                                <i class="fas fa-filter text-gray-500"></i> Filter
+                            </button>
+                        </div>
+                    </div>
 
-                        <div class="overflow-x-auto">
-                            <table id="archiveTable" class="min-w-full bg-white text-sm">
-                                <thead>
-                                    <tr class="text-gray-800 font-bold border-b">
+                    <!-- Archive Table -->
+                    <div class="overflow-x-auto">
+                        <table id="archiveTable" class="min-w-full text-left text-sm whitespace-nowrap">
+                            <thead class="bg-white border-b border-gray-200">
+                                <tr class="text-gray-500 font-semibold uppercase tracking-wider text-xs">
+                                    <?php if (!isViewer()): ?>
+                                        <th class="py-3 px-4 w-10 text-center">
+                                            <input type="checkbox" id="archiveSelectAllCheckbox" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]">
+                                        </th>
+                                    <?php endif; ?>
+                                    <th class="py-3 px-4">Student No.</th>
+                                    <th class="py-3 px-4">Student Name</th>
+                                    <th class="py-3 px-4">Date</th>
+                                    <th class="py-3 px-4">Subtopic</th>
+                                    <th class="py-3 px-4 text-center">Status</th>
+                                    <?php if (!isViewer()): ?>
+                                        <th class="py-3 px-4 text-right">Action</th>
+                                    <?php endif; ?>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
+                                <?php
+                                $sql_arch = "SELECT a.attendance_id, a.attendance_status, a.attendance_date,
+                                                    st.student_id, u.full_name, sub.title as subtopic_title
+                                            FROM attendance a
+                                            JOIN students st ON a.student_id = st.student_id
+                                            JOIN users u ON st.user_id = u.user_id
+                                            JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id
+                                            WHERE a.is_deleted = 1";
+                                $params_arch = [];
+                                if (!empty($_GET['arch_subtopic_id'])) { $sql_arch .= " AND a.subtopic_id = ?";        $params_arch[] = $_GET['arch_subtopic_id']; }
+                                if (!empty($_GET['arch_course']))      { $sql_arch .= " AND st.program = ?";           $params_arch[] = $_GET['arch_course']; }
+                                if (!empty($_GET['arch_section']))     { $sql_arch .= " AND st.section = ?";           $params_arch[] = $_GET['arch_section']; }
+                                if (!empty($_GET['arch_status']))      { $sql_arch .= " AND a.attendance_status = ?"; $params_arch[] = $_GET['arch_status']; }
+                                $sql_arch .= " ORDER BY a.attendance_date DESC";
+                                $stmt_arch = $pdo->prepare($sql_arch);
+                                $stmt_arch->execute($params_arch);
+                                $archived = $stmt_arch->fetchAll();
+                                ?>
+                                <?php foreach ($archived as $arch): ?>
+                                    <tr class="hover:bg-gray-50 transition-colors">
                                         <?php if (!isViewer()): ?>
-                                            <th class="py-3 px-4 w-10">
-                                                <input type="checkbox" id="archiveSelectAllCheckbox">
-                                            </th>
+                                            <td class="py-3 px-4 text-center">
+                                                <input type="checkbox" class="archive-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $arch['attendance_id'] ?>">
+                                            </td>
                                         <?php endif; ?>
-                                        <th class="py-3 px-4">Student No.</th>
-                                        <th class="py-3 px-4">Student Name</th>
-                                        <th class="py-3 px-4">Date</th>
-                                        <th class="py-3 px-4">Subtopic</th>
-                                        <th class="py-3 px-4">Status</th>
+                                        <td class="py-3 px-4 font-mono text-xs text-gray-600"><?= htmlspecialchars($arch['student_id']) ?></td>
+                                        <td class="py-3 px-4 font-medium text-gray-900"><?= htmlspecialchars($arch['full_name']) ?></td>
+                                        <td class="py-3 px-4 text-xs"><?= date('M d, Y', strtotime($arch['attendance_date'])) ?></td>
+                                        <td class="py-3 px-4 text-xs"><?= htmlspecialchars($arch['subtopic_title']) ?></td>
+                                        <td class="py-3 px-4 text-center">
+                                            <?php 
+                                                $archBadge = 'bg-gray-100 text-gray-800';
+                                                if ($arch['attendance_status'] === 'present') $archBadge = 'bg-green-100 text-green-800';
+                                                elseif ($arch['attendance_status'] === 'absent') $archBadge = 'bg-red-100 text-red-800';
+                                                elseif ($arch['attendance_status'] === 'pending') $archBadge = 'bg-yellow-100 text-yellow-800';
+                                            ?>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold <?= $archBadge ?>">
+                                                <?= ucfirst($arch['attendance_status']) ?>
+                                            </span>
+                                        </td>
                                         <?php if (!isViewer()): ?>
-                                            <th class="py-3 px-4">Action</th>
+                                            <td class="py-3 px-4 text-right">
+                                                <div class="flex justify-end gap-2">
+                                                    <form method="POST" style="display:inline;">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="action" value="single_restore">
+                                                        <input type="hidden" name="id" value="<?= $arch['attendance_id'] ?>">
+                                                        <button type="submit" class="bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1 rounded-md text-xs font-medium transition-colors border border-green-200" title="Restore this record">
+                                                            <i class="fas fa-undo"></i> Restore
+                                                        </button>
+                                                    </form>
+                                                    <form method="POST" style="display:inline;" onsubmit="return confirmPermanentDelete(1);">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="action" value="single_permanent_delete">
+                                                        <input type="hidden" name="id" value="<?= $arch['attendance_id'] ?>">
+                                                        <button type="submit" class="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1 rounded-md text-xs font-medium transition-colors border border-red-200" title="Permanently delete this record">
+                                                            <i class="fas fa-trash-alt"></i> Delete
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
                                         <?php endif; ?>
                                     </tr>
-                                </thead>
-                                <tbody class="text-gray-600">
-                                    <?php
-                                    $sql_arch = "SELECT a.attendance_id, a.attendance_status, a.attendance_date,
-                                                        st.student_id, u.full_name, sub.title as subtopic_title
-                                                FROM attendance a
-                                                JOIN students st ON a.student_id = st.student_id
-                                                JOIN users u ON st.user_id = u.user_id
-                                                JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id
-                                                WHERE a.is_deleted = 1";
-                                    $params_arch = [];
-                                    if (!empty($_GET['arch_subtopic_id'])) { $sql_arch .= " AND a.subtopic_id = ?";        $params_arch[] = $_GET['arch_subtopic_id']; }
-                                    if (!empty($_GET['arch_course']))      { $sql_arch .= " AND st.program = ?";           $params_arch[] = $_GET['arch_course']; }
-                                    if (!empty($_GET['arch_section']))     { $sql_arch .= " AND st.section = ?";           $params_arch[] = $_GET['arch_section']; }
-                                    if (!empty($_GET['arch_status']))      { $sql_arch .= " AND a.attendance_status = ?"; $params_arch[] = $_GET['arch_status']; }
-                                    $sql_arch .= " ORDER BY a.attendance_date DESC";
-                                    $stmt_arch = $pdo->prepare($sql_arch);
-                                    $stmt_arch->execute($params_arch);
-                                    $archived = $stmt_arch->fetchAll();
-                                    ?>
-                                    <?php foreach ($archived as $arch): ?>
-                                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
-                                            <?php if (!isViewer()): ?>
-                                                <td class="py-3 px-4 text-center">
-                                                    <input type="checkbox" class="archive-checkbox" value="<?= $arch['attendance_id'] ?>">
-                                                </td>
-                                            <?php endif; ?>
-                                            <td class="py-3 px-4"><?= htmlspecialchars($arch['student_id']) ?></td>
-                                            <td class="py-3 px-4"><?= htmlspecialchars($arch['full_name']) ?></td>
-                                            <td class="py-3 px-4"><?= date('Y-m-d', strtotime($arch['attendance_date'])) ?></td>
-                                            <td class="py-3 px-4"><?= htmlspecialchars($arch['subtopic_title']) ?></td>
-                                            <td class="py-3 px-4">
-                                                <span class="status-badge status-<?= $arch['attendance_status'] ?>">
-                                                    <?= ucfirst($arch['attendance_status']) ?>
-                                                </span>
-                                            </td>
-                                            <?php if (!isViewer()): ?>
-                                                <td class="py-3 px-4">
-                                                    <div class="flex gap-1">
-                                                        <form method="POST" style="display:inline;">
-                                                            <?= csrf_field() ?>
-                                                            <input type="hidden" name="action" value="single_restore">
-                                                            <input type="hidden" name="id" value="<?= $arch['attendance_id'] ?>">
-                                                            <button type="submit"
-                                                                    class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs"
-                                                                    title="Restore this record">
-                                                                <i class="fas fa-undo"></i> Restore
-                                                            </button>
-                                                        </form>
-                                                        <form method="POST" style="display:inline;"
-                                                              onsubmit="return confirmPermanentDelete(1);">
-                                                            <?= csrf_field() ?>
-                                                            <input type="hidden" name="action" value="single_permanent_delete">
-                                                            <input type="hidden" name="id" value="<?= $arch['attendance_id'] ?>">
-                                                            <button type="submit"
-                                                                    class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs"
-                                                                    title="Permanently delete this record">
-                                                                <i class="fas fa-trash-alt"></i> Delete
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                </td>
-                                            <?php endif; ?>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -374,9 +434,55 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
 <!-- Filter Modal -->
 <div class="modal fade" id="filterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-gray-100 p-4 border-b"><h5 class="modal-title text-lg font-bold">Filter Attendance Records</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-            <div class="modal-body p-4"><form method="GET" id="filterForm" class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label class="block text-sm font-medium">Subtopic</label><select name="subtopic_id" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($subtopics as $sub): ?><option value="<?= $sub['subtopic_id'] ?>" <?= isset($_GET['subtopic_id']) && $_GET['subtopic_id'] == $sub['subtopic_id'] ? 'selected' : '' ?>><?= htmlspecialchars($sub['title']) ?></option><?php endforeach; ?></select></div><div><label class="block text-sm font-medium">Course</label><select name="course" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($courses as $crs): ?><option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['course']) && $_GET['course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option><?php endforeach; ?></select></div><div><label class="block text-sm font-medium">Section</label><select name="section" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($sections as $sec): ?><option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['section']) && $_GET['section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option><?php endforeach; ?></select></div><div><label class="block text-sm font-medium">Status</label><select name="status" class="w-full border rounded p-2"><option value="">All</option><option value="present" <?= isset($_GET['status']) && $_GET['status'] == 'present' ? 'selected' : '' ?>>Present</option><option value="pending" <?= isset($_GET['status']) && $_GET['status'] == 'pending' ? 'selected' : '' ?>>Pending</option><option value="absent" <?= isset($_GET['status']) && $_GET['status'] == 'absent' ? 'selected' : '' ?>>Absent</option></select></div><div class="col-span-2 text-right"><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Apply Filters</button><a href="attendance.php" class="bg-gray-300 text-gray-800 px-4 py-2 rounded ml-2">Reset</a><button type="button" class="bg-gray-500 text-white px-4 py-2 rounded ml-2" data-bs-dismiss="modal">Cancel</button></div></form></div>
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                <h5 class="text-lg font-bold text-gray-800"><i class="fas fa-filter text-gray-500 mr-2"></i>Filter Attendance</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-6">
+                <form method="GET" id="filterForm" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic</label>
+                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Subtopics</option>
+                            <?php foreach ($subtopics as $sub): ?>
+                                <option value="<?= $sub['subtopic_id'] ?>" <?= isset($_GET['subtopic_id']) && $_GET['subtopic_id'] == $sub['subtopic_id'] ? 'selected' : '' ?>><?= htmlspecialchars($sub['title']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                        <select name="course" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Courses</option>
+                            <?php foreach ($courses as $crs): ?>
+                                <option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['course']) && $_GET['course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                        <select name="section" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Sections</option>
+                            <?php foreach ($sections as $sec): ?>
+                                <option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['section']) && $_GET['section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                        <select name="status" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Statuses</option>
+                            <option value="present" <?= isset($_GET['status']) && $_GET['status'] == 'present' ? 'selected' : '' ?>>Present</option>
+                            <option value="pending" <?= isset($_GET['status']) && $_GET['status'] == 'pending' ? 'selected' : '' ?>>Pending</option>
+                            <option value="absent" <?= isset($_GET['status']) && $_GET['status'] == 'absent' ? 'selected' : '' ?>>Absent</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2 flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
+                        <a href="attendance.php" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Reset</a>
+                        <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Apply Filters</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -384,9 +490,56 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
 <!-- Archive Filter Modal -->
 <div class="modal fade" id="archiveFilterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-gray-100 p-4 border-b"><h5 class="modal-title text-lg font-bold">Filter Archive Records</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body p-4"><form method="GET" id="archiveFilterForm" class="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="hidden" name="archive_filter" value="1"><div><label>Subtopic</label><select name="arch_subtopic_id" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($subtopics as $sub): ?><option value="<?= $sub['subtopic_id'] ?>" <?= isset($_GET['arch_subtopic_id']) && $_GET['arch_subtopic_id'] == $sub['subtopic_id'] ? 'selected' : '' ?>><?= htmlspecialchars($sub['title']) ?></option><?php endforeach; ?></select></div><div><label>Course</label><select name="arch_course" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($courses as $crs): ?><option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['arch_course']) && $_GET['arch_course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option><?php endforeach; ?></select></div><div><label>Section</label><select name="arch_section" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($sections as $sec): ?><option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['arch_section']) && $_GET['arch_section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option><?php endforeach; ?></select></div><div><label>Status</label><select name="arch_status" class="w-full border rounded p-2"><option value="">All</option><option value="present" <?= isset($_GET['arch_status']) && $_GET['arch_status'] == 'present' ? 'selected' : '' ?>>Present</option><option value="pending" <?= isset($_GET['arch_status']) && $_GET['arch_status'] == 'pending' ? 'selected' : '' ?>>Pending</option><option value="absent" <?= isset($_GET['arch_status']) && $_GET['arch_status'] == 'absent' ? 'selected' : '' ?>>Absent</option></select></div><div class="col-span-2 text-right"><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Apply Filters</button><a href="attendance.php" class="bg-gray-300 text-gray-800 px-4 py-2 rounded ml-2">Reset All</a><button type="button" class="bg-gray-500 text-white px-4 py-2 rounded ml-2" data-bs-dismiss="modal">Cancel</button></div></form></div>
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                <h5 class="text-lg font-bold text-gray-800"><i class="fas fa-filter text-gray-500 mr-2"></i>Filter Archives</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-6">
+                <form method="GET" id="archiveFilterForm" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <input type="hidden" name="archive_filter" value="1">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic</label>
+                        <select name="arch_subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Subtopics</option>
+                            <?php foreach ($subtopics as $sub): ?>
+                                <option value="<?= $sub['subtopic_id'] ?>" <?= isset($_GET['arch_subtopic_id']) && $_GET['arch_subtopic_id'] == $sub['subtopic_id'] ? 'selected' : '' ?>><?= htmlspecialchars($sub['title']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                        <select name="arch_course" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Courses</option>
+                            <?php foreach ($courses as $crs): ?>
+                                <option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['arch_course']) && $_GET['arch_course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                        <select name="arch_section" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Sections</option>
+                            <?php foreach ($sections as $sec): ?>
+                                <option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['arch_section']) && $_GET['arch_section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                        <select name="arch_status" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Statuses</option>
+                            <option value="present" <?= isset($_GET['arch_status']) && $_GET['arch_status'] == 'present' ? 'selected' : '' ?>>Present</option>
+                            <option value="pending" <?= isset($_GET['arch_status']) && $_GET['arch_status'] == 'pending' ? 'selected' : '' ?>>Pending</option>
+                            <option value="absent" <?= isset($_GET['arch_status']) && $_GET['arch_status'] == 'absent' ? 'selected' : '' ?>>Absent</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2 flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
+                        <a href="attendance.php" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Reset All</a>
+                        <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Apply Filters</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -394,10 +547,37 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
 <!-- Export Modal -->
 <div class="modal fade" id="exportAttendanceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-gray-100 p-4 border-b"><h5 class="modal-title text-lg font-bold">Export Attendance Records</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body p-4"><div class="mb-4"><label class="block text-sm font-medium">Format</label><select id="exportFormat" class="w-full border rounded p-2"><option value="csv">CSV (Excel compatible)</option><option value="pdf">PDF (Print to PDF)</option></select></div><div class="mb-4"><label class="block text-sm font-medium">Export scope</label><select id="exportScope" class="w-full border rounded p-2"><option value="all">All filtered records</option><option value="selected">Only selected records (checked rows)</option></select></div><div class="mb-4"><label class="block text-sm font-medium">Columns to include</label><div id="exportColumnsList" class="border rounded p-2 max-h-60 overflow-y-auto"></div></div></div>
-            <div class="modal-footer p-4 border-t flex justify-end gap-2"><button type="button" class="bg-gray-300 text-gray-800 px-4 py-2 rounded" data-bs-dismiss="modal">Cancel</button><button type="button" id="doExportAttendance" class="bg-green-600 text-white px-4 py-2 rounded">Export</button></div>
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                <h5 class="text-lg font-bold text-gray-800">Export Attendance Records</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-6 space-y-5">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                        <select id="exportFormat" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="csv">CSV (Excel compatible)</option>
+                            <option value="pdf">PDF (Print to PDF)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Export scope</label>
+                        <select id="exportScope" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="all">All filtered records</option>
+                            <option value="selected">Only selected records</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Columns to include</label>
+                    <div id="exportColumnsList" class="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-60 overflow-y-auto grid grid-cols-2 gap-2"></div>
+                </div>
+            </div>
+            <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="doExportAttendance" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Export</button>
+            </div>
         </div>
     </div>
 </div>
@@ -426,6 +606,7 @@ $(document).ready(function() {
         paging: true,
         searching: true,
         pageLength: 10,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]], // <-- ADD THIS LINE
         language: { search: "" },
         dom: 'lrtip'
     });
@@ -583,7 +764,7 @@ $(document).ready(function() {
             { label: 'Subtopic / Session', key: 'subtopic_session', index: 6 },
             { label: 'Status', key: 'status', index: 7 }
         ].forEach(function(col) {
-            columnsList.append('<div class="form-check"><input class="form-check-input export-col" type="checkbox" value="' + col.key + '" data-col-index="' + col.index + '" checked><label class="form-check-label">' + col.label + '</label></div>');
+            columnsList.append('<label class="flex items-center gap-2 cursor-pointer"><input class="export-col rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="checkbox" value="' + col.key + '" data-col-index="' + col.index + '" checked><span class="text-sm text-gray-700">' + col.label + '</span></label>');
         });
         $('#exportAttendanceModal').modal('show');
     });
@@ -593,7 +774,7 @@ $(document).ready(function() {
         var scope = $('#exportScope').val();
         var selectedCols = [];
         $('.export-col:checked').each(function() {
-            selectedCols.push({ index: $(this).data('col-index'), key: $(this).val(), label: $(this).next('label').text() });
+            selectedCols.push({ index: $(this).data('col-index'), key: $(this).val(), label: $(this).next('span').text() });
         });
         if (selectedCols.length === 0) { alert('Please select at least one column.'); return; }
 
@@ -607,11 +788,6 @@ $(document).ready(function() {
             });
             if (ids.length === 0) { alert('No records to export.'); return; }
         }
-
-        var params = new URLSearchParams();
-        params.append('format', format);
-        params.append('ids', ids.join(','));
-        params.append('cols', JSON.stringify(selectedCols.map(c => c.key)));
 
         // Build POST form (CSRF-safe)
         const form = document.createElement('form');

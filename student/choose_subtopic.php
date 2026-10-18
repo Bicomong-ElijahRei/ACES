@@ -134,9 +134,19 @@ if (!$allow_multiple) {
             exit;
         }
 
-        // Swap: remove old registration + any linked attendance
+        // Swap: remove old registration, attendance, AND module progress
+        // 1. Delete module progress for modules under the old subtopic
+        $pdo->prepare("
+            DELETE smp FROM student_module_progress smp
+            JOIN modules m ON smp.module_id = m.module_id
+            WHERE smp.student_id = ? AND m.subtopic_id = ?
+        ")->execute([$student_id, $existing['existing_subtopic_id']]);
+
+        // 2. Delete attendance for the old subtopic
         $pdo->prepare("DELETE FROM attendance WHERE student_id = ? AND subtopic_id = ?")
             ->execute([$student_id, $existing['existing_subtopic_id']]);
+
+        // 3. Delete the old registration
         $pdo->prepare("DELETE FROM registrations WHERE registration_id = ?")
             ->execute([$existing['registration_id']]);
     }

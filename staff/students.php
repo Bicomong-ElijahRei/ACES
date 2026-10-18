@@ -106,14 +106,11 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
     exit;
 } elseif ($action === 'single_delete' && isset($_POST['id'])) {
     $id = $_POST['id'];
-    // Fetch user_id BEFORE deleting student
     $stmt = $pdo->prepare("SELECT user_id FROM students WHERE student_id = ?");
     $stmt->execute([$id]);
     $user_id = $stmt->fetchColumn();
-    // Delete student (CASCADE will handle attendance, registrations, etc.)
     $stmt_del_student = $pdo->prepare("DELETE FROM students WHERE student_id = ?");
     $stmt_del_student->execute([$id]);
-    // Delete user
     if ($user_id) {
         $stmt_del_user = $pdo->prepare("DELETE FROM users WHERE user_id = ?");
         $stmt_del_user->execute([$user_id]);
@@ -174,7 +171,6 @@ $archived_students = $stmt_archived->fetchAll();
 // Parse student name into parts using middle name
 function parseStudentName($full_name, $middle_name) {
     $parts = explode(' ', trim($full_name));
-
     if (!empty($middle_name)) {
         $middle_parts = explode(' ', trim($middle_name));
         foreach ($middle_parts as $mp) {
@@ -185,7 +181,6 @@ function parseStudentName($full_name, $middle_name) {
         }
         $parts = array_values($parts);
     }
-
     $last = '';
     $first = '';
     if (count($parts) >= 2) {
@@ -195,7 +190,6 @@ function parseStudentName($full_name, $middle_name) {
         $last = $parts[0];
         $first = '';
     }
-
     return [
         'first'  => $first,
         'last'   => $last,
@@ -210,18 +204,33 @@ function parseStudentName($full_name, $middle_name) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Information | ACES Staff</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
+    <!-- Add Bootstrap CSS here for the modals to work -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
     <style>
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1050; overflow: auto; }
-        .modal.show { display: block; }
-        .modal-dialog { margin: 1.75rem auto; max-width: 500px; }
-        .modal-content { background: white; border-radius: 0.5rem; overflow: hidden; }
-        .modal-header, .modal-footer { padding: 1rem; border-bottom: 1px solid #e5e7eb; }
-        .modal-footer { border-top: 1px solid #e5e7eb; }
-        .btn-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; }
-        .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: #0a6e2d !important; color: white !important; border: none !important; }
-        .dataTables_wrapper .dataTables_filter input { border-radius: 9999px; padding: 0.25rem 1rem; border: 1px solid #ddd; }
+        /* DataTables Overrides to match Tailwind */
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current { 
+            background: #0a6e2d !important; 
+            color: white !important; 
+            border: none !important; 
+            border-radius: 0.375rem;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: #054018 !important;
+            color: white !important;
+            border: none !important;
+        }
+        .dataTables_wrapper .dataTables_info {
+            font-size: 0.875rem;
+            color: #6b7280;
+            padding-top: 1rem;
+        }
+        .dataTables_length select {
+            border-radius: 0.375rem;
+            border: 1px solid #d1d5db;
+            padding: 0.25rem 0.5rem;
+        }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
@@ -230,87 +239,125 @@ function parseStudentName($full_name, $middle_name) {
 
     <?php include '../includes/staff_sidebar.php'; ?>
 
-    <main class="flex-1 p-4 md:p-10 overflow-y-auto no-scrollbar">
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
+        
+        <!-- Header -->
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold text-[#0a6e2d]">Student Information</h1>
-            <a href="dashboard.php" class="text-[#0a6e2d]"><i class="fa-solid fa-house text-2xl"></i></a>
+            <div>
+                <h1 class="text-3xl font-bold text-[#0a6e2d]">Student Information</h1>
+                <p class="text-sm text-gray-600 mt-1">Manage active students and view archived records.</p>
+            </div>
+            <a href="dashboard.php" class="text-[#0a6e2d] bg-white p-2 rounded-full shadow-sm hover:shadow-md transition-shadow">
+                <i class="fa-solid fa-house text-xl"></i>
+            </a>
         </div>
 
+        <!-- Flash Messages -->
         <?php if (isset($_GET['msg'])): ?>
-            <?php if ($_GET['msg'] == 'archived'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Student(s) archived.</div>
-            <?php elseif ($_GET['msg'] == 'restored'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Student(s) restored.</div>
-            <?php elseif ($_GET['msg'] == 'updated'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Student updated.</div>
-            <?php elseif ($_GET['msg'] == 'deleted'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Student(s) permanently deleted.</div>
-            <?php elseif ($_GET['msg'] == 'error'): ?>
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                    <?= htmlspecialchars($_GET['detail'] ?? 'An error occurred.') ?>
-                </div>
-            <?php endif; ?>
+            <div class="mb-6 animate-fade-in-down">
+                <?php if ($_GET['msg'] == 'archived'): ?>
+                    <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
+                        <i class="fas fa-check-circle"></i> Student(s) archived.
+                    </div>
+                <?php elseif ($_GET['msg'] == 'restored'): ?>
+                    <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
+                        <i class="fas fa-check-circle"></i> Student(s) restored.
+                    </div>
+                <?php elseif ($_GET['msg'] == 'updated'): ?>
+                    <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
+                        <i class="fas fa-check-circle"></i> Student updated.
+                    </div>
+                <?php elseif ($_GET['msg'] == 'deleted'): ?>
+                    <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
+                        <i class="fas fa-check-circle"></i> Student(s) permanently deleted.
+                    </div>
+                <?php elseif ($_GET['msg'] == 'error'): ?>
+                    <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <?= htmlspecialchars($_GET['detail'] ?? 'An error occurred.') ?>
+                    </div>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
 
-        <!-- Active Students table -->
-        <div class="bg-white rounded shadow-2xl overflow-hidden">
-            <div class="bg-[#054018] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                <button id="bulkArchiveBtn" class="text-white text-sm flex items-center gap-2"><i class="fa-solid fa-box-archive"></i> Archive Selected</button>
-                <div class="flex gap-4">
-                    <button type="button" class="text-white text-sm flex items-center gap-1" data-bs-toggle="modal" data-bs-target="#filterModal"><i class="fa-solid fa-filter"></i> Filter</button>
-                    <button id="exportBtn" class="text-white text-sm flex items-center gap-1"><i class="fa-solid fa-download"></i> Export</button>
-                    <div class="relative">
-                        <input type="text" id="searchInput" placeholder="Search name or ID..." class="py-1 px-4 pr-10 rounded-full text-xs outline-none w-48 md:w-64 border border-transparent focus:border-green-400 bg-white/10 text-white placeholder-white/70">
-                        <i class="fa-solid fa-magnifying-glass absolute right-3 top-2 text-white/50 text-[10px]"></i>
-                    </div>
+        <!-- Active Students Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+            
+            <!-- Modern Toolbar -->
+            <div class="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
+                <div class="flex items-center gap-2">
+                    <button id="bulkArchiveBtn" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-box-archive"></i> Archive Selected
+                    </button>
+                    <button type="button" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
+                        <i class="fa-solid fa-filter text-gray-500"></i> Filter
+                    </button>
+                    <button id="exportBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-download text-gray-500"></i> Export
+                    </button>
+                </div>
+                
+                <div class="relative w-full md:w-72">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="searchInput" placeholder="Search name or ID..." class="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow">
                 </div>
             </div>
 
+            <!-- Table Container -->
             <div class="overflow-x-auto">
-                <table id="studentsTable" class="min-w-full bg-white text-left text-sm">
-                    <thead>
-                        <tr class="text-gray-800 font-bold border-b">
-                            <th class="py-4 px-6 w-10"><input type="checkbox" id="selectAllCheckbox"></th>
+                <table id="studentsTable" class="min-w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr class="text-gray-500 font-semibold uppercase tracking-wider text-xs">
+                            <th class="py-4 px-6 w-10"><input type="checkbox" id="selectAllCheckbox" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"></th>
                             <th class="py-4 px-6">Student No.</th>
-                            <th class="py-4 px-2">Last Name</th>
-                            <th class="py-4 px-2">First Name</th>
-                            <th class="py-4 px-2">Middle Name</th>
-                            <th class="py-4 px-2">Course</th>
-                            <th class="py-4 px-2">Section</th>
-                            <th class="py-4 px-2">Email</th>
-                            <th class="py-4 px-2 text-center">Actions</th>
+                            <th class="py-4 px-4">Last Name</th>
+                            <th class="py-4 px-4">First Name</th>
+                            <th class="py-4 px-4">Middle Name</th>
+                            <th class="py-4 px-4">Course</th>
+                            <th class="py-4 px-4">Section</th>
+                            <th class="py-4 px-4">Email</th>
+                            <th class="py-4 px-6 text-center">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-600">
+                    <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
                         <?php foreach ($active_students as $student):
                             $name_parts = parseStudentName($student['full_name'], $student['middle_name']);
                         ?>
-                            <tr class="border-b border-gray-50 hover:bg-gray-50 transition" data-id="<?= $student['student_id'] ?>">
-                                <td class="py-4 px-6 text-center"><input type="checkbox" class="row-checkbox" value="<?= $student['student_id'] ?>"></td>
-                                <td class="py-4 px-6 font-mono"><?= htmlspecialchars($student['student_id']) ?></td>
-                                <td class="py-4 px-2"><?= htmlspecialchars($name_parts['last']) ?></td>
-                                <td class="py-4 px-2"><?= htmlspecialchars($name_parts['first']) ?></td>
-                                <td class="py-4 px-2"><?= htmlspecialchars($student['middle_name']) ?></td>
-                                <td class="py-4 px-2"><?= htmlspecialchars($student['program']) ?></td>
-                                <td class="py-4 px-2"><?= htmlspecialchars($student['section']) ?></td>
-                                <td class="py-4 px-2"><?= htmlspecialchars($student['email']) ?></td>
-                                <td class="py-4 px-2 text-center">
-                                    <button class="edit-student text-blue-500 hover:text-blue-700 mr-2"
-                                        data-student-id="<?= $student['student_id'] ?>"
-                                        data-last="<?= htmlspecialchars($name_parts['last']) ?>"
-                                        data-first="<?= htmlspecialchars($name_parts['first']) ?>"
-                                        data-middle="<?= htmlspecialchars($student['middle_name']) ?>"
-                                        data-course="<?= htmlspecialchars($student['program']) ?>"
-                                        data-section="<?= htmlspecialchars($student['section']) ?>"
-                                        data-email="<?= htmlspecialchars($student['email']) ?>">
-                                        <i class="fa-solid fa-pen"></i>
-                                    </button>
-                                    <form method="POST" style="display:inline;">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="action" value="single_archive">
-                                        <input type="hidden" name="id" value="<?= $student['student_id'] ?>">
-                                        <button type="submit" class="text-red-500 hover:text-red-700" onclick="return confirm('Archive this student?')"><i class="fa-solid fa-archive"></i></button>
-                                    </form>
+                            <tr class="hover:bg-gray-50 transition-colors duration-150" data-id="<?= $student['student_id'] ?>">
+                                <td class="py-4 px-6 text-center"><input type="checkbox" class="row-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $student['student_id'] ?>"></td>
+                                <td class="py-4 px-6 font-mono text-xs font-medium text-gray-600"><?= htmlspecialchars($student['student_id']) ?></td>
+                                <td class="py-4 px-4 font-medium text-gray-900"><?= htmlspecialchars($name_parts['last']) ?></td>
+                                <td class="py-4 px-4"><?= htmlspecialchars($name_parts['first']) ?></td>
+                                <td class="py-4 px-4 text-gray-500"><?= htmlspecialchars($student['middle_name']) ?></td>
+                                <td class="py-4 px-4 text-xs"><?= htmlspecialchars($student['program']) ?></td>
+                                <td class="py-4 px-4">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                        <?= htmlspecialchars($student['section']) ?>
+                                    </span>
+                                </td>
+                                <td class="py-4 px-4 text-gray-500 text-xs"><?= htmlspecialchars($student['email']) ?></td>
+                                <td class="py-4 px-6 text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <button class="edit-student text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors"
+                                            data-student-id="<?= $student['student_id'] ?>"
+                                            data-last="<?= htmlspecialchars($name_parts['last']) ?>"
+                                            data-first="<?= htmlspecialchars($name_parts['first']) ?>"
+                                            data-middle="<?= htmlspecialchars($student['middle_name']) ?>"
+                                            data-course="<?= htmlspecialchars($student['program']) ?>"
+                                            data-section="<?= htmlspecialchars($student['section']) ?>"
+                                            data-email="<?= htmlspecialchars($student['email']) ?>"
+                                            title="Edit">
+                                            <i class="fa-solid fa-pen"></i>
+                                        </button>
+                                        <form method="POST" style="display:inline;">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="action" value="single_archive">
+                                            <input type="hidden" name="id" value="<?= $student['student_id'] ?>">
+                                            <button type="submit" class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors" onclick="return confirm('Archive this student?')" title="Archive">
+                                                <i class="fa-solid fa-archive"></i>
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -320,85 +367,109 @@ function parseStudentName($full_name, $middle_name) {
         </div>
 
         <!-- Archives Section -->
-        <div class="mt-8">
-            <div id="archiveHeader" class="flex justify-between items-center cursor-pointer bg-white rounded-t-lg px-6 py-3 shadow-md border border-gray-200">
-                <div class="font-bold text-[#0a6e2d]"><i class="fas fa-archive mr-2"></i> Archives <span class="bg-gray-500 text-white rounded-full px-2 py-0.5 text-xs ml-2"><?= count($archived_students) ?></span></div>
-                <i class="fas fa-chevron-down transition-transform duration-200 text-gray-500"></i>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div id="archiveHeader" class="px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors">
+                <div class="flex items-center gap-2 font-bold text-gray-800">
+                    <i class="fas fa-archive text-gray-400"></i> Archived Students 
+                    <span class="bg-gray-100 text-gray-600 py-0.5 px-2.5 rounded-full text-xs font-semibold ml-1"><?= count($archived_students) ?></span>
+                </div>
+                <i class="fas fa-chevron-down text-gray-400 transition-transform duration-200"></i>
             </div>
-            <div id="archiveContent" class="hidden mt-1">
-                <div class="bg-white rounded-b-lg shadow-md overflow-hidden border border-t-0 border-gray-200">
-                    <div class="p-3 bg-gray-50 border-b flex justify-between items-center">
-                        <div>
-                            <button type="button" id="bulkRestoreBtn" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
-                                <i class="fas fa-undo-alt"></i> Restore Selected
-                            </button>
-                            <button type="button" id="bulkDeleteBtn" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 ml-2">
-                                <i class="fas fa-trash-alt"></i> Delete Selected Permanently
-                            </button>
-                        </div>
-                        <button type="button" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1" data-bs-toggle="modal" data-bs-target="#archiveFilterModal">
-                            <i class="fas fa-filter"></i> Filter Archives
+            
+            <div id="archiveContent" class="hidden border-t border-gray-200">
+                <div class="p-4 bg-gray-50 flex flex-wrap justify-between items-center gap-3">
+                    <div class="flex gap-2">
+                        <button type="button" id="bulkRestoreBtn" class="bg-white border border-gray-300 hover:bg-green-50 text-green-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                            <i class="fas fa-undo-alt"></i> Restore
+                        </button>
+                        <button type="button" id="bulkDeleteBtn" class="bg-white border border-gray-300 hover:bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                            <i class="fas fa-trash-alt"></i> Delete
                         </button>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table id="archiveTable" class="min-w-full bg-white text-sm">
-                            <thead>
-                                <tr class="text-gray-800 font-bold border-b">
-                                    <th class="py-3 px-4 w-10"><input type="checkbox" id="selectAllArchiveCheckbox"></th>
-                                    <th class="py-3 px-4">Student No.</th>
-                                    <th class="py-3 px-4">Full Name</th>
-                                    <th class="py-3 px-4">Course</th>
-                                    <th class="py-3 px-4">Section</th>
-                                    <th class="py-3 px-4">Email</th>
-                                    <th class="py-3 px-4">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody class="text-gray-600">
-                                <?php foreach ($archived_students as $arch): ?>
-                                <tr>
-                                    <td class="py-3 px-4 text-center"><input type="checkbox" class="archive-checkbox" value="<?= $arch['student_id'] ?>"></td>
-                                    <td class="py-3 px-4 border-b"><?= htmlspecialchars($arch['student_id']) ?></td>
-                                    <td class="py-3 px-4 border-b"><?= htmlspecialchars($arch['full_name']) ?></td>
-                                    <td class="py-3 px-4 border-b"><?= htmlspecialchars($arch['program']) ?></td>
-                                    <td class="py-3 px-4 border-b"><?= htmlspecialchars($arch['section']) ?></td>
-                                    <td class="py-3 px-4 border-b"><?= htmlspecialchars($arch['email']) ?></td>
-                                    <td class="py-3 px-4 border-b">
+                    <button type="button" class="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#archiveFilterModal">
+                        <i class="fas fa-filter text-gray-500"></i> Filter
+                    </button>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table id="archiveTable" class="min-w-full text-left text-sm whitespace-nowrap">
+                        <thead class="bg-white border-b border-gray-200">
+                            <tr class="text-gray-500 font-semibold uppercase tracking-wider text-xs">
+                                <th class="py-3 px-6 w-10"><input type="checkbox" id="selectAllArchiveCheckbox" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"></th>
+                                <th class="py-3 px-6">Student No.</th>
+                                <th class="py-3 px-6">Full Name</th>
+                                <th class="py-3 px-6">Course</th>
+                                <th class="py-3 px-6">Section</th>
+                                <th class="py-3 px-6">Email</th>
+                                <th class="py-3 px-6 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
+                            <?php foreach ($archived_students as $arch): ?>
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="py-3 px-6 text-center"><input type="checkbox" class="archive-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $arch['student_id'] ?>"></td>
+                                <td class="py-3 px-6 font-mono text-xs"><?= htmlspecialchars($arch['student_id']) ?></td>
+                                <td class="py-3 px-6 font-medium text-gray-900"><?= htmlspecialchars($arch['full_name']) ?></td>
+                                <td class="py-3 px-6 text-xs"><?= htmlspecialchars($arch['program']) ?></td>
+                                <td class="py-3 px-6"><span class="bg-gray-100 text-gray-800 py-0.5 px-2 rounded-full text-xs"><?= htmlspecialchars($arch['section']) ?></span></td>
+                                <td class="py-3 px-6 text-xs text-gray-500"><?= htmlspecialchars($arch['email']) ?></td>
+                                <td class="py-3 px-6 text-right">
+                                    <div class="flex justify-end gap-2">
                                         <form method="POST" style="display:inline;">
                                             <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="single_restore">
                                             <input type="hidden" name="id" value="<?= $arch['student_id'] ?>">
-                                            <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs">Restore</button>
+                                            <button type="submit" class="bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1 rounded-md text-xs font-medium transition-colors border border-green-200">Restore</button>
                                         </form>
                                         <form method="POST" style="display:inline;" onsubmit="return confirm('Permanently delete this student? This cannot be undone.');">
                                             <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="single_delete">
                                             <input type="hidden" name="id" value="<?= $arch['student_id'] ?>">
-                                            <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs ml-1">Delete</button>
+                                            <button type="submit" class="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1 rounded-md text-xs font-medium transition-colors border border-red-200">Delete</button>
                                         </form>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </main>
 
     <!-- Filter Modal -->
-    <div class="modal" id="filterModal" tabindex="-1">
-        <div class="modal-dialog modal-lg max-w-2xl">
-            <div class="modal-content">
-                <div class="modal-header flex justify-between items-center p-4 border-b">
-                    <h5 class="text-lg font-bold">Filter Students</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button>
+    <div class="modal fade" id="filterModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+                <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                    <h5 class="text-lg font-bold text-gray-800"><i class="fas fa-filter text-gray-500 mr-2"></i>Filter Students</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body p-4">
-                    <form method="GET" id="filterForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label class="block text-sm font-medium">Course</label><select name="course" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($courses as $crs): ?><option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['course']) && $_GET['course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option><?php endforeach; ?></select></div>
-                        <div><label class="block text-sm font-medium">Section</label><select name="section" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($sections as $sec): ?><option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['section']) && $_GET['section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option><?php endforeach; ?></select></div>
-                        <div class="col-span-2 text-right"><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Apply Filters</button><a href="students.php" class="bg-gray-300 text-gray-800 px-4 py-2 rounded ml-2">Reset</a><button type="button" class="bg-gray-500 text-white px-4 py-2 rounded ml-2" data-bs-dismiss="modal">Cancel</button></div>
+                <div class="modal-body p-6">
+                    <form method="GET" id="filterForm" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                            <select name="course" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="">All Courses</option>
+                                <?php foreach ($courses as $crs): ?>
+                                    <option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['course']) && $_GET['course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                            <select name="section" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="">All Sections</option>
+                                <?php foreach ($sections as $sec): ?>
+                                    <option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['section']) && $_GET['section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-span-2 flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
+                            <a href="students.php" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Reset</a>
+                            <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Apply Filters</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -406,19 +477,38 @@ function parseStudentName($full_name, $middle_name) {
     </div>
 
     <!-- Archive Filter Modal -->
-    <div class="modal" id="archiveFilterModal" tabindex="-1">
-        <div class="modal-dialog modal-lg max-w-2xl">
-            <div class="modal-content">
-                <div class="modal-header flex justify-between items-center p-4 border-b">
-                    <h5 class="text-lg font-bold">Filter Archives</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button>
+    <div class="modal fade" id="archiveFilterModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+                <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                    <h5 class="text-lg font-bold text-gray-800"><i class="fas fa-filter text-gray-500 mr-2"></i>Filter Archives</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body p-4">
-                    <form method="GET" id="archiveFilterForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="modal-body p-6">
+                    <form method="GET" id="archiveFilterForm" class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <input type="hidden" name="archive_filter" value="1">
-                        <div><label class="block text-sm font-medium">Course</label><select name="arch_course" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($courses as $crs): ?><option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['arch_course']) && $_GET['arch_course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option><?php endforeach; ?></select></div>
-                        <div><label class="block text-sm font-medium">Section</label><select name="arch_section" class="w-full border rounded p-2"><option value="">All</option><?php foreach ($sections as $sec): ?><option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['arch_section']) && $_GET['arch_section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option><?php endforeach; ?></select></div>
-                        <div class="col-span-2 text-right"><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Apply Filters</button><a href="students.php" class="bg-gray-300 text-gray-800 px-4 py-2 rounded ml-2">Reset All</a><button type="button" class="bg-gray-500 text-white px-4 py-2 rounded ml-2" data-bs-dismiss="modal">Cancel</button></div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                            <select name="arch_course" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="">All Courses</option>
+                                <?php foreach ($courses as $crs): ?>
+                                    <option value="<?= htmlspecialchars($crs) ?>" <?= isset($_GET['arch_course']) && $_GET['arch_course'] == $crs ? 'selected' : '' ?>><?= htmlspecialchars($crs) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                            <select name="arch_section" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="">All Sections</option>
+                                <?php foreach ($sections as $sec): ?>
+                                    <option value="<?= htmlspecialchars($sec) ?>" <?= isset($_GET['arch_section']) && $_GET['arch_section'] == $sec ? 'selected' : '' ?>><?= htmlspecialchars($sec) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-span-2 flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
+                            <a href="students.php" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Reset All</a>
+                            <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Apply Filters</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -426,32 +516,59 @@ function parseStudentName($full_name, $middle_name) {
     </div>
 
     <!-- Edit Student Modal -->
-    <div class="modal" id="editModal" tabindex="-1">
+    <div class="modal fade" id="editModal" tabindex="-1">
         <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header flex justify-between items-center p-4 border-b">
-                    <h5 class="text-lg font-bold">Edit Student</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button>
+            <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+                <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                    <h5 class="text-lg font-bold text-gray-800">Edit Student</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST" id="editForm">
                     <?= csrf_field() ?>
-                    <div class="modal-body p-4">
+                    <div class="modal-body p-6 space-y-4">
                         <input type="hidden" name="action" value="update_student">
                         <input type="hidden" name="student_id" id="edit_student_id">
-                        <div class="mb-3"><label class="block text-sm font-medium">Last Name</label><input type="text" name="last_name" id="edit_last" class="w-full border rounded p-2" required></div>
-                        <div class="mb-3"><label class="block text-sm font-medium">First Name</label><input type="text" name="first_name" id="edit_first" class="w-full border rounded p-2" required></div>
-                        <div class="mb-3"><label class="block text-sm font-medium">Middle Name</label><input type="text" name="middle_name" id="edit_middle" class="w-full border rounded p-2"></div>
-                        <div class="mb-3"><label class="block text-sm font-medium">Course</label><input type="text" name="course" id="edit_course" class="w-full border rounded p-2" required></div>
-                        <div class="mb-3"><label class="block text-sm font-medium">Section</label><input type="text" name="section" id="edit_section" class="w-full border rounded p-2" required></div>
-                        <div class="mb-3"><label class="block text-sm font-medium">Email</label><input type="email" name="email" id="edit_email" class="w-full border rounded p-2" required></div>
-                        <div class="mb-3">
-                            <label class="block text-sm font-medium">New Student No. <span class="text-xs text-gray-500">(leave blank to keep current)</span></label>
-                            <input type="text" name="new_student_id" id="edit_new_student_id" class="w-full border rounded p-2" placeholder="Leave blank to keep current">
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                                <input type="text" name="last_name" id="edit_last" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                                <input type="text" name="first_name" id="edit_first" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                            <input type="text" name="middle_name" id="edit_middle" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                                <input type="text" name="course" id="edit_course" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                                <input type="text" name="section" id="edit_section" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <input type="email" name="email" id="edit_email" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                        </div>
+                        
+                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <label class="block text-sm font-medium text-blue-800 mb-1">New Student No. <span class="text-xs font-normal">(leave blank to keep current)</span></label>
+                            <input type="text" name="new_student_id" id="edit_new_student_id" class="w-full border border-blue-300 rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Leave blank to keep current">
                         </div>
                     </div>
-                    <div class="modal-footer p-4 border-t flex justify-end gap-2">
-                        <button type="button" class="bg-gray-300 text-gray-800 px-4 py-2 rounded" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Save Changes</button>
+                    <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                        <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Save Changes</button>
                     </div>
                 </form>
             </div>
@@ -459,23 +576,47 @@ function parseStudentName($full_name, $middle_name) {
     </div>
 
     <!-- Export Modal -->
-    <div class="modal" id="exportModal" tabindex="-1">
+    <div class="modal fade" id="exportModal" tabindex="-1">
         <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header flex justify-between items-center p-4 border-b">
-                    <h5 class="text-lg font-bold">Export Students</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button>
+            <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+                <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
+                    <h5 class="text-lg font-bold text-gray-800">Export Students</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body p-4">
-                    <div class="mb-3"><label class="block text-sm font-medium">Format</label><select id="exportFormat" class="w-full border rounded p-2"><option value="csv">CSV (Excel compatible)</option><option value="pdf">PDF (Print to PDF)</option></select></div>
-                    <div class="mb-3"><label class="block text-sm font-medium">Export scope</label><select id="exportScope" class="w-full border rounded p-2"><option value="all">All filtered students</option><option value="selected">Only selected students (checked rows)</option></select></div>
-                    <div class="mb-3"><label class="block text-sm font-medium">Columns to include</label>
-                        <div class="space-y-1"><div><input type="checkbox" id="col_student_no" checked> <label>Student No.</label></div><div><input type="checkbox" id="col_last_name" checked> <label>Last Name</label></div><div><input type="checkbox" id="col_first_name" checked> <label>First Name</label></div><div><input type="checkbox" id="col_middle_name" checked> <label>Middle Name</label></div><div><input type="checkbox" id="col_course" checked> <label>Course</label></div><div><input type="checkbox" id="col_section" checked> <label>Section</label></div><div><input type="checkbox" id="col_email" checked> <label>Email</label></div></div>
+                <div class="modal-body p-6 space-y-5">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                            <select id="exportFormat" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="csv">CSV (Excel compatible)</option>
+                                <option value="pdf">PDF (Print to PDF)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Export scope</label>
+                            <select id="exportScope" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                <option value="all">All filtered students</option>
+                                <option value="selected">Only selected students</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Columns to include</label>
+                        <div class="grid grid-cols-2 gap-2 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_student_no" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Student No.</span></label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_last_name" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Last Name</span></label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_first_name" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">First Name</span></label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_middle_name" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Middle Name</span></label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_course" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Course</span></label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_section" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Section</span></label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_email" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Email</span></label>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer p-4 border-t flex justify-end gap-2">
-                    <button type="button" class="bg-gray-300 text-gray-800 px-4 py-2 rounded" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" id="doExport" class="bg-green-600 text-white px-4 py-2 rounded">Export</button>
+                <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                    <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="doExport" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Export</button>
                 </div>
             </div>
         </div>
@@ -494,15 +635,18 @@ function parseStudentName($full_name, $middle_name) {
             paging: true,
             searching: true,
             pageLength: 10,
+            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]], // <-- ADD THIS LINE
             language: { search: "" },
             dom: 'lrtip'
         });
+        
         $('#searchInput').on('keyup', function() { table.search($(this).val()).draw(); });
 
         $('#selectAllCheckbox').on('change', function() {
             var isChecked = $(this).prop('checked');
             $('.row-checkbox:visible').prop('checked', isChecked);
         });
+        
         $('#studentsTable tbody').on('change', '.row-checkbox', function() {
             var totalVisible = $('.row-checkbox:visible').length;
             var checkedVisible = $('.row-checkbox:visible:checked').length;
@@ -545,6 +689,7 @@ function parseStudentName($full_name, $middle_name) {
             var isChecked = $(this).prop('checked');
             $('.archive-checkbox:visible').prop('checked', isChecked);
         });
+        
         $('#archiveTable tbody').on('change', '.archive-checkbox', function() {
             var total = $('.archive-checkbox:visible').length;
             var checked = $('.archive-checkbox:visible:checked').length;
@@ -578,6 +723,7 @@ function parseStudentName($full_name, $middle_name) {
         });
 
         $('#exportBtn').on('click', function() { $('#exportModal').modal('show'); });
+        
         $('#doExport').on('click', function() {
             var format = $('#exportFormat').val();
             var scope = $('#exportScope').val();
@@ -600,7 +746,6 @@ function parseStudentName($full_name, $middle_name) {
                 if (studentIds.length === 0) { alert('No students to export.'); return; }
             }
 
-            // Build POST form (CSRF-safe)
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = 'export_students.php';

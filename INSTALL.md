@@ -12,7 +12,7 @@ Read the Quick Start below if you just want to run the system on your own machin
 
 ## Quick Start — Local Development (Windows + XAMPP)
 
-If you just want to run ACES locally for development or testing, follow these 5 steps. **You can skip every section below marked "Production only" or "Shared hosting."**
+If you just want to run ACES locally for development or testing, follow these 6 steps. **You can skip every section below marked "Production only" or "Shared hosting."**
 
 ### 1. Install XAMPP
 
@@ -59,10 +59,20 @@ APP_DEBUG=true
 
 Leave the `MAIL_*` values blank if you don't need email features (registration verification, password reset). Everything else will work.
 
-### 5. Open in browser
+### 5. Compile Tailwind CSS (Crucial Step)
+
+The system **no longer uses the Tailwind CDN**. It uses a locally compiled CSS file. A standalone Windows executable (`tailwindcss.exe`) is included in the project root.
+
+If you (or future maintainers) ever change any HTML classes in the `.php` files, you **must** recompile the CSS. Run this command:
+
+```powershell
+.\tailwindcss.exe -i .\assets\css\tailwind.src.css -o .\assets\css\tailwind.css --minify
+```
+
+### 6. Open in browser
 
 ```
-http://localhost/cair-system/login.php
+http://localhost/cair-system/index.php
 ```
 
 Log in with a default account:
@@ -123,7 +133,7 @@ Log in with the cPanel username and password from your hosting provider.
 2. Navigate to `public_html/` (your main domain root). If deploying to a subdomain, navigate to that subdomain's folder instead.
 3. Click **Upload** and upload a ZIP archive of the ACES project.
 
-   > **Don't have a ZIP?** On your local machine, right-click the `cair-system` folder → **Send to** → **Compressed (zipped) folder**. Exclude `.env` and `.git` from the archive.
+   > **CRITICAL:** Before zipping your project folder, **exclude** the `tailwindcss.exe` and `tailwindcss-windows-x64.exe` files. They are over 100MB and will fail to upload. The compiled `assets/css/tailwind.css` file must be included.
 
 4. Once uploaded, go back to File Manager, right-click the ZIP file, and click **Extract**.
 5. After extraction, if the files are inside a subfolder (e.g. `public_html/cair-system/`), either move them up to `public_html/` directly, or plan to access the app at `https://yourdomain.com/cair-system/`.
@@ -162,7 +172,6 @@ SET SESSION sql_mode = '';
 2. Choose **PHP 8.0**, **8.1**, **8.2**, or **8.3** from the dropdown (whichever is available and at least 8.0).
 3. Click the **Extensions** tab.
 4. Enable these extensions if they're not already checked:
-
    - `pdo`
    - `pdo_mysql`
    - `mbstring`
@@ -208,7 +217,6 @@ CRON_SECRET=generate_a_random_64_char_string
 ```
 
 > **Security note:** Never commit `.env` to GitHub. It stays on the server only.
-
 > **Setting `APP_ENV=production` and `APP_DEBUG=false` is critical** — it disables detailed error messages that would leak file paths and database structure to visitors.
 
 ### Step 7 — Set file permissions
@@ -230,7 +238,6 @@ Most cPanel hosts include **AutoSSL** (free Let's Encrypt certificates). To enab
 3. Wait a few minutes for issuance.
 
 Once HTTPS is active, uncomment the redirect block in the root `.htaccess` file:
-
 1. File Manager → `.htaccess` → **Edit**.
 2. Find the block with `RewriteCond %{HTTPS} off` and remove the `#` from the start of those lines.
 3. Save.
@@ -351,7 +358,13 @@ chmod -R 775 /var/www/html/cair-system/uploads
 chmod 600 /var/www/html/cair-system/.env
 ```
 
-### 5. Verify Database Migrations (optional — safety check)
+### 5. Tailwind CSS on Linux
+The compiled `assets/css/tailwind.css` is already included in the repo, so this step is usually skipped. If you edit the HTML classes and need to rebuild it on the Linux server, run:
+```bash
+npx tailwindcss -i ./assets/css/tailwind.src.css -o ./assets/css/tailwind.css --minify
+```
+
+### 6. Verify Database Migrations (optional — safety check)
 
 The included `database/aces_db.sql` already contains every table and column the system needs, so this step is normally unnecessary.
 
@@ -384,7 +397,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 );
 ```
 
-### 6. Configure Apache
+### 7. Configure Apache
 
 Create a virtual host file at `/etc/apache2/sites-available/aces.conf`:
 
@@ -411,7 +424,7 @@ sudo a2enmod rewrite headers
 sudo systemctl restart apache2
 ```
 
-### 7. Enable HTTPS
+### 8. Enable HTTPS
 
 ```bash
 sudo apt install certbot python3-certbot-apache
@@ -420,7 +433,7 @@ sudo certbot --apache -d aces.kld.edu.ph
 
 Then uncomment the HTTPS redirect block in the root `.htaccess` file.
 
-### 8. Set Up Cron Jobs
+### 9. Set Up Cron Jobs
 
 ```bash
 crontab -e
@@ -433,7 +446,7 @@ Add these two lines:
 0 */6 * * * /usr/bin/php /var/www/html/cair-system/cron/send_reminders.php
 ```
 
-### 9. Create the Initial Super Admin (optional — a default admin exists)
+### 10. Create the Initial Super Admin (optional — a default admin exists)
 
 The imported dump already contains an admin account at `staff@aces.edu` with password `password`. If you prefer to create a fresh one:
 
@@ -461,7 +474,6 @@ VALUES (
 ## Post-Installation Checklist
 
 ### Functional
-
 - [ ] Home page loads
 - [ ] Login works with an admin account
 - [ ] Student registration creates a new account
@@ -475,7 +487,6 @@ VALUES (
 - [ ] Cron jobs run (check `logs/cron.log`)
 
 ### Security
-
 - [ ] All default passwords changed (especially `staff@aces.edu`, `adminstaff@aces.edu`)
 - [ ] `.env` is not web-accessible (`https://yoursite/.env` → 403)
 - [ ] `config/database.php` is not web-accessible (`https://yoursite/config/database.php` → 403)
@@ -485,9 +496,9 @@ VALUES (
 - [ ] HTTPS enforced and cert valid
 - [ ] Gmail App Password rotated from any value used during development
 - [ ] `CSRF_SECRET` and `CRON_SECRET` regenerated (do not reuse defaults)
+- [ ] **Institutional Policies:** `public/policies.php` is updated with the official KLD Terms and Data Privacy documents.
 
 ### Data
-
 - [ ] Test data (`TEST:` sessions, sample students) removed or hidden
 - [ ] Database backup strategy in place
 
@@ -509,6 +520,7 @@ When handing this system over to the ACES Unit's IT staff, provide:
 - Configuring HTTPS
 - Setting up automated backups
 - Changing all default passwords before go-live
+- Replacing `public/policies.php` with official institutional policies.
 
 **The research team is responsible for:**
 - Delivering this documentation
@@ -532,6 +544,7 @@ When handing this system over to the ACES Unit's IT staff, provide:
 | 500 error | Check `logs/error.log`; temporarily set `APP_DEBUG=true` in `.env` |
 | Cannot modify header info | No whitespace before `<?php` in any file |
 | Remember-me cookie not persisting | Ensure HTTPS is enabled (cookie is `Secure` when `APP_ENV=production`) |
+| CSS styles missing | Run `.\tailwindcss.exe -i .\assets\css\tailwind.src.css -o .\assets\css\tailwind.css --minify` |
 
 ---
 

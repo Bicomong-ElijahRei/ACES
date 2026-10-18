@@ -136,126 +136,156 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="assets/css/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <title>Student Registration | ACES</title>
+    <style>
+        * { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #00c07f !important;
+            box-shadow: 0 0 0 3px rgba(0, 192, 127, 0.15) !important;
+        }
+    </style>
 </head>
-<body class="bg-[radial-gradient(circle,_#2a5d1b_0%,_#0d1a0a_100%)] min-h-screen flex items-center justify-center p-4">
+<body class="bg-[radial-gradient(circle,_#2a5d1b_0%,_#0d1a0a_100%)] min-h-screen flex items-center justify-center p-4 py-10">
 
-   <div class="bg-white w-full max-w-4xl p-6 md:p-8 rounded-sm shadow-2xl">
+   <div class="bg-white w-full max-w-4xl p-6 md:p-10 rounded-2xl shadow-2xl">
 
-        <div class="flex items-center gap-4 border-b border-gray-100 pb-4 mb-6">
-            <img src="assets/images/kld_logo.png" alt="Logo" class="w-14 h-14 object-contain">
-            <h1 class="text-lg font-bold text-gray-800 uppercase leading-tight">
-                Kolehiyo ng Lungsod ng Dasmariñas
-            </h1>
+        <!-- Header -->
+        <div class="flex items-center gap-4 border-b border-gray-200 pb-5 mb-8">
+            <img src="assets/images/kld_logo.png" alt="Logo" class="w-16 h-16 object-contain drop-shadow-md">
+            <div>
+                <h1 class="text-xl font-extrabold text-gray-800 uppercase leading-tight tracking-wide">
+                    Kolehiyo ng Lungsod ng Dasmariñas
+                </h1>
+                <p class="text-sm text-gray-500 font-medium mt-1">Alumni Career, Enhancement and Services</p>
+            </div>
         </div>
 
-        <h2 class="text-center text-gray-500 text-xl mb-6">Register</h2>
+        <h2 class="text-center text-[#00c07f] text-2xl font-bold mb-8 tracking-wide">CREATE AN ACCOUNT</h2>
 
+        <!-- Error Messages -->
         <?php if ($error): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"><?= htmlspecialchars($error) ?></div>
+            <div class="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg mb-6 flex items-center gap-3 shadow-sm">
+                <i class="fas fa-exclamation-circle text-lg"></i>
+                <span class="text-sm font-medium"><?= htmlspecialchars($error) ?></span>
+            </div>
         <?php endif; ?>
 
         <form method="POST" action="">
             <?= csrf_field() ?>
 
             <!-- Student Information -->
-            <div class="mb-8">
-                <h3 class="text-emerald-600 text-sm font-semibold border-b border-gray-100 mb-4">Student Information</h3>
+            <div class="mb-10">
+                <h3 class="text-gray-800 text-lg font-bold border-b-2 border-gray-100 pb-2 mb-5 flex items-center gap-2">
+                    <i class="fas fa-user-graduate text-[#00c07f]"></i> Student Information
+                </h3>
 
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-5 mb-5">
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
-                        <input type="text" name="first_name" required class="border border-gray-400 p-2 rounded-sm text-sm focus:outline-none focus:border-emerald-500">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">First Name <span class="text-red-500">*</span></label>
+                        <input type="text" name="first_name" value="<?= htmlspecialchars($_POST['first_name'] ?? '') ?>" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Middle Name</label>
-                        <input type="text" name="middle_name" class="border border-gray-400 p-2 rounded-sm text-sm focus:outline-none focus:border-emerald-500">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Middle Name</label>
+                        <input type="text" name="middle_name" value="<?= htmlspecialchars($_POST['middle_name'] ?? '') ?>" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
-                        <input type="text" name="last_name" required class="border border-gray-400 p-2 rounded-sm text-sm focus:outline-none focus:border-emerald-500">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Last Name <span class="text-red-500">*</span></label>
+                        <input type="text" name="last_name" value="<?= htmlspecialchars($_POST['last_name'] ?? '') ?>" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Suffix Name</label>
-                        <input type="text" name="suffix" placeholder="e.g., Jr." class="border border-gray-400 p-2 rounded-sm text-sm focus:outline-none focus:border-emerald-500">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Suffix Name</label>
+                        <input type="text" name="suffix" value="<?= htmlspecialchars($_POST['suffix'] ?? '') ?>" placeholder="e.g., Jr." class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Course <span class="text-red-500">*</span></label>
-                        <select name="course" required class="border border-gray-400 p-2 rounded-sm text-sm bg-white">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Course <span class="text-red-500">*</span></label>
+                        <select name="course" required class="border border-gray-300 p-2.5 rounded-lg text-sm bg-gray-50 focus:bg-white appearance-none cursor-pointer">
                             <option value="">Select Course</option>
-                            <option>BS Information Systems</option>
-                            <option>BS Psychology</option>
-                            <option>BS Midwifery</option>
-                            <option>BS Engineering</option>
+                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Information Systems') ? 'selected' : '' ?>>BS Information Systems</option>
+                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Psychology') ? 'selected' : '' ?>>BS Psychology</option>
+                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Midwifery') ? 'selected' : '' ?>>BS Midwifery</option>
+                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Engineering') ? 'selected' : '' ?>>BS Engineering</option>
                         </select>
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Year & Section <span class="text-red-500">*</span></label>
-                        <input type="text" name="section" placeholder="e.g., 401" required class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Year & Section <span class="text-red-500">*</span></label>
+                        <input type="text" name="section" value="<?= htmlspecialchars($_POST['section'] ?? '') ?>" placeholder="e.g., 401" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Student Number <span class="text-red-500">*</span></label>
-                        <input type="text" name="student_id" placeholder="2023-2-000677" required class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Student Number <span class="text-red-500">*</span></label>
+                        <input type="text" name="student_id" value="<?= htmlspecialchars($_POST['student_id'] ?? '') ?>" placeholder="2023-2-000677" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
 
             <!-- Contact Details -->
-            <div class="mb-8">
-                <h3 class="text-emerald-600 text-sm font-semibold border-b border-gray-100 mb-4">Contact Details</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="mb-10">
+                <h3 class="text-gray-800 text-lg font-bold border-b-2 border-gray-100 pb-2 mb-5 flex items-center gap-2">
+                    <i class="fas fa-address-book text-[#00c07f]"></i> Contact Details
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Telephone No.</label>
-                        <input type="text" name="telephone" placeholder="02-123-4567" class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Telephone No.</label>
+                        <input type="text" name="telephone" value="<?= htmlspecialchars($_POST['telephone'] ?? '') ?>" placeholder="02-123-4567" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Mobile No. <span class="text-red-500">*</span></label>
-                        <input type="text" name="mobile" placeholder="09XXXXXXXXX" required class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Mobile No. <span class="text-red-500">*</span></label>
+                        <input type="text" name="mobile" value="<?= htmlspecialchars($_POST['mobile'] ?? '') ?>" placeholder="09XXXXXXXXX" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
-                        <input type="email" name="email" placeholder="student@kld.edu.ph" required class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Email <span class="text-red-500">*</span></label>
+                        <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" placeholder="student@kld.edu.ph" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
 
             <!-- Account Details -->
-            <div class="mb-8">
-                <h3 class="text-emerald-600 text-sm font-semibold border-b border-gray-100 mb-4">Account Details</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="mb-10">
+                <h3 class="text-gray-800 text-lg font-bold border-b-2 border-gray-100 pb-2 mb-5 flex items-center gap-2">
+                    <i class="fas fa-shield-alt text-[#00c07f]"></i> Account Details
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Username (optional)</label>
-                        <input type="text" name="username" placeholder="Choose a username" class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Username (optional)</label>
+                        <input type="text" name="username" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" placeholder="Choose a username" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="password" required class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Password <span class="text-red-500">*</span></label>
+                        <input type="password" name="password" required minlength="6" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                     <div class="flex flex-col">
-                        <label class="text-xs font-medium text-gray-700 mb-1">Confirm Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="confirm_password" required class="border border-gray-400 p-2 rounded-sm text-sm">
+                        <label class="text-sm font-semibold text-gray-600 mb-1.5">Confirm Password <span class="text-red-500">*</span></label>
+                        <input type="password" name="confirm_password" required minlength="6" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
 
             <!-- Terms and Submit -->
-            <div class="flex flex-col md:flex-row items-end justify-between gap-4 mt-6">
-                <div class="flex gap-3 max-w-lg">
-                    <input type="checkbox" id="terms" name="terms" required class="mt-1">
-                    <label for="terms" class="text-[10px] text-gray-500 leading-tight">
-                        By checking the box during registration, you acknowledge that you have read and agreed to these <strong>Terms and Conditions.</strong>
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6 mt-8 pt-6 border-t border-gray-100">
+                <div class="flex gap-3 max-w-xl">
+                    <input type="checkbox" id="terms" name="terms" required <?= isset($_POST['terms']) ? 'checked' : '' ?> class="mt-1 w-4 h-4 text-[#00c07f] rounded focus:ring-[#00c07f] cursor-pointer">
+                    <label for="terms" class="text-xs text-gray-500 leading-relaxed cursor-pointer">
+                        By checking the box during registration, you acknowledge that you have read and agreed to these 
+                        <a href="public/policies.php#terms" target="_blank" class="text-[#0a6e2d] font-bold hover:underline">Terms and Conditions</a> 
+                        and 
+                        <a href="public/policies.php#privacy" target="_blank" class="text-[#0a6e2d] font-bold hover:underline">Data Privacy Policy</a>.
                     </label>
                 </div>
-                <button type="submit" class="bg-[#00c07f] hover:bg-[#00a86f] text-white font-bold py-2 px-8 rounded-full transition-colors">
+                <button type="submit" class="bg-[#00c07f] hover:bg-[#00a86f] text-white font-bold py-3 px-10 rounded-full shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 whitespace-nowrap">
                     Register
                 </button>
             </div>
         </form>
-        <p class="text-center text-sm text-gray-500 mt-4"><a href="index.php" class="text-[#0a6e2d] hover:underline">Back to Login</a></p>
+
+        <div class="text-center mt-8 pt-6 border-t border-gray-100">
+            <p class="text-sm text-gray-500">Already have an account? <a href="index.php" class="text-[#0a6e2d] font-bold hover:underline">Back to Login</a></p>
+        </div>
    </div>
+
    <script>
         // Simple client-side password match check
         document.querySelector('form').addEventListener('submit', function(e) {

@@ -64,7 +64,6 @@ if ($action === 'create') {
         $content_type = $_POST['content_type'];
         if ($content_type == 'file' && isset($_FILES['module_file']) && $_FILES['module_file']['error'] == UPLOAD_ERR_OK) {
             $upload_result = aces_upload('module_file', 'modules');
-
             if ($upload_result['ok']) {
                 $filename = basename($upload_result['path']);
                 $content  = 'file:' . $filename;
@@ -159,19 +158,18 @@ $deleted_items = $stmt_deleted->fetchAll();
 // Fetch all subtopics for dropdowns
 $subtopics = $pdo->query("SELECT subtopic_id, title FROM subtopics ORDER BY title")->fetchAll();
 
-// Content helper — supports both legacy and new upload paths
+// Content helper
 function renderContent($content) {
     if (empty($content)) return '';
     if (strpos($content, 'file:') === 0) {
         $file = substr($content, 5);
-        // Support both legacy flat files (uploads/) and new subfolder (uploads/modules/)
         $url = file_exists(__DIR__ . '/../uploads/' . $file)
             ? '../uploads/' . $file
             : '../uploads/modules/' . $file;
-        return "<a href='{$url}' target='_blank' class='text-blue-600 underline'>Download File</a>";
+        return "<a href='{$url}' target='_blank' class='text-blue-600 hover:underline inline-flex items-center gap-1'><i class='fas fa-download'></i> Download File</a>";
     } elseif (strpos($content, 'link:') === 0) {
         $url = substr($content, 5);
-        return "<a href='$url' target='_blank' class='text-blue-600 underline'>Open Link</a>";
+        return "<a href='$url' target='_blank' class='text-blue-600 hover:underline inline-flex items-center gap-1'><i class='fas fa-external-link-alt'></i> Open Link</a>";
     } elseif (strpos($content, 'text:') === 0) {
         return nl2br(htmlspecialchars(substr($content, 5)));
     } elseif (strpos($content, 'form:') === 0) {
@@ -180,7 +178,7 @@ function renderContent($content) {
         $json = substr($content, 5);
         $questions = json_decode($json, true);
         $count = is_array($questions) ? count($questions) : 0;
-        return "<span class='inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full'>Quiz</span> {$count} question(s)";
+        return "<span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800'><i class='fas fa-question-circle mr-1'></i> Quiz ({$count} questions)</span>";
     } else {
         return nl2br(htmlspecialchars($content));
     }
@@ -199,23 +197,12 @@ function renderContent($content) {
         html, body { height: 100%; margin: 0; padding: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Modal Fixes */
         .modal-backdrop { z-index: 1040 !important; }
         .modal { z-index: 1050 !important; }
-        .session-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; transition: 0.2s; }
-        .session-card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
-        .session-card .card-header { background: #054018; color: white; padding: 14px 16px; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-        .session-card .card-header .title-block { flex: 1; min-width: 0; }
-        .session-card .card-header .title-block h3 { font-size: 0.9rem; font-weight: 700; line-height: 1.3; word-break: break-word; }
-        .session-card .card-header .title-block .phase { font-size: 0.7rem; opacity: 0.8; }
-        .session-card .card-body { padding: 16px; }
-        .session-card .action-btns { display: flex; gap: 6px; align-items: center; }
-        .session-card .action-btns button { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 6px 10px; border-radius: 6px; font-size: 0.9rem; cursor: pointer; transition: 0.15s; }
-        .session-card .action-btns button:hover { background: rgba(255,255,255,0.3); border-color: rgba(255,255,255,0.5); }
-        .subtopic-badge { background: #e5e7eb; padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; margin-left: 4px; }
-        .required-badge { background: #dc2626; color: white; }
-        .phase-badge { font-size: 0.7rem; padding: 2px 10px; border-radius: 20px; font-weight: 600; text-transform: uppercase; }
-        .phase-Module { background: #dbeafe; color: #1e40af; }
-        .phase-Assessment { background: #f3e8ff; color: #6b21a8; }
+        
+        /* Toast Animation */
         @keyframes slideInToast {
             from { transform: translateX(120%); opacity: 0; }
             to   { transform: translateX(0); opacity: 1; }
@@ -228,51 +215,72 @@ function renderContent($content) {
 
 <div class="flex-1 flex flex-col overflow-hidden">
     <?php include '../includes/header.php'; ?>
-    <main class="flex-1 p-4 md:p-6 overflow-y-auto no-scrollbar">
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
 
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl md:text-4xl font-bold text-[#0a6e2d]">
-                <i class="fas fa-book-open mr-2"></i>Manage Modules
-            </h1>
-            <a href="dashboard.php" class="text-[#0a6e2d]">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10.4V21h18V10.4l-9-6.3-9 6.3zM14.2 19h-4.4v-5.6h4.4V19z"/></svg>
-            </a>
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-[#0a6e2d]">
+                    <i class="fas fa-book-open mr-2"></i>Manage Modules
+                </h1>
+                <p class="text-sm text-gray-600 mt-1">Create, organize, and track learning materials and assessments.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <?php if (!isViewer()): ?>
+                <button class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium py-2 px-4 rounded-lg inline-flex items-center shadow-sm transition-colors" data-bs-toggle="modal" data-bs-target="#createModal">
+                    <i class="fas fa-plus mr-2"></i> Create New
+                </button>
+                <?php endif; ?>
+                <a href="dashboard.php" class="text-[#0a6e2d] bg-white p-2 rounded-full shadow-sm hover:shadow-md transition-shadow">
+                    <i class="fa-solid fa-house text-xl"></i>
+                </a>
+            </div>
         </div>
 
+        <!-- Flash Messages -->
         <?php if (isset($_GET['msg'])): ?>
-            <?php if ($_GET['msg'] == 'archived'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Item(s) archived.</div>
-            <?php elseif ($_GET['msg'] == 'restored'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Item(s) restored.</div>
-            <?php elseif ($_GET['msg'] == 'deleted'): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">Item(s) permanently deleted.</div>
-            <?php endif; ?>
+            <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                <i class="fas fa-check-circle"></i> 
+                <?php 
+                    if ($_GET['msg'] == 'archived') echo 'Item(s) archived.';
+                    elseif ($_GET['msg'] == 'restored') echo 'Item(s) restored.';
+                    elseif ($_GET['msg'] == 'deleted') echo 'Item(s) permanently deleted.';
+                ?>
+                <button type="button" class="ml-auto text-green-700 hover:text-green-900" onclick="this.parentElement.remove()">&times;</button>
+            </div>
         <?php endif; ?>
         <?php if ($success): ?>
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4"><?= htmlspecialchars($success) ?></div>
+            <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success) ?>
+                <button type="button" class="ml-auto text-green-700 hover:text-green-900" onclick="this.parentElement.remove()">&times;</button>
+            </div>
         <?php elseif ($error): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"><?= htmlspecialchars($error) ?></div>
+            <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?>
+                <button type="button" class="ml-auto text-red-700 hover:text-red-900" onclick="this.parentElement.remove()">&times;</button>
+            </div>
         <?php endif; ?>
 
-        <!-- Create Button + Filters -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <!-- Toolbar -->
+        <div class="bg-white p-4 rounded-t-xl border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm mb-6">
             <div class="flex flex-wrap items-center gap-2">
-                <input type="checkbox" id="selectAllActive" class="w-4 h-4 text-green-600 border-gray-300 rounded">
-                <button id="bulkArchiveBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white text-sm px-3 py-1.5 rounded hidden">
-                    <i class="fas fa-box-archive mr-1"></i> Archive Selected
+                <input type="checkbox" id="selectAllActive" class="w-4 h-4 text-[#0a6e2d] border-gray-300 rounded focus:ring-[#0a6e2d]">
+                <button id="bulkArchiveBtn" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-sm font-medium px-3 py-2 rounded-lg transition-colors shadow-sm hidden items-center gap-2">
+                    <i class="fas fa-box-archive"></i> Archive Selected
                 </button>
-                <select id="filterSubtopic" class="bg-white border border-gray-300 rounded px-2 py-1 text-xs">
+                <div class="h-6 w-px bg-gray-300 mx-1 hidden sm:block"></div>
+                <select id="filterSubtopic" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                     <option value="">All Subtopics</option>
                     <?php foreach ($subtopics as $sub): ?>
                         <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select id="filterType" class="bg-white border border-gray-300 rounded px-2 py-1 text-xs">
+                <select id="filterType" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                     <option value="">All Types</option>
                     <option value="module">Module</option>
                     <option value="assessment">Assessment</option>
                 </select>
-                <select id="sortBy" class="bg-white border border-gray-300 rounded px-2 py-1 text-xs">
+                <select id="sortBy" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                     <option value="due-asc">Sort: Due date (earliest)</option>
                     <option value="due-desc">Sort: Due date (latest)</option>
                     <option value="title-asc">Sort: Title (A → Z)</option>
@@ -283,23 +291,18 @@ function renderContent($content) {
                     <option value="created-desc">Sort: Recently created</option>
                     <option value="created-asc">Sort: Oldest first</option>
                 </select>
-                <div class="relative">
-                    <input type="text" id="searchActiveInput" placeholder="Search..." class="border border-gray-300 rounded-full px-3 py-1 text-xs w-36">
-                    <i class="fas fa-search absolute right-3 top-1.5 text-gray-400 text-[10px]"></i>
-                </div>
             </div>
-            <?php if (!isViewer()): ?>
-            <button class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center" data-bs-toggle="modal" data-bs-target="#createModal">
-                <i class="fas fa-plus mr-2"></i> Create
-            </button>
-            <?php endif; ?>
+            <div class="relative w-full md:w-64">
+                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                <input type="text" id="searchActiveInput" placeholder="Search items..." class="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+            </div>
         </div>
 
-        <!-- Active Items -->
+        <!-- Active Items Grid -->
         <?php if (count($active_items) > 0): ?>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8" id="activeItemsContainer">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10" id="activeItemsContainer">
                 <?php foreach ($active_items as $item): ?>
-                    <div class="session-card active-item-row"
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow active-item-row"
                          data-id="<?= $item['module_id'] ?>"
                          data-subtopic="<?= $item['subtopic_id'] ?>"
                          data-type="<?= $item['type'] ?>"
@@ -307,128 +310,157 @@ function renderContent($content) {
                          data-due="<?= htmlspecialchars($item['due_date'] ?? '') ?>"
                          data-created="<?= htmlspecialchars($item['created_at'] ?? '') ?>"
                          data-subtopic-title="<?= htmlspecialchars($item['subtopic_title']) ?>">
-                        <div class="card-header">
-                            <div class="title-block">
-                                <h3><?= htmlspecialchars($item['title']) ?></h3>
-                                <div class="phase mt-1">
-                                    <span class="phase-badge phase-<?= ucfirst($item['type']) ?>"><?= ucfirst($item['type']) ?></span>
-                                    <span class="text-xs ml-2 opacity-75"><?= htmlspecialchars($item['subtopic_title']) ?></span>
+                        
+                        <!-- Card Header -->
+                        <div class="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-start">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <?php if ($item['type'] == 'module'): ?>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 uppercase tracking-wide"><i class="fas fa-book mr-1"></i> Module</span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800 uppercase tracking-wide"><i class="fas fa-clipboard-check mr-1"></i> Assessment</span>
+                                    <?php endif; ?>
                                 </div>
+                                <h3 class="text-lg font-bold text-gray-900 leading-tight mt-1"><?= htmlspecialchars($item['title']) ?></h3>
+                                <div class="text-xs text-gray-500 mt-1"><i class="fas fa-folder mr-1"></i> <?= htmlspecialchars($item['subtopic_title']) ?></div>
                             </div>
-                            <div class="action-btns">
-                                <?php if ($item['type'] == 'module'): ?>
-                                    <button class="view-module-status" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>" title="View Status"><i class="fas fa-eye"></i></button>
-                                <?php else: ?>
-                                    <button class="view-results" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>" title="View Results"><i class="fas fa-chart-bar"></i></button>
-                                <?php endif; ?>
-                                <?php if (!isViewer()): ?>
-                                    <button class="edit-item" data-id="<?= $item['module_id'] ?>" title="Edit"><i class="fas fa-edit"></i></button>
-                                    <form method="POST" class="inline">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="action" value="soft_delete">
-                                        <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
-                                        <button type="submit" onclick="return confirm('Archive this item?')" title="Archive"><i class="fas fa-trash-alt"></i></button>
-                                    </form>
-                                <?php endif; ?>
+                            
+                            <div class="flex flex-col gap-1 items-end">
+                                <input type="checkbox" class="row-checkbox-active w-4 h-4 text-[#0a6e2d] border-gray-300 rounded focus:ring-[#0a6e2d] mt-1">
                             </div>
                         </div>
-                        <div class="card-body text-sm">
+
+                        <!-- Card Body -->
+                        <div class="p-4 flex-1">
                             <?php if ($item['description']): ?>
-                                <p class="text-gray-500 text-xs mb-3"><?= nl2br(htmlspecialchars($item['description'])) ?></p>
+                                <p class="text-sm text-gray-600 mb-3 line-clamp-2"><?= nl2br(htmlspecialchars($item['description'])) ?></p>
                             <?php endif; ?>
+                            
                             <?php if ($item['due_date']): ?>
-                                <div class="text-xs text-gray-600 mb-2"><i class="far fa-calendar-alt mr-1"></i> Due: <?= date('M d, Y', strtotime($item['due_date'])) ?></div>
+                                <div class="text-xs font-medium text-gray-600 bg-gray-100 inline-block px-2 py-1 rounded mb-3"><i class="far fa-calendar-alt mr-1"></i> Due: <?= date('M d, Y', strtotime($item['due_date'])) ?></div>
                             <?php endif; ?>
+                            
                             <?php if ($item['content']): ?>
-                                <div class="text-xs text-gray-700"><?= renderContent($item['content']) ?></div>
+                                <div class="mt-3 pt-3 border-t border-gray-100 text-sm">
+                                    <?= renderContent($item['content']) ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Card Footer (Actions) -->
+                        <div class="p-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                            <div>
+                                <?php if ($item['type'] == 'module'): ?>
+                                    <button class="view-module-status text-gray-500 hover:text-[#0a6e2d] text-sm font-medium transition-colors" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>"><i class="fas fa-eye mr-1"></i> View Status</button>
+                                <?php else: ?>
+                                    <button class="view-results text-gray-500 hover:text-[#0a6e2d] text-sm font-medium transition-colors" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>"><i class="fas fa-chart-bar mr-1"></i> View Results</button>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <?php if (!isViewer()): ?>
+                            <div class="flex gap-1">
+                                <button class="edit-item text-gray-400 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-colors" data-id="<?= $item['module_id'] ?>" title="Edit"><i class="fas fa-edit"></i></button>
+                                <form method="POST" class="inline">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="action" value="soft_delete">
+                                    <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
+                                    <button type="submit" onclick="return confirm('Archive this item?')" class="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors" title="Archive"><i class="fas fa-trash-alt"></i></button>
+                                </form>
+                            </div>
                             <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
             </div>
         <?php else: ?>
-            <div class="bg-white rounded shadow-xl p-6 text-center text-gray-500 mb-8">No active modules or assessments.</div>
+            <div class="text-center py-16 bg-white rounded-xl border border-gray-200 border-dashed mb-10">
+                <i class="fas fa-book-open text-5xl text-gray-300 mb-4"></i>
+                <h3 class="text-lg font-medium text-gray-900">No active modules or assessments</h3>
+                <p class="text-sm text-gray-500 mt-1">Click "Create New" to add your first item.</p>
+            </div>
         <?php endif; ?>
 
         <!-- Archives Section -->
-        <div class="mt-8">
-            <div id="archiveHeader" class="flex justify-between items-center cursor-pointer bg-white rounded-t-lg px-6 py-3 shadow-md border border-gray-200">
-                <div class="font-bold text-[#0a6e2d]"><i class="fas fa-archive mr-2"></i> Archives <span class="bg-gray-500 text-white rounded-full px-2 py-0.5 text-xs ml-2"><?= count($deleted_items) ?></span></div>
-                <i class="fas fa-chevron-down transition-transform duration-200 text-gray-500"></i>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div id="archiveHeader" class="px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors">
+                <div class="flex items-center gap-2 font-bold text-gray-800">
+                    <i class="fas fa-archive text-gray-400"></i> Archived Items 
+                    <span class="bg-gray-100 text-gray-600 py-0.5 px-2.5 rounded-full text-xs font-semibold ml-1"><?= count($deleted_items) ?></span>
+                </div>
+                <i class="fas fa-chevron-down text-gray-400 transition-transform duration-200"></i>
             </div>
-            <div id="archiveContent" class="hidden mt-1">
-                <div class="bg-white rounded-b-lg shadow-md overflow-hidden border border-t-0 border-gray-200">
-                    <div class="bg-gray-50 p-3 border-b flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <input type="checkbox" id="selectAllArchive" class="w-4 h-4 text-green-600 border-gray-300 rounded">
-                            <button id="bulkRestoreBtn" class="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded hidden">
-                                <i class="fas fa-undo-alt mr-1"></i> Restore Selected
-                            </button>
-                            <button id="bulkDeleteBtn" class="bg-red-500 hover:bg-red-600 text-white text-sm px-3 py-1 rounded hidden">
-                                <i class="fas fa-trash-alt mr-1"></i> Delete Selected
-                            </button>
-                        </div>
-                        <div class="flex gap-2">
-                            <select id="filterArchSubtopic" class="border border-gray-300 rounded px-2 py-1 text-xs">
-                                <option value="">All Subtopics</option>
-                                <?php foreach ($subtopics as $sub): ?>
-                                    <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <select id="filterArchType" class="border border-gray-300 rounded px-2 py-1 text-xs">
-                                <option value="">All Types</option>
-                                <option value="module">Module</option>
-                                <option value="assessment">Assessment</option>
-                            </select>
-                            <div class="relative">
-                                <input type="text" id="searchArchInput" placeholder="Search..." class="border border-gray-300 rounded-full px-3 py-1 text-xs w-36">
-                                <i class="fas fa-search absolute right-3 top-1.5 text-gray-400 text-[10px]"></i>
-                            </div>
-                        </div>
+            
+            <div id="archiveContent" class="hidden border-t border-gray-200">
+                <div class="p-4 bg-gray-50 flex flex-wrap justify-between items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="selectAllArchive" class="w-4 h-4 text-[#0a6e2d] border-gray-300 rounded focus:ring-[#0a6e2d]">
+                        <button id="bulkRestoreBtn" class="bg-white border border-gray-300 hover:bg-green-50 text-green-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 shadow-sm hidden">
+                            <i class="fas fa-undo-alt"></i> Restore
+                        </button>
+                        <button id="bulkDeleteBtn" class="bg-white border border-gray-300 hover:bg-red-50 text-red-600 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 shadow-sm hidden">
+                            <i class="fas fa-trash-alt"></i> Delete
+                        </button>
                     </div>
-                    <div class="p-4 space-y-4" id="archiveItemsContainer">
-                        <?php if (count($deleted_items) > 0): ?>
-                            <?php foreach ($deleted_items as $item): ?>
-                                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 border border-gray-100 archive-item-row"
-                                     data-id="<?= $item['module_id'] ?>"
-                                     data-subtopic="<?= $item['subtopic_id'] ?>"
-                                     data-type="<?= $item['type'] ?>"
-                                     data-title="<?= htmlspecialchars($item['title']) ?>">
-                                    <div class="flex items-start gap-3 flex-1">
-                                        <input type="checkbox" class="row-checkbox-archive w-4 h-4 text-green-600 border-gray-300 rounded mt-1" value="<?= $item['module_id'] ?>">
-                                        <div>
-                                            <div class="flex items-center gap-2 mb-1">
-                                                <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $item['type'] == 'module' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800' ?>"><?= ucfirst($item['type']) ?></span>
-                                                <strong class="text-gray-800"><?= htmlspecialchars($item['title']) ?></strong>
-                                            </div>
-                                            <div class="text-sm text-gray-500"><i class="fas fa-folder-open mr-1"></i> <?= htmlspecialchars($item['subtopic_title']) ?></div>
-                                            <?php if ($item['due_date']): ?>
-                                                <div class="text-xs text-gray-400 mt-1">Due: <?= date('M d, Y', strtotime($item['due_date'])) ?></div>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                    <?php if (!isViewer()): ?>
-                                    <div class="flex items-center gap-2 ml-10">
-                                        <form method="POST" class="inline">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="action" value="restore">
-                                            <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
-                                            <button type="submit" class="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded">Restore</button>
-                                        </form>
-                                        <form method="POST" class="inline" onsubmit="return confirm('Permanently delete? This cannot be undone.');">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="action" value="hard_delete">
-                                            <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
-                                            <button type="submit" class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded">Delete</button>
-                                        </form>
-                                    </div>
-                                    <?php endif; ?>
-                                </div>
+                    <div class="flex gap-2">
+                        <select id="filterArchSubtopic" class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Subtopics</option>
+                            <?php foreach ($subtopics as $sub): ?>
+                                <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
                             <?php endforeach; ?>
-                        <?php else: ?>
-                            <p class="text-gray-500 text-sm">No archived items.</p>
-                        <?php endif; ?>
+                        </select>
+                        <select id="filterArchType" class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="">All Types</option>
+                            <option value="module">Module</option>
+                            <option value="assessment">Assessment</option>
+                        </select>
                     </div>
+                </div>
+
+                <div class="divide-y divide-gray-100" id="archiveItemsContainer">
+                    <?php if (count($deleted_items) > 0): ?>
+                        <?php foreach ($deleted_items as $item): ?>
+                            <div class="p-4 hover:bg-gray-50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 archive-item-row"
+                                 data-id="<?= $item['module_id'] ?>"
+                                 data-subtopic="<?= $item['subtopic_id'] ?>"
+                                 data-type="<?= $item['type'] ?>"
+                                 data-title="<?= htmlspecialchars($item['title']) ?>">
+                                
+                                <div class="flex items-start gap-3">
+                                    <input type="checkbox" class="row-checkbox-archive w-4 h-4 text-[#0a6e2d] border-gray-300 rounded mt-1" value="<?= $item['module_id'] ?>">
+                                    <div>
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <?php if ($item['type'] == 'module'): ?>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600 uppercase"><i class="fas fa-book mr-1"></i> Module</span>
+                                            <?php else: ?>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600 uppercase"><i class="fas fa-clipboard-check mr-1"></i> Assessment</span>
+                                            <?php endif; ?>
+                                            <strong class="text-gray-800"><?= htmlspecialchars($item['title']) ?></strong>
+                                        </div>
+                                        <div class="text-xs text-gray-500"><i class="fas fa-folder mr-1"></i> <?= htmlspecialchars($item['subtopic_title']) ?></div>
+                                    </div>
+                                </div>
+                                
+                                <?php if (!isViewer()): ?>
+                                <div class="flex gap-2 ml-7 md:ml-0">
+                                    <form method="POST" class="inline">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="restore">
+                                        <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
+                                        <button type="submit" class="bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-green-200">Restore</button>
+                                    </form>
+                                    <form method="POST" class="inline" onsubmit="return confirm('Permanently delete? This cannot be undone.');">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="hard_delete">
+                                        <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
+                                        <button type="submit" class="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200">Delete</button>
+                                    </form>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="p-8 text-center text-gray-500">No archived items.</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -436,167 +468,217 @@ function renderContent($content) {
     </main>
 </div>
 
-<!-- Results Modal -->
+<!-- ==================== RESULTS MODAL ==================== -->
 <div class="modal fade" id="resultsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-green-700 text-white">
-                <h5 class="modal-title">Status / Results</h5>
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-[#0a6e2d] text-white p-4 border-0">
+                <h5 class="text-lg font-bold">Status / Results</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" id="resultsModalBody">Loading...</div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <div class="modal-body p-6 bg-white" id="resultsModalBody">Loading...</div>
+            <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Create Modal -->
+<!-- ==================== CREATE MODAL ==================== -->
 <div class="modal fade" id="createModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-green-700 text-white">
-                <h5 class="modal-title"><i class="fas fa-plus-circle mr-2"></i>Create</h5>
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-[#0a6e2d] text-white p-4 border-0">
+                <h5 class="text-lg font-bold"><i class="fas fa-plus-circle mr-2"></i>Create New Item</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <ul class="nav nav-tabs" id="createTabs" role="tablist">
+            <div class="modal-body p-6 bg-gray-50">
+                <!-- Tabs -->
+                <ul class="nav nav-pills mb-6 bg-white p-2 rounded-xl shadow-sm border border-gray-200 inline-flex" id="createTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="module-tab" data-bs-toggle="tab" data-bs-target="#module" type="button" role="tab">Module</button>
+                        <button class="nav-link active rounded-lg font-medium px-4 py-2 text-sm" id="module-tab" data-bs-toggle="tab" data-bs-target="#module" type="button" role="tab"><i class="fas fa-book mr-2"></i>Module</button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="assessment-tab" data-bs-toggle="tab" data-bs-target="#assessment" type="button" role="tab">Assessment</button>
+                        <button class="nav-link rounded-lg font-medium px-4 py-2 text-sm" id="assessment-tab" data-bs-toggle="tab" data-bs-target="#assessment" type="button" role="tab"><i class="fas fa-clipboard-check mr-2"></i>Assessment</button>
                     </li>
                 </ul>
-                <div class="tab-content mt-3">
+
+                <div class="tab-content">
                     <!-- Module Tab -->
                     <div class="tab-pane fade show active" id="module" role="tabpanel">
                         <form method="POST" id="createModuleForm" enctype="multipart/form-data">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="create">
                             <input type="hidden" name="type" value="module">
-                            <div class="mb-3">
-                                <label class="form-label">Subtopic *</label>
-                                <select name="subtopic_id" class="form-select" required>
-                                    <option value="">Select Subtopic</option>
-                                    <?php foreach ($subtopics as $sub): ?>
-                                        <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Title *</label>
-                                <input type="text" name="title" class="form-control" required>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Description</label>
-                                <textarea name="description" rows="2" class="form-control"></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Due Date</label>
-                                <input type="date" name="due_date" class="form-control">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Content Type</label><br>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="content_type" value="file" id="module_file_radio" checked>
-                                    <label class="form-check-label" for="module_file_radio">Upload File</label>
+                            
+                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200 mb-6">
+                                <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Item Details</h6>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic <span class="text-red-500">*</span></label>
+                                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                            <option value="">Select Subtopic</option>
+                                            <?php foreach ($subtopics as $sub): ?>
+                                                <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
+                                        <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                    </div>
                                 </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="content_type" value="link" id="module_link_radio">
-                                    <label class="form-check-label" for="module_link_radio">Provide Link</label>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                    <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]"></textarea>
                                 </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="content_type" value="text" id="module_text_radio">
-                                    <label class="form-check-label" for="module_text_radio">Write Content</label>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                                    <input type="date" name="due_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 </div>
                             </div>
-                            <div id="module_file_div">
-                                <div class="mb-3">
-                                    <label class="form-label">File (PDF, DOC, etc. — max 10 MB)</label>
-                                    <input type="file" name="module_file" class="form-control">
-                                    <small class="text-gray-500 text-xs">Allowed: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, JPG, PNG, GIF, MP4, ZIP</small>
+
+                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+                                <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-file-alt text-gray-400 mr-2"></i>Content</h6>
+                                <div class="flex flex-wrap gap-4 mb-4">
+                                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d] transition-colors">
+                                        <input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="content_type" value="file" id="module_file_radio" checked>
+                                        <span class="text-sm font-medium text-gray-700">Upload File</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d] transition-colors">
+                                        <input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="content_type" value="link" id="module_link_radio">
+                                        <span class="text-sm font-medium text-gray-700">Provide Link</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d] transition-colors">
+                                        <input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="content_type" value="text" id="module_text_radio">
+                                        <span class="text-sm font-medium text-gray-700">Write Content</span>
+                                    </label>
+                                </div>
+
+                                <div id="module_file_div">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">File (PDF, DOC, etc. — max 10 MB)</label>
+                                    <input type="file" name="module_file" class="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d]/10 file:text-[#0a6e2d] hover:file:bg-[#0a6e2d]/20">
+                                </div>
+                                <div id="module_link_div" style="display:none;">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                                    <input type="text" name="module_link" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="https://...">
+                                </div>
+                                <div id="module_text_div" style="display:none;">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Write Module Content</label>
+                                    <textarea name="module_text" rows="6" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="Write your module content here..."></textarea>
                                 </div>
                             </div>
-                            <div id="module_link_div" style="display:none;">
-                                <div class="mb-3"><label class="form-label">URL</label><input type="text" name="module_link" class="form-control" placeholder="https://..."></div>
+
+                            <div class="mt-6 flex justify-end gap-3">
+                                <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium text-sm px-8 py-2.5 rounded-lg transition-colors shadow-sm">Create Module</button>
                             </div>
-                            <div id="module_text_div" style="display:none;">
-                                <div class="mb-3"><label class="form-label">Write Module Content</label><textarea name="module_text" rows="6" class="form-control" placeholder="Write your module content here..."></textarea></div>
-                            </div>
-                            <button type="submit" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded">Create Module</button>
                         </form>
                     </div>
+
                     <!-- Assessment Tab -->
                     <div class="tab-pane fade" id="assessment" role="tabpanel">
                         <form method="POST" id="createAssessmentForm">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="create">
                             <input type="hidden" name="type" value="assessment">
-                            <div class="mb-3">
-                                <label class="form-label">Subtopic *</label>
-                                <select name="subtopic_id" class="form-select" required>
-                                    <option value="">Select Subtopic</option>
-                                    <?php foreach ($subtopics as $sub): ?>
-                                        <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Title *</label>
-                                <input type="text" name="title" class="form-control" required>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Description</label>
-                                <textarea name="description" rows="2" class="form-control"></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Due Date</label>
-                                <input type="date" name="due_date" class="form-control">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Assessment Type</label><br>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="assessment_type" value="link" id="assess_link_radio" checked>
-                                    <label class="form-check-label" for="assess_link_radio">Provide Link (e.g., Google Form)</label>
+                            
+                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200 mb-6">
+                                <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Assessment Details</h6>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic <span class="text-red-500">*</span></label>
+                                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                            <option value="">Select Subtopic</option>
+                                            <?php foreach ($subtopics as $sub): ?>
+                                                <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
+                                        <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                    </div>
                                 </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="assessment_type" value="quiz" id="assess_quiz_radio">
-                                    <label class="form-check-label" for="assess_quiz_radio">Create Quiz / Assignment</label>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                    <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]"></textarea>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                                    <input type="date" name="due_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 </div>
                             </div>
-                            <div id="assessment_link_div">
-                                <div class="mb-3"><label class="form-label">Link</label><input type="text" name="assessment_link" class="form-control" placeholder="https://forms.google.com/..."></div>
-                            </div>
-                            <div id="assessment_quiz_div" style="display:none;">
-                                <div class="mb-3">
-                                    <label class="form-label">Questions</label>
-                                    <div id="questions-container">
+
+                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+                                <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-tasks text-gray-400 mr-2"></i>Assessment Type</h6>
+                                <div class="flex flex-wrap gap-4 mb-4">
+                                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d] transition-colors">
+                                        <input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="assessment_type" value="link" id="assess_link_radio" checked>
+                                        <span class="text-sm font-medium text-gray-700">Provide Link (e.g., Google Form)</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d] transition-colors">
+                                        <input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="assessment_type" value="quiz" id="assess_quiz_radio">
+                                        <span class="text-sm font-medium text-gray-700">Create Quiz / Assignment</span>
+                                    </label>
+                                </div>
+
+                                <div id="assessment_link_div">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Link</label>
+                                    <input type="text" name="assessment_link" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="https://forms.google.com/...">
+                                </div>
+                                
+                                <div id="assessment_quiz_div" style="display:none;">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <label class="block text-sm font-bold text-gray-700">Questions</label>
+                                        <button type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors border border-gray-300" id="add-question"><i class="fas fa-plus mr-1"></i> Add Question</button>
+                                    </div>
+                                    <div id="questions-container" class="space-y-4">
                                         <div class="question-template" style="display:none;">
-                                            <div class="card mb-3">
-                                                <div class="card-body">
-                                                    <div class="mb-2"><label class="form-label">Question Text</label><input type="text" class="form-control question-text"></div>
-                                                    <div class="mb-2"><label class="form-label">Type</label>
-                                                        <select class="form-select question-type">
+                                            <div class="card mb-4 border border-gray-200 rounded-xl bg-white overflow-hidden">
+                                                <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                                                    <span class="text-xs font-bold text-gray-500 uppercase">Question</span>
+                                                    <button type="button" class="text-red-500 hover:text-red-700 remove-question text-sm font-medium"><i class="fas fa-trash-alt"></i> Remove</button>
+                                                </div>
+                                                <div class="p-4 space-y-3">
+                                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                                        <div class="md:col-span-3">
+                                                            <label class="block text-sm font-medium text-gray-700 mb-1">Question Text</label>
+                                                            <input type="text" class="w-full border border-gray-300 rounded-lg p-2 question-text focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                                                            <input type="number" class="w-full border border-gray-300 rounded-lg p-2 question-points focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="1" step="0.5">
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                                        <select class="w-full border border-gray-300 rounded-lg p-2 question-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                                             <option value="multiple_choice">Multiple Choice</option>
                                                             <option value="true_false">True/False</option>
                                                             <option value="short_answer">Short Answer</option>
                                                         </select>
                                                     </div>
-                                                    <div class="question-options" style="display:none;"><label class="form-label">Options (comma separated)</label><input type="text" class="form-control question-options-list"></div>
-                                                    <div class="mb-2"><label class="form-label">Correct Answer</label><input type="text" class="form-control question-correct-answer"></div>
-                                                    <div class="mb-2"><label class="form-label">Points</label><input type="number" class="form-control question-points" value="1" step="0.5"></div>
-                                                    <button type="button" class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded remove-question">Remove</button>
+                                                    <div class="question-options" style="display:none;">
+                                                        <label class="block text-sm font-medium text-gray-700 mb-1">Options (comma separated)</label>
+                                                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 question-options-list focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="e.g., Option A, Option B, Option C">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-sm font-medium text-gray-700 mb-1">Correct Answer</label>
+                                                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 question-correct-answer focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <button type="button" class="bg-gray-500 hover:bg-gray-600 text-white text-sm px-3 py-1.5 rounded" id="add-question">+ Add Question</button>
                                 </div>
                                 <input type="hidden" name="quiz_data" id="quiz_data">
                             </div>
-                            <button type="submit" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded mt-3">Create Assessment</button>
+
+                            <div class="mt-6 flex justify-end gap-3">
+                                <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium text-sm px-8 py-2.5 rounded-lg transition-colors shadow-sm">Create Assessment</button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -605,15 +687,17 @@ function renderContent($content) {
     </div>
 </div>
 
-<!-- Edit Modal -->
+<!-- ==================== EDIT MODAL ==================== -->
 <div class="modal fade" id="editModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-green-700 text-white">
-                <h5 class="modal-title"><i class="fas fa-edit mr-2"></i>Edit Item</h5>
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-[#0a6e2d] text-white p-4 border-0">
+                <h5 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Item</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" id="editModalBody"><!-- AJAX populated --></div>
+            <div class="modal-body p-6 bg-gray-50" id="editModalBody">
+                <!-- AJAX populated -->
+            </div>
         </div>
     </div>
 </div>
@@ -622,31 +706,25 @@ function renderContent($content) {
 <script>
 // CSRF token for JS-generated forms
 const CSRF_TOKEN = '<?= csrf_token() ?>';
+
 // ============================================================
 // ERROR / SUCCESS HELPERS
 // ============================================================
 function extractError(html) {
-    // Look for the red error banner in the response HTML
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const banner = doc.querySelector('.bg-red-100');
-    if (banner) {
-        // Strip the trailing × close button character
-        return banner.textContent.replace(/×\s*$/, '').trim();
-    }
+    if (banner) return banner.textContent.replace(/×\s*$/, '').trim();
     return null;
 }
 
 function extractSuccess(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const banner = doc.querySelector('.bg-green-100');
-    if (banner) {
-        return banner.textContent.replace(/×\s*$/, '').trim();
-    }
+    if (banner) return banner.textContent.replace(/×\s*$/, '').trim();
     return null;
 }
 
 function showToast(message, type = 'info') {
-    // Remove any existing toasts
     document.querySelectorAll('.aces-toast').forEach(t => t.remove());
 
     const colors = {
@@ -659,23 +737,13 @@ function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = 'aces-toast';
     toast.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 99999;
-        background: ${c.bg};
-        color: ${c.text};
+        position: fixed; top: 20px; right: 20px; z-index: 99999;
+        background: ${c.bg}; color: ${c.text};
         border-left: 4px solid ${c.border};
-        padding: 14px 20px;
-        border-radius: 8px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-        max-width: 420px;
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        font-size: 14px;
-        font-weight: 500;
-        animation: slideInToast 0.3s ease;
+        padding: 14px 20px; border-radius: 8px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15); max-width: 420px;
+        display: flex; align-items: flex-start; gap: 12px;
+        font-size: 14px; font-weight: 500; animation: slideInToast 0.3s ease;
     `;
     toast.innerHTML = `
         <i class="fas ${c.icon}" style="margin-top:2px; font-size:16px;"></i>
@@ -683,10 +751,9 @@ function showToast(message, type = 'info') {
         <button onclick="this.parentElement.remove()" style="background:none; border:none; font-size:18px; cursor:pointer; color:${c.text}; opacity:0.6; padding:0; line-height:1;">&times;</button>
     `;
     document.body.appendChild(toast);
-
-    // Auto-remove after 6 seconds (errors stay longer)
     setTimeout(() => toast.remove(), type === 'error' ? 8000 : 4000);
 }
+
 // ========= FIX: CLEAN UP ALL BACKDROPS AFTER ANY MODAL CLOSE =========
 document.addEventListener('hidden.bs.modal', function () {
     document.body.classList.remove('modal-open');
@@ -714,6 +781,7 @@ document.getElementById('add-question').addEventListener('click', function() {
     const t = document.querySelector('.question-template').cloneNode(true);
     t.style.display = 'block'; t.classList.remove('question-template');
     t.querySelectorAll('input, select, textarea').forEach(el => { el.value = ''; el.removeAttribute('name'); el.removeAttribute('required'); });
+    t.querySelector('.question-points').value = '1';
     t.querySelector('.remove-question').addEventListener('click', () => t.remove());
     const sel = t.querySelector('.question-type');
     const opts = t.querySelector('.question-options');
@@ -731,27 +799,17 @@ document.getElementById('createModuleForm')?.addEventListener('submit', function
             .then(async (res) => {
                 const html = await res.text();
                 const err = extractError(html);
-                if (err) {
-                    showToast(err, 'error');
-                    btn.disabled = false;
-                    isCreating = false;
-                    return;
-                }
+                if (err) { showToast(err, 'error'); btn.disabled = false; isCreating = false; return; }
                 const ok = extractSuccess(html);
                 if (ok) showToast(ok, 'success');
                 setTimeout(() => location.reload(), ok ? 1800 : 0);
             })
-            .catch(err => {
-                showToast('Network error: ' + err, 'error');
-                btn.disabled = false;
-                isCreating = false;
-            });
+            .catch(err => { showToast('Network error: ' + err, 'error'); btn.disabled = false; isCreating = false; });
     });
 document.getElementById('createAssessmentForm')?.addEventListener('submit', function(e) {
     e.preventDefault(); if (isCreating) return; isCreating = true;
     const btn = this.querySelector('button[type="submit"]'); btn.disabled = true;
 
-    // Build quiz_data if needed (existing logic preserved)
     if (document.querySelector('input[name="assessment_type"]:checked').value === 'quiz') {
         const qs = [];
         document.querySelectorAll('#questions-container .card:not(.question-template)').forEach(div => {
@@ -778,11 +836,7 @@ document.getElementById('createAssessmentForm')?.addEventListener('submit', func
             if (ok) showToast(ok, 'success');
             setTimeout(() => location.reload(), ok ? 1800 : 0);
         })
-        .catch(err => {
-            showToast('Network error: ' + err, 'error');
-            btn.disabled = false;
-            isCreating = false;
-        });
+        .catch(err => { showToast('Network error: ' + err, 'error'); btn.disabled = false; isCreating = false; });
 });
 document.getElementById('createModal').addEventListener('show.bs.modal', () => {
     const c = document.getElementById('questions-container');
@@ -836,36 +890,94 @@ function buildEditModalHtml(data) {
         <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
         <input type="hidden" name="action" value="update">
         <input type="hidden" name="id" value="${data.module_id}">
-        <div class="mb-3"><label class="form-label">Subtopic *</label><select name="subtopic_id" class="form-select" required>`;
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200 mb-6">
+            <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Item Details</h6>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic <span class="text-red-500">*</span></label>
+                    <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>`;
     <?php foreach ($subtopics as $sub): ?>
         h += `<option value="<?= $sub['subtopic_id'] ?>" ${data.subtopic_id == <?= $sub['subtopic_id'] ?> ? 'selected' : ''}><?= addslashes($sub['title']) ?></option>`;
     <?php endforeach; ?>
-    h += `</select></div>
-        <div class="mb-3"><label class="form-label">Type</label><select name="type" class="form-select"><option value="module" ${data.type=='module'?'selected':''}>Module</option><option value="assessment" ${data.type=='assessment'?'selected':''}>Assessment</option></select></div>
-        <div class="mb-3"><label class="form-label">Title *</label><input type="text" name="title" class="form-control" value="${escapeHtml(data.title)}" required></div>
-        <div class="mb-3"><label class="form-label">Description</label><textarea name="description" rows="2" class="form-control">${escapeHtml(data.description)}</textarea></div>
-        <div class="mb-3"><label class="form-label">Due Date</label><input type="date" name="due_date" class="form-control" value="${data.due_date||''}"></div>`;
+    h += `</select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <select name="type" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]"><option value="module" ${data.type=='module'?'selected':''}>Module</option><option value="assessment" ${data.type=='assessment'?'selected':''}>Assessment</option></select>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
+                <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(data.title)}" required>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(data.description)}</textarea>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                <input type="date" name="due_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${data.due_date||''}">
+            </div>
+        </div>`;
+        
     if (data.type === 'assessment' && data.content?.startsWith('quiz:')) {
         const qs = JSON.parse(data.content.substring(5));
-        h += `<div class="mb-3"><label class="form-label">Assessment Type</label><br>
-            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="assessment_type" value="link" id="edit_assess_link_radio"><label for="edit_assess_link_radio">Provide Link</label></div>
-            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="assessment_type" value="quiz" id="edit_assess_quiz_radio" checked><label for="edit_assess_quiz_radio">Quiz / Assignment</label></div></div>
-            <div id="edit_quiz_div"><div class="mb-3"><label class="form-label">Questions</label><div id="edit_questions_container">`;
+        h += `<div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200 mb-6">
+                <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-tasks text-gray-400 mr-2"></i>Quiz Questions</h6>
+                <div class="flex flex-wrap gap-4 mb-4">
+                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d]"><input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="assessment_type" value="link" id="edit_assess_link_radio"><span class="text-sm font-medium text-gray-700">Provide Link</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:border-[#0a6e2d]"><input class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" type="radio" name="assessment_type" value="quiz" id="edit_assess_quiz_radio" checked><span class="text-sm font-medium text-gray-700">Quiz / Assignment</span></label>
+                </div>
+                <div id="edit_quiz_div">
+                    <div class="flex justify-between items-center mb-3">
+                        <label class="block text-sm font-bold text-gray-700">Questions</label>
+                        <button type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300" id="edit_add_question"><i class="fas fa-plus mr-1"></i> Add Question</button>
+                    </div>
+                    <div id="edit_questions_container" class="space-y-4">`;
         qs.forEach(q => {
-            h += `<div class="card mb-3"><div class="card-body">
-            <div class="mb-2"><label class="form-label">Question Text</label><input type="text" class="form-control question-text" value="${escapeHtml(q.text)}"></div>
-            <div class="mb-2"><label class="form-label">Type</label><select class="form-select question-type"><option value="multiple_choice" ${q.type=='multiple_choice'?'selected':''}>Multiple Choice</option><option value="true_false" ${q.type=='true_false'?'selected':''}>True/False</option><option value="short_answer" ${q.type=='short_answer'?'selected':''}>Short Answer</option></select></div>
-            <div class="question-options" style="display:${q.type=='multiple_choice'?'block':'none'};"><label class="form-label">Options (comma separated)</label><input type="text" class="form-control question-options-list" value="${escapeHtml(q.options?.join(', ')||'')}"></div>
-            <div class="mb-2"><label class="form-label">Correct Answer</label><input type="text" class="form-control question-correct-answer" value="${escapeHtml(q.correct)}"></div>
-            <div class="mb-2"><label class="form-label">Points</label><input type="number" class="form-control question-points" value="${q.points}" step="0.5"></div>
-            <button type="button" class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded remove-question">Remove</button></div></div>`;
+            h += `<div class="card mb-4 border border-gray-200 rounded-xl bg-white overflow-hidden">
+                <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                    <span class="text-xs font-bold text-gray-500 uppercase">Question</span>
+                    <button type="button" class="text-red-500 hover:text-red-700 remove-question text-sm font-medium"><i class="fas fa-trash-alt"></i> Remove</button>
+                </div>
+                <div class="p-4 space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div class="md:col-span-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Question Text</label>
+                            <input type="text" class="w-full border border-gray-300 rounded-lg p-2 question-text focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(q.text)}">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                            <input type="number" class="w-full border border-gray-300 rounded-lg p-2 question-points focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${q.points}" step="0.5">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                        <select class="w-full border border-gray-300 rounded-lg p-2 question-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]"><option value="multiple_choice" ${q.type=='multiple_choice'?'selected':''}>Multiple Choice</option><option value="true_false" ${q.type=='true_false'?'selected':''}>True/False</option><option value="short_answer" ${q.type=='short_answer'?'selected':''}>Short Answer</option></select>
+                    </div>
+                    <div class="question-options" style="display:${q.type=='multiple_choice'?'block':'none'};">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Options (comma separated)</label>
+                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 question-options-list focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(q.options?.join(', ')||'')}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Correct Answer</label>
+                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 question-correct-answer focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(q.correct)}">
+                    </div>
+                </div>
+            </div>`;
         });
-        h += `</div><button type="button" class="bg-gray-500 hover:bg-gray-600 text-white text-sm px-3 py-1.5 rounded" id="edit_add_question">+ Add Question</button></div><input type="hidden" name="quiz_data" id="edit_quiz_data"></div>`;
-        h += `<div id="edit_link_div" style="display:none;"><div class="mb-3"><label class="form-label">Link</label><input type="text" name="assessment_link" class="form-control"></div></div>`;
+        h += `</div></div><input type="hidden" name="quiz_data" id="edit_quiz_data"></div>`;
+        h += `<div id="edit_link_div" style="display:none;"><label class="block text-sm font-medium text-gray-700 mb-1">Link</label><input type="text" name="assessment_link" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]"></div></div>`;
     } else {
-        h += `<div class="mb-3"><label class="form-label">Content</label><textarea name="content" rows="3" class="form-control">${escapeHtml(data.content)}</textarea></div>`;
+        h += `<div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200 mb-6">
+                <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-file-alt text-gray-400 mr-2"></i>Content</h6>
+                <textarea name="content" rows="3" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(data.content)}</textarea>
+              </div>`;
     }
-    h += `<button type="submit" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded">Update</button></form>`;
+    h += `<div class="mt-6 flex justify-end gap-3">
+            <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium text-sm px-8 py-2.5 rounded-lg transition-colors shadow-sm">Update Item</button>
+          </div></form>`;
     return h;
 }
 function escapeHtml(s) { return s ? s.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]) : ''; }
@@ -877,6 +989,7 @@ function setupQuizBuilder(form) {
     function add() {
         const n = t.cloneNode(true); n.style.display = 'block'; n.classList.remove('question-template');
         n.querySelectorAll('input,select,textarea').forEach(el => { el.value = ''; el.removeAttribute('name'); el.removeAttribute('required'); });
+        n.querySelector('.question-points').value = '1';
         n.querySelector('.remove-question').addEventListener('click', () => n.remove());
         const s = n.querySelector('.question-type'); const o = n.querySelector('.question-options');
         s.addEventListener('change', () => o.style.display = s.value === 'multiple_choice' ? 'block' : 'none');
@@ -901,11 +1014,14 @@ document.querySelectorAll('.view-module-status').forEach(btn => {
         new bootstrap.Modal(document.getElementById('resultsModal')).show();
         fetch(`get_module_status.php?module_id=${this.dataset.moduleId}`).then(r => r.json()).then(d => {
             if (d.success && d.results.length) {
-                let h = '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Name</th><th>Course</th><th>Section</th><th>Status</th><th>Date</th></tr></thead><tbody>';
-                d.results.forEach(r => h += `<tr><td>${escapeHtml(r.full_name)}</td><td>${escapeHtml(r.program)}</td><td>${escapeHtml(r.section)}</td><td>${r.completed ? '✅' : '❌'}</td><td>${r.completion_date || '-'}</td></tr>`);
+                let h = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Course</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Section</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Date</th></tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
+                d.results.forEach(r => {
+                    const statusBadge = r.completed ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800"><i class="fas fa-check mr-1"></i> Done</span>' : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800"><i class="fas fa-times mr-1"></i> Missing</span>';
+                    h += `<tr><td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(r.full_name)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.program)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.section)}</td><td class="px-4 py-3 text-center">${statusBadge}</td><td class="px-4 py-3 text-center text-xs text-gray-500">${r.completion_date || '-'}</td></tr>`;
+                });
                 h += '</tbody></table></div>'; body.innerHTML = h;
-            } else body.innerHTML = '<div class="alert alert-info">No students registered.</div>';
-        }).catch(() => body.innerHTML = '<div class="alert alert-danger">Error.</div>');
+            } else body.innerHTML = '<div class="bg-blue-50 text-blue-700 p-4 rounded-lg text-sm">No students registered for this module yet.</div>';
+        }).catch(() => body.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-lg text-sm">Error loading data.</div>');
     });
 });
 document.querySelectorAll('.view-results').forEach(btn => {
@@ -916,11 +1032,14 @@ document.querySelectorAll('.view-results').forEach(btn => {
         new bootstrap.Modal(document.getElementById('resultsModal')).show();
         fetch(`get_assessment_results.php?module_id=${this.dataset.moduleId}`).then(r => r.json()).then(d => {
             if (d.success && d.results.length) {
-                let h = '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Name</th><th>Course</th><th>Section</th><th>Status</th><th>Score</th><th>Date</th></tr></thead><tbody>';
-                d.results.forEach(r => h += `<tr><td>${escapeHtml(r.full_name)}</td><td>${escapeHtml(r.program)}</td><td>${escapeHtml(r.section)}</td><td>${r.completed ? '✅' : '❌'}</td><td>${r.score !== null ? r.score+'%' : 'N/A'}</td><td>${r.completion_date || '-'}</td></tr>`);
+                let h = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Course</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Section</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Score</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Date</th></tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
+                d.results.forEach(r => {
+                    const statusBadge = r.completed ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800"><i class="fas fa-check mr-1"></i> Done</span>' : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800"><i class="fas fa-times mr-1"></i> Missing</span>';
+                    h += `<tr><td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(r.full_name)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.program)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.section)}</td><td class="px-4 py-3 text-center">${statusBadge}</td><td class="px-4 py-3 text-center text-sm font-bold text-blue-600">${r.score !== null ? r.score+'%' : 'N/A'}</td><td class="px-4 py-3 text-center text-xs text-gray-500">${r.completion_date || '-'}</td></tr>`;
+                });
                 h += '</tbody></table></div>'; body.innerHTML = h;
-            } else body.innerHTML = '<div class="alert alert-info">No students registered.</div>';
-        }).catch(() => body.innerHTML = '<div class="alert alert-danger">Error.</div>');
+            } else body.innerHTML = '<div class="bg-blue-50 text-blue-700 p-4 rounded-lg text-sm">No students have taken this assessment yet.</div>';
+        }).catch(() => body.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-lg text-sm">Error loading data.</div>');
     });
 });
 
@@ -995,7 +1114,13 @@ function setupBulk(masterId, checkboxClass, ...btnIds) {
     const btns = btnIds.map(id => document.getElementById(id)).filter(Boolean);
     function update() {
         const any = document.querySelectorAll(`.${checkboxClass}:checked`).length > 0;
-        btns.forEach(b => b.classList.toggle('hidden', !any));
+        btns.forEach(b => {
+            b.classList.toggle('hidden', !any);
+            if (!any) b.classList.add('hidden'); else b.classList.remove('hidden');
+            // Handle flex display toggle
+            if (any) { b.classList.remove('hidden'); b.classList.add('flex'); } 
+            else { b.classList.add('hidden'); b.classList.remove('flex'); }
+        });
     }
     master?.addEventListener('change', function() {
         document.querySelectorAll(`.${checkboxClass}`).forEach(cb => cb.checked = this.checked);
@@ -1038,15 +1163,12 @@ document.getElementById('archiveHeader')?.addEventListener('click', function() {
 // INIT — Restore sort from URL + apply on load
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Restore sort choice from URL
     const urlSort = new URL(window.location).searchParams.get('sort');
     const sortSelect = document.getElementById('sortBy');
     if (urlSort && sortSelect) sortSelect.value = urlSort;
 
-    // Apply sort
     sortItems();
 
-    // Persist sort in URL when changed
     sortSelect?.addEventListener('change', () => {
         const url = new URL(window.location);
         url.searchParams.set('sort', sortSelect.value);

@@ -6,7 +6,7 @@
 
 **Audience:** Students, ACES staff, and administrators
 
-**Version:** 1.0 — October 2026
+**Version:** 1.1 — October 2026
 
 ---
 
@@ -35,6 +35,8 @@ This manual explains how to use every feature, organized by user role. Students 
 
 **Logging in:** Your access URL will be provided by the ACES Unit (e.g. `https://aces.kld.edu.ph` for production, or `http://localhost/cair-system` for local testing).
 
+> **Mobile Ready:** The entire system is fully responsive. You can access all features comfortably using the browser on your smartphone. If the navigation menu is hidden, tap the **Hamburger icon (☰)** in the top-left corner to open the sidebar.
+
 ---
 
 ## 2. Getting Started
@@ -53,12 +55,13 @@ This manual explains how to use every feature, organized by user role. Students 
    | **Section** | Your block section (e.g. `412`) |
    | **Mobile / Telephone** | Optional but recommended |
    | **Username** | Choose something memorable |
-   | **Password** | Minimum 8 characters — mix of letters and numbers |
+   | **Password** | Minimum 6 characters — mix of letters and numbers |
 
-3. Click **Create Account**.
-4. Check your email inbox for a verification message from ACES.
-5. Click the verification link inside the email (valid for 24 hours).
-6. You'll be redirected to the login page. Log in with your email/username and password.
+3. **Terms & Data Privacy:** At the bottom of the form, check the box to agree to the Terms and Conditions and Data Privacy Policy. You can click the links to read them in a new tab.
+4. Click **Create Account**.
+5. Check your email inbox for a verification message from ACES.
+6. Click the verification link inside the email (valid for 24 hours).
+7. You'll be redirected to the login page. Log in with your email/username and password.
 
 **Didn't receive the email?**
 - Check your spam folder.
@@ -70,7 +73,7 @@ This manual explains how to use every feature, organized by user role. Students 
 
 1. Go to the login page.
 2. Enter your **email** or **username** (students) / **email** (staff).
-3. Enter your **password**.
+3. Enter your **password**. *(Tip: You can click the **eye icon** inside the password box to show/hide your password.)*
 4. Optional: Check **Remember me** to stay logged in for up to 30 days.
 5. Click **Log In**.
 
@@ -114,7 +117,7 @@ The dashboard is your home page after login. It shows:
 
 ### 3.2 Viewing Available Sessions
 
-1. From the sidebar, click **Sessions**.
+1. From the sidebar, click **Subtopics** (or **Sessions**).
 2. You'll see a list of ACES sessions organized by phase:
 
    | Phase | Meaning |
@@ -150,7 +153,7 @@ The dashboard is your home page after login. It shows:
 
 A warning appears: *"You are already registered for [Sub A]. Do you want to replace it with [Sub B]?"*
 
-- Click **Yes, Replace** to swap
+- Click **OK** to swap
 - Click **Cancel** to keep your original choice
 
 > **Note:** Once you swap, your previous attendance record for that session is deleted. Only the new subtopic matters.
@@ -208,16 +211,16 @@ Click any subtopic to see module-level detail.
 
 ### 3.6 Updating Your Account
 
-Go to **Account** in the sidebar.
+Go to **Account Settings** in the sidebar.
 
 You can update:
 
 - Full name
-- Contact number
+- Contact number (Mobile & Telephone)
 - Email address (requires re-verification)
 - Password
 
-**Changing your student ID, program, or section** requires staff assistance.
+**Note:** Your Student ID, Program, and Section are **locked** and cannot be changed. Contact the ACES Unit if these require correction.
 
 ---
 
@@ -244,62 +247,42 @@ After logging in, you land on the dashboard. It shows:
 
 ### 4.2 Creating a Session *(Lead / Admin)*
 
-1. Sidebar → **Sessions** → **New Session**
-2. Fill in:
-
-   | Field | Notes |
-   |-------|-------|
-   | **Title** | e.g. "Resume Writing Workshop" |
-   | **Phase** | Preparation / Pre-Employment / Career Fair |
-   | **Date** | Format: YYYY-MM-DD |
-   | **Start Time** / **End Time** | Format: HH:MM |
-   | **Description** | Optional |
-   | **Proctor** | Staff member overseeing the session |
-   | **Location** | Room or "Online" |
-   | **Allow Multiple** | Check if students can register for more than one subtopic |
-
-3. Click **Save**.
+1. Sidebar → **Sessions** → **Create Session**
+2. Fill in the Session Details:
+   - **Title** (e.g. "Resume Writing Workshop")
+   - **Phase** (Preparation / Pre-Employment / Career Fair)
+   - **Description** (Optional)
+   - **Allow Multiple** (Check if students can register for more than one subtopic)
+3. Scroll down to the **Subtopics** section and click **Add Subtopic** to configure the specific activities.
+4. Click **Create Session**.
 
 ### 4.3 Creating Subtopics *(Lead / Admin)*
 
-1. Open a session from the Sessions list.
-2. Click **Add Subtopic**.
-3. Fill in:
+When creating or editing a session, you can add subtopics:
 
-   | Field | Notes |
-   |-------|-------|
-   | **Title** | e.g. "Basic Resume Template" |
-   | **Description** | What students will do |
-   | **Capacity** | Max students (default 30) |
-   | **Deadline** | Registration cutoff |
-   | **Date / Time** | When the subtopic runs |
-   | **Proctor / Location** | May differ from session |
-   | **Is Required** | Auto-registers eligible students |
-   | **Visible For** | Section restrictions (e.g. `["412"]`) |
-   | **Visible Courses** | Program restrictions (e.g. `["BS Psychology"]`) |
-   | **Required Courses** | Auto-register programs |
-   | **Attendance Type** | Physical or Module-based |
-
-4. Click **Save**.
+1. Click **Add Subtopic**.
+2. Fill in:
+   - **Title** (e.g. "Basic Resume Template")
+   - **Capacity** (Max students)
+   - **Deadline** (Registration cutoff)
+   - **Date / Start Time / End Time**
+   - **Proctor / Location** (May differ from session)
+   - **Attendance Type** (Physical or Module-based)
+   - **Visibility Rules** (Restrict to specific Courses or Sections)
+   - **Required Rules** (Auto-register specific Courses or Sections)
+3. Click **Create Session** to save all subtopics at once.
 
 ### 4.4 Creating Modules and Assessments *(Lead / Admin)*
 
-1. Sidebar → **Modules** → **Create**
-2. Choose the **subtopic** to attach it to.
-3. Choose the **type**:
-
-   | Type | Content |
-   |------|---------|
-   | **Text Module** | Rich text content |
-   | **File Module** | Upload PDF, DOCX, PPTX, XLSX, JPG, PNG, MP4, ZIP |
-   | **Link Module** | External URL |
-   | **Assessment** | Quiz with questions |
-
-4. For file uploads, allowed formats and size:
-   - Max size: **10 MB**
-   - Allowed: pdf, doc, docx, ppt, pptx, xls, xlsx, csv, txt, jpg, jpeg, png, gif, mp4, zip, rar, 7z
-
-5. Click **Save**.
+1. Sidebar → **Modules** → **Create New**
+2. Choose the **Module** tab or **Assessment** tab.
+3. Choose the **subtopic** to attach it to.
+4. Fill in the title and description.
+5. Choose the content type:
+   - **Module:** Upload File, Provide Link, or Write Content.
+   - **Assessment:** Provide Link (e.g. Google Form) or Create Quiz.
+6. **If creating a quiz:** Click **+ Add Question** to build your quiz. You can set the question type (Multiple Choice, True/False, Short Answer), the options, the correct answer, and the points.
+7. Click **Create Module** or **Create Assessment**.
 
 ### 4.5 Taking Attendance *(Lead / Admin)*
 
@@ -312,7 +295,7 @@ After logging in, you land on the dashboard. It shows:
    - **Pending**
 5. Click **Save Attendance**.
 
-**Bulk actions:** Select multiple students via checkboxes, then use **Mark All Present** or **Mark All Absent**.
+**Bulk actions:** Select multiple students via checkboxes, use the dropdown to select **Present** or **Absent**, and click **Apply Status**.
 
 **Auto-generated records:** If a student completed all modules, they may already be marked present automatically.
 
@@ -353,7 +336,7 @@ Sidebar → **Reports**. Available report types:
 ### 4.8 Managing Registrants *(Lead / Admin)*
 
 1. Sidebar → **Registrants**
-2. Filter by session or subtopic.
+2. Filter by session, subtopic, course, or section.
 3. Actions available:
    - **Unregister** a student (with confirmation)
    - **Notify** selected students via email
@@ -374,7 +357,7 @@ Click an event to see details or edit (if Lead/Admin).
 
 1. Sidebar → **Manage Staff**
 2. To create a new staff account:
-   - Click **Register Staff**
+   - Click **Add New Staff**
    - Enter email, full name, role (admin/lead/viewer)
    - Click **Create**
    - The new staff member receives a verification email
@@ -382,7 +365,7 @@ Click an event to see details or edit (if Lead/Admin).
 **Rate limit:** Maximum 10 new staff accounts per hour per admin.
 
 3. To edit an existing account:
-   - Click **Edit** next to the name
+   - Click **Edit** (pencil icon) next to the name
    - Change role, deactivate, or reactivate
 
 4. All staff actions are logged in the **Activity Log** (visible on the same page).
@@ -392,9 +375,9 @@ Click an event to see details or edit (if Lead/Admin).
 Sidebar → **Account Settings**
 
 You can update:
-- Full name
-- Email
-- Password
+- Full Name
+- Email Address
+- Password (requires current password to change)
 
 ---
 
@@ -454,7 +437,7 @@ A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by 
 | Email features not working | Contact the ACES Unit — the SMTP credentials may need updating. |
 | CSV opens with garbled characters in Excel | Ensure you're using the file as downloaded — do not re-save before opening. |
 | Page shows "System temporarily unavailable" | The database is unreachable. Contact the IT staff. |
-| Page shows a blank white screen | Usually a PHP error. If you're staff, check `logs/error.log`. If you're a student, report it to the ACES Unit. |
+| Mobile menu doesn't open | Ensure you are clicking the hamburger icon (☰) in the top-left corner. Try refreshing the page. |
 
 ---
 
@@ -474,6 +457,7 @@ A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | October 2026 | ACES Research Team | Initial user manual |
+| 1.1 | October 2026 | ACES Research Team | Updated for new UI (Tailwind), Data Privacy checklist, mobile menu, and password toggles |
 
 ---
 
