@@ -41,6 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please fill in all required fields.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
+    } elseif (!str_ends_with($email, '@kld.edu.ph')) {
+        $error = "Registration is restricted to official KLD email addresses (must end in @kld.edu.ph).";
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match.";
     } elseif (strlen($password) < 6) {
@@ -238,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Email <span class="text-red-500">*</span></label>
-                        <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" placeholder="student@kld.edu.ph" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" placeholder="student@kld.edu.ph" required pattern=".+@kld\.edu\.ph" title="Email must end with @kld.edu.ph" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
