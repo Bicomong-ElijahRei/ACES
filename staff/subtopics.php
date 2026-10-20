@@ -33,8 +33,24 @@ if ($action === 'create') {
         $error = "Title and phase are required.";
     } else {
         $allow_multiple = isset($_POST['allow_multiple']) ? 1 : 0;
-        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, description, allow_multiple, created_by) VALUES (?, ?, CURDATE(), ?, ?, ?)");
-        $stmt->execute([$title, $phase, $description, $allow_multiple, $_SESSION['user_id']]);
+        
+        // --- IMAGE UPLOAD LOGIC ---
+        $image_path = null;
+        if (isset($_FILES['session_image']) && $_FILES['session_image']['error'] === UPLOAD_ERR_OK) {
+            $ext = strtolower(pathinfo($_FILES['session_image']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                $filename = uniqid('sess_') . '.' . $ext;
+                $upload_dir = __DIR__ . '/../assets/images/sessions/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                if (move_uploaded_file($_FILES['session_image']['tmp_name'], $upload_dir . $filename)) {
+                    $image_path = 'assets/images/sessions/' . $filename;
+                }
+            }
+        }
+        // -------------------------
+
+        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, description, allow_multiple, created_by, image_path) VALUES (?, ?, CURDATE(), ?, ?, ?, ?)");
+        $stmt->execute([$title, $phase, $description, $allow_multiple, $_SESSION['user_id'], $image_path]);
         $session_id = $pdo->lastInsertId();
 
         $subtopics_json = $_POST['subtopics_data'] ?? '';
@@ -91,8 +107,28 @@ if ($action === 'create') {
         $error = "Title and phase are required.";
     } else {
         $allow_multiple = isset($_POST['allow_multiple']) ? 1 : 0;
-        $stmt = $pdo->prepare("UPDATE sessions SET title = ?, phase = ?, description = ?, allow_multiple = ? WHERE session_id = ?");
-        $stmt->execute([$title, $phase, $description, $allow_multiple, $id]);
+        
+        // --- IMAGE UPLOAD LOGIC ---
+        $image_update_sql = "";
+        $image_params = [];
+        if (isset($_FILES['session_image']) && $_FILES['session_image']['error'] === UPLOAD_ERR_OK) {
+            $ext = strtolower(pathinfo($_FILES['session_image']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                $filename = uniqid('sess_') . '.' . $ext;
+                $upload_dir = __DIR__ . '/../assets/images/sessions/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                if (move_uploaded_file($_FILES['session_image']['tmp_name'], $upload_dir . $filename)) {
+                    $image_path = 'assets/images/sessions/' . $filename;
+                    $image_update_sql = ", image_path = ?";
+                    $image_params[] = $image_path;
+                }
+            }
+        }
+        // -------------------------
+
+        $stmt = $pdo->prepare("UPDATE sessions SET title = ?, phase = ?, description = ?, allow_multiple = ? {$image_update_sql} WHERE session_id = ?");
+        $params = array_merge([$title, $phase, $description, $allow_multiple], $image_params, [$id]);
+        $stmt->execute($params);
 
         $stmt_del = $pdo->prepare("DELETE FROM subtopics WHERE session_id = ?");
         $stmt_del->execute([$id]);
@@ -378,6 +414,25 @@ $course_sections_json = json_encode($course_sections);
                                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white border border-gray-200 text-gray-600 shadow-sm">
                                                         <i class="fas fa-users mr-1 text-gray-400"></i> Cap: <?= $sub['capacity'] ?>
                                                     </span>
+                                                    
+                                                    <!-- ADDED COLOR-CODED ATTENDANCE BADGE -->
+                                                    <?php 
+                                                        $attType = $sub['attendance_type'] ?? 'physical';
+                                                        $badgeClass = match($attType) {
+                                                            'module' => 'bg-purple-100 text-purple-700 border-purple-200',
+                                                            'online' => 'bg-blue-100 text-blue-700 border-blue-200',
+                                                            default  => 'bg-green-100 text-green-700 border-green-200',
+                                                        };
+                                                        $badgeIcon = match($attType) {
+                                                            'module' => 'fa-book',
+                                                            'online' => 'fa-laptop',
+                                                            default  => 'fa-building',
+                                                        };
+                                                    ?>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border <?= $badgeClass ?>">
+                                                        <i class="fas <?= $badgeIcon ?> mr-1"></i> <?= ucfirst($attType) ?>
+                                                    </span>
+                                                    <!-- END BADGE -->
                                                     <?php if ($sub['deadline']): ?>
                                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white border border-gray-200 text-gray-600 shadow-sm">
                                                             <i class="fas fa-clock mr-1 text-gray-400"></i> Due: <?= date('M d', strtotime($sub['deadline'])) ?>
@@ -544,6 +599,11 @@ $course_sections_json = json_encode($course_sections);
                             <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="Optional — describe the purpose of this session"></textarea>
                         </div>
                         <div class="mt-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Session Banner Image (Optional)</label>
+                            <input type="file" name="session_image" accept="image/png, image/jpeg, image/webp" class="w-full border border-gray-300 rounded-lg p-2 bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
+                            <p class="text-xs text-gray-500 mt-1">Recommended size: 1200x400px (JPG, PNG, WebP)</p>
+                        </div>
+                        <div class="mt-4">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" name="allow_multiple" value="1" id="create_allow_multiple" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]">
                                 <span class="text-sm text-gray-700">Allow multiple registrations per student in this session</span>
@@ -652,6 +712,7 @@ $course_sections_json = json_encode($course_sections);
                     <label class="block text-sm font-medium text-gray-700 mb-1">Attendance Type</label>
                     <select class="w-full border border-gray-300 rounded-lg p-2 subtopic-attendance-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                         <option value="physical">Physical — student must be present</option>
+                        <option value="online">Online — via Zoom/Google Meet</option>
                         <option value="module">Module — attendance marked when all modules complete</option>
                     </select>
                 </div>
@@ -939,6 +1000,11 @@ document.querySelectorAll('.edit-session').forEach(btn => {
                         <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(data.description)}</textarea>
                     </div>
                     <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Session Banner Image (Optional)</label>
+                        <input type="file" name="session_image" accept="image/png, image/jpeg, image/webp" class="w-full border border-gray-300 rounded-lg p-2 bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
+                        <p class="text-xs text-gray-500 mt-1">Upload a new image to replace the current one.</p>
+                    </div>
+                    <div class="mt-4">
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" name="allow_multiple" value="1" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" id="edit_allow_multiple" ${data.allow_multiple==1?'checked':''}>
                             <span class="text-sm text-gray-700">Allow multiple registrations per student in this session</span>
@@ -1020,8 +1086,9 @@ document.querySelectorAll('.edit-session').forEach(btn => {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Attendance Type</label>
-                                <select class="w-full border border-gray-300 rounded-lg p-2 subtopic-attendance-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                    <select class="w-full border border-gray-300 rounded-lg p-2 subtopic-attendance-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                     <option value="physical" ${(sub.attendance_type||'physical')==='physical'?'selected':''}>Physical</option>
+                                    <option value="online" ${sub.attendance_type==='online'?'selected':''}>Online</option>
                                     <option value="module" ${sub.attendance_type==='module'?'selected':''}>Module</option>
                                 </select>
                             </div>

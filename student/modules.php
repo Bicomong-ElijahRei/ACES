@@ -115,32 +115,68 @@ if ($action === 'submit_assessment' && $module_id) {
     $stmt = $pdo->prepare("SELECT content, type FROM modules WHERE module_id = ? AND is_deleted = 0");
     $stmt->execute([$module_id]);
     $module = $stmt->fetch();
+    
     if ($module && $module['type'] == 'assessment' && strpos($module['content'], 'quiz:') === 0) {
         $quiz_json = substr($module['content'], 5);
-        $questions = json_decode($quiz_json, true);
+        $quiz_data = json_decode($quiz_json, true);
+        
+        // Handle new JSON format (object with passing_score) vs old format (just array)
+        $passing_score = 50; // Default fallback
+        if (isset($quiz_data['questions'])) {
+            $questions = $quiz_data['questions'];
+            $passing_score = $quiz_data['passing_score'] ?? 50;
+        } else {
+            $questions = $quiz_data;
+        }
+
         $score = 0;
         $total_points = 0;
+        
         foreach ($questions as $idx => $q) {
             $points = floatval($q['points'] ?? 1);
             $total_points += $points;
-            $user_answer = $answers[$idx] ?? '';
+            $user_answer = trim($answers[$idx] ?? '');
+            $correct_answer = trim($q['correct'] ?? '');
             $correct = false;
-            if ($q['type'] == 'multiple_choice' || $q['type'] == 'true_false') {
-                if (trim($user_answer) == trim($q['correct'])) $correct = true;
+            
+            // 1. SHORT ANSWER CASING FIX (Borj's Request)
+            if ($q['type'] == 'short_answer') {
+                if (strcasecmp($user_answer, $correct_answer) == 0) {
+                    $correct = true;
+                }
+            } 
+            // Exact match for multiple choice / true false
+            elseif ($q['type'] == 'multiple_choice' || $q['type'] == 'true_false') {
+                if ($user_answer == $correct_answer) {
+                    $correct = true;
+                }
             }
+            
             if ($correct) $score += $points;
         }
+        
         $score_percent = ($total_points > 0) ? round(($score / $total_points) * 100) : 0;
+        
+        // 2. CUSTOM PASSING SCORE LOGIC (Sir Con's Request)
+        $is_passed = ($score_percent >= $passing_score) ? 1 : 0;
+        
         $check = $pdo->prepare("SELECT progress_id FROM student_module_progress WHERE student_id = ? AND module_id = ?");
         $check->execute([$student_id, $module_id]);
         if ($check->fetch()) {
-            $upd = $pdo->prepare("UPDATE student_module_progress SET completed = 1, score = ?, completion_date = NOW() WHERE student_id = ? AND module_id = ?");
-            $upd->execute([$score_percent, $student_id, $module_id]);
+            // Only mark as completed if they passed
+            $upd = $pdo->prepare("UPDATE student_module_progress SET completed = ?, score = ?, completion_date = NOW() WHERE student_id = ? AND module_id = ?");
+            $upd->execute([$is_passed, $score_percent, $student_id, $module_id]);
         } else {
-            $ins = $pdo->prepare("INSERT INTO student_module_progress (student_id, module_id, completed, score, completion_date) VALUES (?, ?, 1, ?, NOW())");
-            $ins->execute([$student_id, $module_id, $score_percent]);
+            $ins = $pdo->prepare("INSERT INTO student_module_progress (student_id, module_id, completed, score, completion_date) VALUES (?, ?, ?, ?, NOW())");
+            $ins->execute([$student_id, $module_id, $is_passed, $score_percent]);
         }
-        header("Location: modules.php?module_id=$module_id&submitted=1");
+        
+        // Redirect with pass/fail message
+        if ($is_passed) {
+            header("Location: modules.php?module_id=$module_id&submitted=1");
+        } else {
+            header("Location: modules.php?module_id=$module_id&failed=1");
+        }
         exit;
     }
 }
@@ -345,7 +381,9 @@ if ($module_id) {
                 <?php if (isset($_GET['completed'])): ?>
                     <div class="mb-6 p-4 bg-green-50 border-l-4 border-green-500 text-green-800 rounded-r-lg flex items-center gap-3"><i class="fas fa-check-circle text-green-500"></i> Marked as complete!</div>
                 <?php elseif (isset($_GET['submitted'])): ?>
-                    <div class="mb-6 p-4 bg-green-50 border-l-4 border-green-500 text-green-800 rounded-r-lg flex items-center gap-3"><i class="fas fa-check-circle text-green-500"></i> Assessment submitted successfully.</div>
+                    <div class="mb-6 p-4 bg-green-50 border-l-4 border-green-500 text-green-800 rounded-r-lg flex items-center gap-3"><i class="fas fa-check-circle text-green-500"></i> Assessment submitted successfully. You passed!</div>
+                <?php elseif (isset($_GET['failed'])): ?>
+                    <div class="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-800 rounded-r-lg flex items-center gap-3"><i class="fas fa-times-circle text-red-500"></i> Assessment submitted. Unfortunately, you did not reach the passing score. Please review the material and try again.</div>
                 <?php endif; ?>
 
                 <div class="bg-white rounded-2xl shadow-sm p-6 md:p-8 mb-6">

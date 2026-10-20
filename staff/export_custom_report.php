@@ -34,6 +34,7 @@ $format     = $_POST['format']     ?? 'csv';
 $session_id = $_POST['session_id'] ?? '';
 $course     = $_POST['course']     ?? '';
 $section    = $_POST['section']    ?? '';
+$progress_status = $_POST['progress_status'] ?? 'all';
 $columns    = $_POST['columns']    ?? ['student_id','full_name','session_title','subtopic_title','attendance_status'];
 
 // Whitelist columns to prevent injection
@@ -68,6 +69,45 @@ $needs_module_columns = !empty(array_intersect(
     $columns,
     ['module_title', 'module_completion', 'module_score']
 ));
+
+// --- ADVANCED PROGRESS FILTERING LOGIC ---
+$valid_student_ids = [];
+if ($progress_status !== 'all') {
+    $stmt_prog = $pdo->query("
+        SELECT 
+            s.student_id,
+            COUNT(r.subtopic_id) AS total_reg,
+            SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END) AS present_reg
+        FROM students s
+        LEFT JOIN registrations r ON r.student_id = s.student_id
+        LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id
+        WHERE s.is_deleted = 0
+        GROUP BY s.student_id
+    ");
+    
+    while ($row = $stmt_prog->fetch(PDO::FETCH_ASSOC)) {
+        $total = (int)$row['total_reg'];
+        $present = (int)$row['present_reg'];
+        $pct = $total > 0 ? round(($present / $total) * 100) : 0;
+        
+        $match = false;
+        if ($progress_status === 'completed' && $pct === 100) $match = true;
+        elseif ($progress_status === 'almost' && $pct >= 75 && $pct < 100) $match = true;
+        elseif ($progress_status === 'in_progress' && $pct >= 50 && $pct < 75) $match = true;
+        elseif ($progress_status === 'at_risk' && $pct > 0 && $pct < 50) $match = true;
+        elseif ($progress_status === 'inactive' && $pct === 0) $match = true;
+        
+        if ($match) {
+            $valid_student_ids[] = $row['student_id'];
+        }
+    }
+    
+    // If the filter is active but no students match, stop the export gracefully
+    if (empty($valid_student_ids)) {
+        die("<h2 style='font-family:sans-serif; text-align:center; margin-top:50px;'>No students found matching the selected Progress Status.</h2>");
+    }
+}
+// ----------------------------------------
 
 // ---- Build SELECT list ----
 $select_parts = [
@@ -105,6 +145,13 @@ $params = [];
 if ($session_id) { $sql .= " AND ses.session_id = ?"; $params[] = $session_id; }
 if ($course)     { $sql .= " AND s.program = ?";      $params[] = $course; }
 if ($section)    { $sql .= " AND s.section = ?";      $params[] = $section; }
+
+// Apply the progress filter if any student IDs were found
+if (!empty($valid_student_ids)) {
+    $in_placeholders = implode(',', array_fill(0, count($valid_student_ids), '?'));
+    $sql .= " AND r.student_id IN ($in_placeholders)";
+    $params = array_merge($params, $valid_student_ids);
+}
 $sql .= " ORDER BY u.full_name, ses.title, st.title";
 
 $stmt = $pdo->prepare($sql);

@@ -155,8 +155,15 @@ unset($m);
             display: flex;
             align-items: center;
             gap: 14px;
+            text-decoration: none; /* Removes underline */
+            color: inherit;        /* Keeps text black */
+            cursor: pointer;
         }
-        .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
+        .stat-card:hover { 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06); 
+            transform: translateY(-2px); 
+            border-color: var(--primary); /* Adds green border on hover */
+        }
         .stat-icon {
             width: 46px; height: 46px;
             border-radius: 10px;
@@ -484,34 +491,34 @@ unset($m);
              OVERVIEW STATS
              ============================================ -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 fade-in">
-            <div class="stat-card">
+            <a href="subtopics.php" class="stat-card">
                 <div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-calendar-alt"></i></div>
                 <div>
                     <div class="stat-value"><?= $active_sessions ?></div>
                     <div class="stat-label">Active Sessions</div>
                 </div>
-            </div>
-            <div class="stat-card">
+            </a>
+            <a href="students.php" class="stat-card">
                 <div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-users"></i></div>
                 <div>
                     <div class="stat-value"><?= $total_students ?></div>
                     <div class="stat-label">Students</div>
                 </div>
-            </div>
-            <div class="stat-card">
+            </a>
+            <a href="attendance.php" class="stat-card">
                 <div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-user-check"></i></div>
                 <div>
                     <div class="stat-value"><?= $overall_att_pct ?>%</div>
                     <div class="stat-label">Attendance</div>
                 </div>
-            </div>
-            <div class="stat-card">
+            </a>
+            <a href="modules.php" class="stat-card">
                 <div class="stat-icon bg-amber-100 text-amber-600"><i class="fas fa-book-open"></i></div>
                 <div>
                     <div class="stat-value"><?= $overall_mod_pct ?>%</div>
                     <div class="stat-label">Modules</div>
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- ============================================

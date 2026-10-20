@@ -631,7 +631,11 @@ function renderContent($content) {
                                 <div id="assessment_quiz_div" style="display:none;">
                                     <div class="flex justify-between items-center mb-3">
                                         <label class="block text-sm font-bold text-gray-700">Questions</label>
-                                        <button type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors border border-gray-300" id="add-question"><i class="fas fa-plus mr-1"></i> Add Question</button>
+                                        <div class="flex items-center gap-2">
+                                            <label class="text-sm text-gray-600">Passing Score (%):</label>
+                                            <input type="number" id="passing_score" value="50" min="1" max="100" class="w-16 border border-gray-300 rounded p-1 text-sm text-center focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                            <button type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors border border-gray-300 ml-2" id="add-question"><i class="fas fa-plus mr-1"></i> Add Question</button>
+                                        </div>
                                     </div>
                                     <div id="questions-container" class="space-y-4">
                                         <div class="question-template" style="display:none;">
@@ -823,8 +827,18 @@ document.getElementById('createAssessmentForm')?.addEventListener('submit', func
                     : null
             });
         });
-        if (!qs.length) { alert('Add at least one question.'); btn.disabled = false; isCreating = false; return; }
-        document.getElementById('quiz_data').value = 'quiz:' + JSON.stringify(qs);
+    if (!qs.length) { alert('Add at least one question.'); btn.disabled = false; isCreating = false; return; }
+        
+        // Grab the passing score
+        const passingScore = document.getElementById('passing_score')?.value || 50;
+        
+        // Save it as an object instead of just an array
+        const quizPayload = {
+            passing_score: parseInt(passingScore),
+            questions: qs
+        };
+        
+        document.getElementById('quiz_data').value = 'quiz:' + JSON.stringify(quizPayload);
     }
 
     fetch('modules.php', { method: 'POST', body: new FormData(this) })

@@ -279,7 +279,7 @@ $default_columns = ['student_id', 'full_name', 'session_title', 'subtopic_title'
                         <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
                             <i class="fas fa-filter text-gray-400"></i> Filters
                         </h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-600 mb-1.5">Session</label>
                                 <select name="session_id" class="form-select-clean">
@@ -305,6 +305,18 @@ $default_columns = ['student_id', 'full_name', 'session_title', 'subtopic_title'
                                     <?php foreach ($sections as $sec): ?>
                                         <option value="<?= htmlspecialchars($sec) ?>"><?= htmlspecialchars($sec) ?></option>
                                     <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <!-- NEW: ADVANCED PROGRESS FILTER -->
+                            <div>
+                                <label class="block text-sm font-bold text-[#0a6e2d] mb-1.5"><i class="fas fa-filter"></i> Progress Status</label>
+                                <select name="progress_status" class="form-select-clean border-green-300 bg-green-50 font-semibold">
+                                    <option value="all">All Students</option>
+                                    <option value="completed">✅ Completed / Cleared (100%)</option>
+                                    <option value="almost">🔄 Almost Completed (75-99%)</option>
+                                    <option value="in_progress">⏳ In Progress (50-74%)</option>
+                                    <option value="at_risk">⚠️ At Risk / Missing (< 50%)</option>
+                                    <option value="inactive">❌ Inactive / LOA (0%)</option>
                                 </select>
                             </div>
                         </div>

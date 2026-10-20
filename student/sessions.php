@@ -496,9 +496,15 @@ $progress_pct = $total_items_expected > 0
                     data-registered-count="<?= count($session['registered_subtopics']) ?>"
                     data-registered-title="<?= htmlspecialchars($existing_name) ?>">
 
-                    <!-- Session Header -->
-                    <div class="session-header">
-                        <div class="flex flex-wrap items-center gap-4">
+                <!-- Session Header -->
+                    <div class="session-header relative overflow-hidden" style="<?= !empty($session['image_path']) ? 'background-image: url(\'../' . htmlspecialchars($session['image_path']) . '\'); background-size: cover; background-position: center;' : ''; ?>">
+                        
+                        <?php if (!empty($session['image_path'])): ?>
+                            <!-- Dark overlay for readability -->
+                            <div class="absolute inset-0 bg-black/60 z-0"></div>
+                        <?php endif; ?>
+
+                        <div class="flex flex-wrap items-center gap-4 relative z-10">
                             <!-- Date badge -->
                             <div class="date-badge">
                                 <span class="month"><?= date('M', $session_date) ?></span>
@@ -611,11 +617,25 @@ $progress_pct = $total_items_expected > 0
                                                 <span class="status-pill <?= $status_class ?>">
                                                     <i class="fas <?= $status_icon ?>"></i> <?= $status_label ?>
                                                 </span>
-                                                <?php if (($sub['attendance_type'] ?? 'physical') === 'module'): ?>
-                                                    <span class="status-pill" style="background:#dbeafe; color:#1e40af;">
-                                                        <i class="fas fa-laptop"></i> Module-based
-                                                    </span>
-                                                <?php endif; ?>
+                                                
+                                                <!-- DYNAMIC COLOR-CODED ATTENDANCE BADGE -->
+                                                <?php 
+                                                    $attType = $sub['attendance_type'] ?? 'physical';
+                                                    $attColor = match($attType) {
+                                                        'module' => 'background:#f3e8ff; color:#6b21a8;', // Purple
+                                                        'online' => 'background:#dbeafe; color:#1e40af;', // Blue
+                                                        default  => 'background:#d1fae5; color:#065f46;', // Green
+                                                    };
+                                                    $attIcon = match($attType) {
+                                                        'module' => 'fa-book',
+                                                        'online' => 'fa-laptop',
+                                                        default  => 'fa-building',
+                                                    };
+                                                ?>
+                                                <span class="status-pill" style="<?= $attColor ?>">
+                                                    <i class="fas <?= $attIcon ?>"></i> <?= ucfirst($attType) ?>
+                                                </span>
+                                                <!-- END BADGE -->
                                             </div>
 
                                             <!-- Capacity bar -->

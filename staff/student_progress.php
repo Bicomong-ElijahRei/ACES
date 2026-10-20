@@ -80,7 +80,8 @@ $sessions = $pdo->query("
 
 // Compute avg progress per session
 foreach ($sessions as &$sess) {
-    $sess['avg_progress'] = ($sess['att_total'] > 0)
+    $sess['has_attendance'] = ($sess['att_total'] > 0);
+    $sess['avg_progress']   = $sess['has_attendance']
         ? round(($sess['present_count'] / $sess['att_total']) * 100)
         : 0;
 }
@@ -133,8 +134,23 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
             display: flex;
             align-items: center;
             gap: 16px;
+            text-decoration: none; 
+            color: inherit;        
         }
-        .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
+        .stat-card:hover { 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06); 
+            transform: translateY(-1px); 
+            border-color: var(--primary); 
+        }
+        
+        /* Make buttons look exactly like div cards */
+        button.stat-card {
+            width: 100%;
+            text-align: left;
+            font-family: inherit;
+            cursor: pointer;
+            outline: none;
+        }
         .stat-icon {
             width: 48px; height: 48px;
             border-radius: 10px;
@@ -351,8 +367,8 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
              ============================================ -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 fade-in">
 
-            <!-- Total Students -->
-            <div class="stat-card">
+            <!-- Total Students (Links to Students Page) -->
+            <a href="students.php" class="stat-card">
                 <div class="stat-icon bg-blue-100 text-blue-600">
                     <i class="fas fa-users"></i>
                 </div>
@@ -360,10 +376,10 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                     <div class="stat-value"><?= $total_students ?></div>
                     <div class="stat-label">Students</div>
                 </div>
-            </div>
+            </a>
 
-            <!-- Total Sessions -->
-            <div class="stat-card">
+            <!-- Total Sessions (Links to Subtopics Page) -->
+            <a href="subtopics.php" class="stat-card">
                 <div class="stat-icon bg-purple-100 text-purple-600">
                     <i class="fas fa-calendar-alt"></i>
                 </div>
@@ -371,10 +387,10 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                     <div class="stat-value"><?= $total_sessions ?></div>
                     <div class="stat-label">Sessions</div>
                 </div>
-            </div>
+            </a>
 
-            <!-- Average Progress -->
-            <div class="stat-card">
+            <!-- Average Progress (Click to open list) -->
+            <button type="button" onclick="openDrawerGlobal('all')" class="stat-card">
                 <div class="stat-icon bg-green-100 text-green-600">
                     <i class="fas fa-chart-line"></i>
                 </div>
@@ -382,10 +398,10 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                     <div class="stat-value"><?= $avg_progress ?>%</div>
                     <div class="stat-label">Avg Progress</div>
                 </div>
-            </div>
+            </button>
 
-            <!-- At-Risk Students -->
-            <div class="stat-card">
+            <!-- At-Risk Students (Click to open list) -->
+            <button type="button" onclick="openDrawerGlobal('at-risk')" class="stat-card">
                 <div class="stat-icon bg-red-100 text-red-600">
                     <i class="fas fa-exclamation-triangle"></i>
                 </div>
@@ -393,7 +409,7 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                     <div class="stat-value"><?= $at_risk ?></div>
                     <div class="stat-label">At Risk (&lt;50%)</div>
                 </div>
-            </div>
+            </button>
 
         </div>
 
@@ -422,7 +438,11 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                     $progressColor = $sess['avg_progress'] >= 75 ? 'green' : ($sess['avg_progress'] >= 40 ? 'amber' : 'red');
                     $phaseKey = str_replace(' ', '-', $sess['phase']);
                 ?>
-                    <div class="session-card fade-in" data-session-id="<?= $sess['session_id'] ?>"
+                    <div class="session-card fade-in cursor-pointer group" 
+                         onclick="openDrawer('<?= $sess['session_id'] ?>', '<?= htmlspecialchars($sess['title']) ?>')"
+                         data-progress="<?= $sess['avg_progress'] ?>"
+                         data-has-attendance="<?= $sess['has_attendance'] ? '1' : '0' ?>"
+                         data-session-id="<?= $sess['session_id'] ?>"
                          data-title="<?= htmlspecialchars($sess['title']) ?>">
 
                         <!-- Header -->
@@ -472,9 +492,9 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                             <span class="text-xs text-gray-500">
                                 <i class="fas fa-user-graduate mr-1"></i><?= $sess['student_count'] ?> students
                             </span>
-                            <button class="view-session-btn text-sm font-semibold text-[#0a6e2d] hover:text-green-800 flex items-center gap-1">
+                            <span class="text-sm font-semibold text-[#0a6e2d] flex items-center gap-1 group-hover:gap-2 transition-all">
                                 View Progress <i class="fas fa-arrow-right text-xs"></i>
-                            </button>
+                            </span>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -536,12 +556,30 @@ const CSRF_TOKEN = '<?= csrf_token() ?>';
 // ============================================
 // SESSION SEARCH FILTER
 // ============================================
+let activeSessionFilter = 'all'; // 'all' | 'at-risk'
+
 document.getElementById('sessionSearch').addEventListener('input', function() {
     const q = this.value.toLowerCase();
+    let count = 0;
+
     document.querySelectorAll('#sessionGrid .session-card').forEach(card => {
-        const title = card.dataset.title.toLowerCase();
-        card.style.display = title.includes(q) ? '' : 'none';
+        const titleMatch = card.dataset.title.toLowerCase().includes(q);
+        const progress = parseInt(card.dataset.progress || 0, 10);
+        const hasAtt = card.dataset.hasAttendance === '1';
+        const riskMatch = activeSessionFilter === 'all' || (hasAtt && progress < 50);
+
+        if (titleMatch && riskMatch) {
+            card.style.display = '';
+            count++;
+        } else {
+            card.style.display = 'none';
+        }
     });
+
+    const emptyMsg = document.getElementById('emptyFilterMsg');
+    if (emptyMsg) {
+        emptyMsg.classList.toggle('hidden', count > 0 || activeSessionFilter !== 'at-risk');
+    }
 });
 
 // ============================================
@@ -552,8 +590,10 @@ const backdrop = document.getElementById('drawerBackdrop');
 let currentSessionId = null;
 let allStudents = [];
 let pendingDrawerFilter = null;
+let currentMode = 'session'; // 'session' | 'global'
 
 function openDrawer(sessionId, title, filter) {
+    currentMode = 'session';
     currentSessionId = sessionId;
     pendingDrawerFilter = filter || null;
 
@@ -581,13 +621,18 @@ function closeDrawer() {
     backdrop.classList.remove('show');
     document.body.style.overflow = '';
     currentSessionId = null;
+    currentMode = 'session';
     allStudents = [];
     pendingDrawerFilter = null;
+
+    // Restore the drawer filter dropdown (hidden by global mode)
+    document.getElementById('drawerFilter').style.display = '';
 
     // Clear URL params
     const url = new URL(window.location);
     url.searchParams.delete('session');
     url.searchParams.delete('filter');
+    url.searchParams.delete('view');
     history.replaceState({}, '', url);
 }
 
@@ -597,7 +642,58 @@ backdrop.addEventListener('click', closeDrawer);
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
 });
+// ============================================
+// STAT CARD FILTERS
+// ============================================
+function filterSessionsByRisk(onlyAtRisk) {
+    activeSessionFilter = onlyAtRisk ? 'at-risk' : 'all';
 
+    const sessionGrid = document.getElementById('sessionGrid');
+    if (!sessionGrid) return;
+
+    const q = (document.getElementById('sessionSearch')?.value || '').toLowerCase();
+    const cards = sessionGrid.querySelectorAll('.session-card');
+    const sessionHeader = document.querySelector('h2.text-lg.font-semibold');
+    let count = 0;
+
+    cards.forEach(card => {
+        const progress = parseInt(card.dataset.progress || 0, 10);
+        const hasAtt = card.dataset.hasAttendance === '1';
+        const titleMatch = !q || card.dataset.title.toLowerCase().includes(q);
+        const riskMatch = !onlyAtRisk || (hasAtt && progress < 50);
+
+        if (titleMatch && riskMatch) {
+            card.style.display = '';
+            count++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    const searchInput = document.getElementById('sessionSearch');
+    if (searchInput) {
+        searchInput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    if (sessionHeader) {
+        if (onlyAtRisk) {
+            sessionHeader.innerHTML = `<i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>Showing At-Risk Sessions (${count})`;
+        } else {
+            sessionHeader.innerHTML = `<i class="fas fa-layer-group text-[#0a6e2d] mr-2"></i>Sessions`;
+        }
+    }
+
+    let emptyMsg = document.getElementById('emptyFilterMsg');
+    if (!emptyMsg) {
+        emptyMsg = document.createElement('div');
+        emptyMsg.id = 'emptyFilterMsg';
+        emptyMsg.className = 'bg-white rounded-xl p-12 text-center border border-gray-200 mt-4 hidden';
+        emptyMsg.innerHTML = '<i class="fas fa-check-circle text-5xl text-green-500 mb-4"></i><p class="text-gray-600 font-medium">Great news! No sessions are currently at risk.</p>';
+        sessionGrid.parentNode.appendChild(emptyMsg);
+    }
+
+    emptyMsg.classList.toggle('hidden', !(onlyAtRisk && count === 0));
+}
 // ============================================
 // LOAD SESSION DATA
 // ============================================
@@ -638,6 +734,162 @@ function loadSessionData(sessionId) {
                     <i class="fas fa-exclamation-circle mr-2"></i>Network error.
                 </div>`;
         });
+}
+
+// ============================================
+// GLOBAL DRAWER (At Risk / Average Progress)
+// ============================================
+function openDrawerGlobal(filter) {
+    currentMode = 'global';
+    currentSessionId = null;
+    pendingDrawerFilter = null;
+
+    const title = filter === 'at-risk' ? 'At-Risk Students' : 'All Students Progress';
+    document.getElementById('drawerTitle').textContent = title;
+    document.getElementById('drawerBody').innerHTML = `
+        <div class="text-center py-12 text-gray-400">
+            <i class="fas fa-spinner fa-spin text-3xl mb-3"></i>
+            <p>Loading students...</p>
+        </div>`;
+    document.getElementById('drawerSearch').value = '';
+    document.getElementById('drawerFilter').style.display = 'none';
+
+    const url = new URL(window.location);
+    url.searchParams.delete('session');
+    url.searchParams.delete('filter');
+    url.searchParams.set('view', filter);
+    history.replaceState({}, '', url);
+
+    drawer.classList.add('open');
+    backdrop.classList.add('show');
+    document.body.style.overflow = 'hidden';
+
+    loadGlobalData(filter);
+}
+
+function loadGlobalData(filter) {
+    fetch(`get_global_progress.php?filter=${encodeURIComponent(filter)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('drawerBody').innerHTML =
+                    `<div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+                        <i class="fas fa-exclamation-circle mr-2"></i>${data.error || 'Failed to load.'}
+                    </div>`;
+                return;
+            }
+
+            const isRisk = filter === 'at-risk';
+
+            // Update drawer header
+            const phaseEl = document.getElementById('drawerPhase');
+            phaseEl.textContent = isRisk ? 'AT RISK' : 'ALL STUDENTS';
+            phaseEl.className = 'phase-badge';
+            phaseEl.style.background = isRisk ? '#ef4444' : 'rgba(255,255,255,0.2)';
+            phaseEl.style.color = '#fff';
+
+            document.getElementById('drawerDate').textContent = '';
+            document.getElementById('drawerMeta').innerHTML =
+                `<i class="fas fa-user-graduate mr-1"></i> ${data.count} students`;
+
+            allStudents = data.students;
+            renderGlobalStudents(allStudents);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('drawerBody').innerHTML =
+                `<div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+                    <i class="fas fa-exclamation-circle mr-2"></i>Network error.
+                </div>`;
+        });
+}
+
+function renderGlobalStudents(students) {
+    const body = document.getElementById('drawerBody');
+
+    if (students.length === 0) {
+        body.innerHTML = `
+            <div class="text-center py-12 text-gray-400">
+                <i class="fas fa-user-slash text-4xl mb-3"></i>
+                <p>No students match your filters.</p>
+            </div>`;
+        return;
+    }
+
+    body.innerHTML = students.map(st => {
+        const initials = getInitials(st.full_name);
+        const progressColor = st.progress_pct >= 75 ? 'green' : (st.progress_pct >= 40 ? 'amber' : 'red');
+        const riskBadge = st.progress_pct < 50
+            ? '<span class="status-pill status-absent ml-2"><i class="fas fa-exclamation-triangle"></i> At Risk</span>'
+            : '';
+
+        const sessionRows = (st.sessions || []).map(s => {
+            const att = s.attendance_status || 'not_recorded';
+            const statusClass = att === 'present' ? 'present'
+                : att === 'pending' ? 'pending'
+                : att === 'absent' ? 'absent' : '';
+            const statusLabel = att === 'present' ? 'Present'
+                : att === 'pending' ? 'Pending'
+                : att === 'absent' ? 'Absent' : 'Not Recorded';
+            const attIcon = att === 'present' ? '✅'
+                : att === 'pending' ? '⏳'
+                : att === 'absent' ? '❌' : '○';
+            const modInfo = s.modules_total > 0
+                ? `${s.modules_completed}/${s.modules_total} modules`
+                : 'No modules';
+
+            return `
+                <div class="subtopic-breakdown ${statusClass}">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-sm text-gray-800 truncate">${escapeHtml(s.session_title)}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">
+                            ${escapeHtml(s.subtopic_title)} · <i class="fas fa-book mr-1"></i>${modInfo}
+                        </div>
+                    </div>
+                    <span class="status-pill status-${statusClass || 'no-reg'}">${attIcon} ${statusLabel}</span>
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="student-row" data-student-id="${st.student_id}">
+                <div class="student-row-header">
+                    <div class="student-avatar">${initials}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-sm text-gray-800 truncate">
+                            ${escapeHtml(st.full_name)} ${riskBadge}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-0.5">
+                            ${escapeHtml(st.program)} · ${escapeHtml(st.section)}
+                        </div>
+                        <div class="mt-2 flex items-center gap-2">
+                            <div class="progress-track flex-1">
+                                <div class="progress-fill ${progressColor}" style="width: ${st.progress_pct}%"></div>
+                            </div>
+                            <span class="text-xs font-bold text-gray-700 w-10 text-right">${st.progress_pct}%</span>
+                        </div>
+                        <div class="text-[11px] text-gray-500 mt-1">
+                            ✅ ${st.attendance_summary.present}/${st.attendance_summary.total} attended
+                            &nbsp;·&nbsp;
+                            📘 ${st.modules_summary.completed}/${st.modules_summary.total} modules
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-down text-gray-400 text-sm transition-transform row-chevron"></i>
+                </div>
+                <div class="student-row-details">
+                    ${sessionRows || '<p class="text-sm text-gray-400">No session registrations yet.</p>'}
+                </div>
+            </div>`;
+    }).join('');
+
+    // Bind expand/collapse
+    body.querySelectorAll('.student-row-header').forEach(header => {
+        header.addEventListener('click', function() {
+            const row = this.closest('.student-row');
+            row.classList.toggle('expanded');
+            const chevron = this.querySelector('.row-chevron');
+            chevron.style.transform = row.classList.contains('expanded') ? 'rotate(180deg)' : '';
+        });
+    });
 }
 
 // ============================================
@@ -825,18 +1077,14 @@ function filterDrawer() {
         return matchesSearch && matchesFilter;
     });
 
-    renderStudents(filtered);
+    if (currentMode === 'global') {
+        renderGlobalStudents(filtered);
+    } else {
+        renderStudents(filtered);
+    }
 }
 
-// ============================================
-// VIEW SESSION BUTTON
-// ============================================
-document.querySelectorAll('.view-session-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const card = this.closest('.session-card');
-        openDrawer(card.dataset.sessionId, card.dataset.title);
-    });
-});
+
 
 // ============================================
 // HELPERS
@@ -859,8 +1107,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session');
     const filter = params.get('filter');
+    const view = params.get('view');
 
-    if (sessionId) {
+    if (view === 'at-risk') {
+        openDrawerGlobal('at-risk');
+    } else if (view === 'all') {
+        openDrawerGlobal('all');
+    } else if (sessionId) {
         const card = document.querySelector(`.session-card[data-session-id="${sessionId}"]`);
         if (card) {
             // Small delay to ensure session cards rendered
