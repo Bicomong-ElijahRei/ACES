@@ -279,9 +279,8 @@ $course_sections_json = json_encode($course_sections);
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
 
-<div class="h-screen flex flex-col md:flex-row">
     <?php include '../includes/staff_sidebar.php'; ?>
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden w-full">
         <?php include '../includes/header.php'; ?>
         <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
 

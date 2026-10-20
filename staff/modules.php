@@ -473,7 +473,7 @@ function renderContent($content) {
     <div class="modal-dialog modal-lg">
         <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
             <div class="modal-header bg-[#0a6e2d] text-white p-4 border-0">
-                <h5 class="text-lg font-bold">Status / Results</h5>
+                <h5 class="modal-title text-lg font-bold">Status / Results</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-6 bg-white" id="resultsModalBody">Loading...</div>
