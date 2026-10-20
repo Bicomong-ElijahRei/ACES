@@ -121,14 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
 
         <!-- Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-                <h1 class="text-3xl font-bold text-[#0a6e2d]">Account Settings</h1>
-                <p class="text-sm text-gray-600 mt-1">Manage your personal information and security preferences.</p>
-            </div>
-            <a href="dashboard.php" class="text-[#0a6e2d] bg-white p-2 rounded-full shadow-sm hover:shadow-md transition-shadow">
-                <i class="fa-solid fa-house text-xl"></i>
-            </a>
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-[#0a6e2d]">Account Settings</h1>
+            <p class="text-sm text-gray-600 mt-1">Manage your personal information and security preferences.</p>
         </div>
 
         <!-- Flash Messages -->
