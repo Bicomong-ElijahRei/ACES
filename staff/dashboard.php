@@ -38,8 +38,18 @@ $total_submissions = (int) $pdo->query("
     JOIN modules m ON m.subtopic_id = r.subtopic_id
     WHERE r.status IN ('assigned','auto_assigned') AND m.is_deleted = 0
 ")->fetchColumn();
-$completed_submissions = (int) $pdo->query("SELECT COUNT(*) FROM student_module_progress WHERE completed = 1")->fetchColumn();
-$overall_mod_pct = $total_submissions > 0 ? round(($completed_submissions / $total_submissions) * 100) : 0;
+
+// We only count completions where the student is actually assigned to the module's subtopic
+$completed_submissions = (int) $pdo->query("
+    SELECT COUNT(DISTINCT sp.student_id, sp.module_id)
+    FROM student_module_progress sp
+    JOIN modules m ON sp.module_id = m.module_id
+    JOIN registrations r ON r.student_id = sp.student_id AND r.subtopic_id = m.subtopic_id
+    WHERE sp.completed = 1 AND m.is_deleted = 0 AND r.status IN ('assigned','auto_assigned')
+")->fetchColumn();
+
+// Add min(100, ...) to prevent mathematically impossible percentages in edge cases
+$overall_mod_pct = $total_submissions > 0 ? min(100, round(($completed_submissions / $total_submissions) * 100)) : 0;
 
 // ---------- SESSION LIST FOR CHARTS ----------
 $sessions_for_charts = $pdo->query("
