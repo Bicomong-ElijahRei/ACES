@@ -156,18 +156,29 @@ unset($session);
 
 $all_dates = array_unique($all_dates);
 
-// ---- Combined Progress Calculation (Sessions + Modules) ----
-$total_sessions = count($sessions);
+// ---- Combined Progress Calculation (Attendance + Modules) ----
 
-// Count how many upcoming sessions this student has registered in
-$reg_sessions = 0;
-foreach ($sessions as $s) {
-    if (!empty($s['registered_subtopics'])) {
-        $reg_sessions++;
-    }
-}
+// 1. Attendance Expected
+$stmt_sub_total = $pdo->prepare("
+    SELECT COUNT(r.subtopic_id)
+    FROM registrations r
+    JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    WHERE r.student_id = ?
+");
+$stmt_sub_total->execute([$student_id]);
+$total_subtopics_expected = (int)$stmt_sub_total->fetchColumn();
 
-// Fetch total DISTINCT modules expected for the student
+// 2. Attendance Completed
+$stmt_sub_done = $pdo->prepare("
+    SELECT COUNT(a.attendance_id)
+    FROM attendance a
+    JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0
+");
+$stmt_sub_done->execute([$student_id]);
+$attended_subtopics = (int)$stmt_sub_done->fetchColumn();
+
+// 3. Modules Expected
 $stmt_total_mods = $pdo->prepare("
     SELECT COUNT(DISTINCT m.module_id)
     FROM modules m
@@ -177,7 +188,7 @@ $stmt_total_mods = $pdo->prepare("
 $stmt_total_mods->execute([$student_id]);
 $total_modules_expected = (int)$stmt_total_mods->fetchColumn();
 
-// Fetch total DISTINCT modules completed by the student
+// 4. Modules Completed
 $stmt_done_mods = $pdo->prepare("
     SELECT COUNT(DISTINCT smp.module_id)
     FROM student_module_progress smp
@@ -188,16 +199,15 @@ $stmt_done_mods = $pdo->prepare("
 $stmt_done_mods->execute([$student_id]);
 $total_modules_done = (int)$stmt_done_mods->fetchColumn();
 
-// Calculate total items
-$total_items_expected = $total_sessions + $total_modules_expected;
-$total_items_completed = $reg_sessions + $total_modules_done;
+// Combine them for Overall Progress
+$total_items_expected = $total_subtopics_expected + $total_modules_expected;
+$total_items_completed = $attended_subtopics + $total_modules_done;
 
-// Prevent "27 of 4" by capping completed at expected
+// Prevent over 100% by capping completed at expected
 if ($total_items_completed > $total_items_expected) {
     $total_items_completed = $total_items_expected;
 }
 
-// Cap percentage at 100%
 $progress_pct = $total_items_expected > 0
     ? min(100, round(($total_items_completed / $total_items_expected) * 100))
     : 0;
@@ -379,11 +389,11 @@ $progress_pct = $total_items_expected > 0
                         Choose <strong>one subtopic</strong> for each upcoming session. Required subtopics are auto-assigned.
                     </p>
                     <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                        <span class="status-pill status-registered">
-                            <i class="fas fa-check-circle"></i> <?= $reg_sessions ?>/<?= $total_sessions ?> sessions
+                        <span class="status-pill" style="background:#d1fae5; color:#065f46;">
+                            <i class="fas fa-calendar-check"></i> <?= $attended_subtopics ?>/<?= $total_subtopics_expected ?> Attendance
                         </span>
-                        <span class="status-pill status-available">
-                            <i class="fas fa-book"></i> <?= $total_modules_done ?>/<?= $total_modules_expected ?> modules
+                        <span class="status-pill" style="background:#f3e8ff; color:#6b21a8;">
+                            <i class="fas fa-book"></i> <?= $total_modules_done ?>/<?= $total_modules_expected ?> Modules
                         </span>
                     </div>
                 </div>
@@ -401,7 +411,7 @@ $progress_pct = $total_items_expected > 0
                     </div>
                     <div class="text-sm">
                         <div class="font-bold text-gray-800">Overall Progress</div>
-                        <div class="text-gray-600"><?= $total_items_completed ?> of <?= $total_items_expected ?> total tasks</div>
+                        <div class="text-gray-600"><?= $total_items_completed ?> of <?= $total_items_expected ?> total requirements</div>
                     </div>
                 </div>
             </div>

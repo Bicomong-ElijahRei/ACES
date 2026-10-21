@@ -192,6 +192,76 @@ if (!empty($registered_ids)) {
 
 $module_completion_pct = $total_modules > 0 ? round(($completed_modules / $total_modules) * 100) : 0;
 
+// --- PHASE BREAKDOWN LOGIC (Attendance + Modules) ---
+$phases = ['Preparation', 'Pre-Employment', 'Career Fair'];
+$phase_progress = [];
+$student_id = $_SESSION['student_id'] ?? '';
+
+foreach ($phases as $phase) {
+    // 1. Attendance Expected
+    $stmt_sub_total = $pdo->prepare("
+        SELECT COUNT(r.subtopic_id)
+        FROM registrations r
+        JOIN subtopics st ON r.subtopic_id = st.subtopic_id
+        JOIN sessions s ON st.session_id = s.session_id
+        WHERE r.student_id = ? AND s.phase = ?
+    ");
+    $stmt_sub_total->execute([$student_id, $phase]);
+    $sub_total = (int)$stmt_sub_total->fetchColumn();
+
+    // 2. Attendance Completed (Present)
+    $stmt_sub_done = $pdo->prepare("
+        SELECT COUNT(a.attendance_id)
+        FROM attendance a
+        JOIN subtopics st ON a.subtopic_id = st.subtopic_id
+        JOIN sessions s ON st.session_id = s.session_id
+        WHERE a.student_id = ? AND a.attendance_status = 'present' AND s.phase = ?
+    ");
+    $stmt_sub_done->execute([$student_id, $phase]);
+    $sub_done = (int)$stmt_sub_done->fetchColumn();
+
+    // 3. Modules Expected
+    $stmt_mod_total = $pdo->prepare("
+        SELECT COUNT(DISTINCT m.module_id)
+        FROM modules m
+        JOIN subtopics st ON m.subtopic_id = st.subtopic_id
+        JOIN sessions s ON st.session_id = s.session_id
+        JOIN registrations r ON r.subtopic_id = st.subtopic_id
+        WHERE r.student_id = ? AND m.is_deleted = 0 AND s.phase = ?
+    ");
+    $stmt_mod_total->execute([$student_id, $phase]);
+    $mod_total = (int)$stmt_mod_total->fetchColumn();
+
+    // 4. Modules Completed
+    $stmt_mod_done = $pdo->prepare("
+        SELECT COUNT(DISTINCT smp.module_id)
+        FROM student_module_progress smp
+        JOIN modules m ON smp.module_id = m.module_id
+        JOIN subtopics st ON m.subtopic_id = st.subtopic_id
+        JOIN sessions s ON st.session_id = s.session_id
+        JOIN registrations r ON r.subtopic_id = st.subtopic_id
+        WHERE r.student_id = ? AND smp.completed = 1 AND m.is_deleted = 0 AND s.phase = ?
+    ");
+    $stmt_mod_done->execute([$student_id, $phase]);
+    $mod_done = (int)$stmt_mod_done->fetchColumn();
+
+    // Combined Math
+    $total_items = $sub_total + $mod_total;
+    $done_items = $sub_done + $mod_done;
+    $pct = $total_items > 0 ? round(($done_items / $total_items) * 100) : 0;
+
+    $phase_progress[$phase] = [
+        'total' => $total_items, 
+        'done' => $done_items, 
+        'pct' => $pct,
+        'sub_total' => $sub_total,
+        'sub_done' => $sub_done,
+        'mod_total' => $mod_total,
+        'mod_done' => $mod_done
+    ];
+}
+// -------------------------------
+
 // ---- TASK 10: Split tasks into To‑Do / Missing ----
 $today = date('Y-m-d');
 $todoTasks = [];
@@ -330,7 +400,39 @@ function progressBar($percent, $color = '#0a3e6d') {
                         <strong class="text-lg"><?= date('F Y', strtotime("$year-$month-01")) ?></strong>
                         <a href="?month=<?= $next_month ?>&year=<?= $next_year ?>">Next &gt;</a>
                     </div>
-                    <?= $calendarHtml ?>
+                <?= $calendarHtml ?>
+                </div>
+            </div>
+
+            <!-- Phase Breakdown -->
+            <div class="bg-white rounded shadow-xl overflow-hidden mb-6">
+                <div class="bg-[#054018] px-4 py-3 font-bold text-white flex justify-between items-center">
+                    <span><i class="fas fa-layer-group mr-2"></i>Career Phase Progress</span>
+                    <span class="text-[10px] text-white/70 uppercase tracking-wider font-normal">Attendance & Modules</span>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <?php foreach ($phase_progress as $phase_name => $data): ?>
+                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div class="text-sm font-bold text-gray-800 mb-1 flex justify-between items-center">
+                            <span><?= $phase_name ?></span>
+                            <span class="text-lg <?= $data['pct'] === 100 ? 'text-green-600' : 'text-[#0a6e2d]' ?>"><?= $data['pct'] ?>%</span>
+                        </div>
+                        
+                        <!-- Breakdown Badges -->
+                        <div class="flex gap-2 text-[10px] mb-3">
+                            <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded" title="Attended Subtopics">
+                                <i class="fas fa-calendar-check"></i> <?= $data['sub_done'] ?>/<?= $data['sub_total'] ?>
+                            </span>
+                            <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded" title="Completed Modules">
+                                <i class="fas fa-book"></i> <?= $data['mod_done'] ?>/<?= $data['mod_total'] ?>
+                            </span>
+                        </div>
+
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="h-2 rounded-full <?= $data['pct'] === 100 ? 'bg-green-500' : 'bg-[#0a6e2d]' ?>" style="width: <?= $data['pct'] ?>%"></div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
 
