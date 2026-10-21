@@ -60,30 +60,39 @@ $sessions_for_charts = $pdo->query("
     LIMIT 6
 ")->fetchAll();
 
-// ---------- AT-RISK STUDENTS ----------
-$at_risk_students = $pdo->query("
+// ---------- AT-RISK STUDENTS (Attendance + Modules) ----------
+$at_risk_students_raw = $pdo->query("
     SELECT 
         s.student_id, s.program, s.section, u.full_name,
-        COUNT(DISTINCT r.subtopic_id) AS reg_count,
-        COALESCE(SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END), 0) AS present_count
+        (SELECT COUNT(*) FROM registrations r WHERE r.student_id = s.student_id) AS sub_total,
+        (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present') AS sub_done,
+        (SELECT COUNT(*) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS mod_total,
+        (SELECT COUNT(*) FROM student_module_progress smp WHERE smp.student_id = s.student_id AND smp.completed = 1) AS mod_done
     FROM students s
     JOIN users u ON s.user_id = u.user_id
-    LEFT JOIN registrations r ON r.student_id = s.student_id
-    LEFT JOIN attendance a ON a.student_id = s.student_id AND a.subtopic_id = r.subtopic_id
     WHERE s.is_deleted = 0
-    GROUP BY s.student_id, s.program, s.section, u.full_name
-    HAVING COUNT(DISTINCT r.subtopic_id) > 0
-    ORDER BY (COALESCE(SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END), 0) / COUNT(DISTINCT r.subtopic_id)) ASC, u.full_name
-    LIMIT 5
 ")->fetchAll();
 
-foreach ($at_risk_students as &$s) {
-    $s['progress_pct'] = $s['reg_count'] > 0
-        ? round(($s['present_count'] / $s['reg_count']) * 100)
-        : 0;
-    $s['initials'] = strtoupper(implode('', array_map(fn($w) => $w[0] ?? '', array_slice(explode(' ', $s['full_name']), 0, 2))));
+$at_risk_students = [];
+foreach ($at_risk_students_raw as $s) {
+    $total = $s['sub_total'] + $s['mod_total'];
+    $done = $s['sub_done'] + $s['mod_done'];
+    
+    // Only calculate if they have requirements
+    if ($total > 0) {
+        $s['progress_pct'] = round(($done / $total) * 100);
+        $s['initials'] = strtoupper(implode('', array_map(fn($w) => $w[0] ?? '', array_slice(explode(' ', $s['full_name']), 0, 2))));
+        $at_risk_students[] = $s;
+    }
 }
-unset($s);
+
+// Sort by lowest progress
+usort($at_risk_students, function($a, $b) {
+    return $a['progress_pct'] <=> $b['progress_pct'];
+});
+
+// Limit to top 5
+$at_risk_students = array_slice($at_risk_students, 0, 5);
 
 // ---------- UPCOMING SESSIONS ----------
 $upcoming = $pdo->query("

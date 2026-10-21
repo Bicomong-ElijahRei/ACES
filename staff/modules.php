@@ -874,7 +874,7 @@ document.querySelectorAll('.edit-item').forEach(btn => {
             const editForm = document.getElementById('editForm');
             if (!editForm) return;
             if (data.type === 'assessment' && data.content?.startsWith('quiz:')) setupQuizBuilder(editForm);
-            editForm.addEventListener('submit', function(e) {
+                        editForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 if (data.type === 'assessment' && data.content?.startsWith('quiz:')) {
                     const qs = [];
@@ -888,7 +888,14 @@ document.querySelectorAll('.edit-item').forEach(btn => {
                         });
                     });
                     if (!qs.length) { alert('Add at least one question.'); return; }
-                    document.getElementById('edit_quiz_data').value = 'quiz:' + JSON.stringify(qs);
+                    
+                    const passingScore = document.getElementById('edit_passing_score')?.value || 50;
+                    const quizPayload = {
+                        passing_score: parseInt(passingScore),
+                        questions: qs
+                    };
+                    
+                    document.getElementById('edit_quiz_data').value = 'quiz:' + JSON.stringify(quizPayload);
                 }
                 fetch('modules.php', { method: 'POST', body: new FormData(this) })
                     .then(() => { bootstrap.Modal.getInstance(document.getElementById('editModal')).hide(); location.reload(); })
@@ -935,7 +942,10 @@ function buildEditModalHtml(data) {
         </div>`;
         
     if (data.type === 'assessment' && data.content?.startsWith('quiz:')) {
-        const qs = JSON.parse(data.content.substring(5));
+        let parsedData = JSON.parse(data.content.substring(5));
+        let qs = parsedData.questions ? parsedData.questions : parsedData;
+        let passingScore = parsedData.passing_score ?? 50;
+        
         h += `<div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200 mb-6">
                 <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-tasks text-gray-400 mr-2"></i>Quiz Questions</h6>
                 <div class="flex flex-wrap gap-4 mb-4">
@@ -945,7 +955,11 @@ function buildEditModalHtml(data) {
                 <div id="edit_quiz_div">
                     <div class="flex justify-between items-center mb-3">
                         <label class="block text-sm font-bold text-gray-700">Questions</label>
-                        <button type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300" id="edit_add_question"><i class="fas fa-plus mr-1"></i> Add Question</button>
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-gray-600">Passing Score (%):</label>
+                            <input type="number" id="edit_passing_score" value="${passingScore}" min="1" max="100" class="w-16 border border-gray-300 rounded p-1 text-sm text-center focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <button type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 ml-2" id="edit_add_question"><i class="fas fa-plus mr-1"></i> Add Question</button>
+                        </div>
                     </div>
                     <div id="edit_questions_container" class="space-y-4">`;
         qs.forEach(q => {

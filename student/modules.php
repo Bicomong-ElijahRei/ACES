@@ -320,10 +320,16 @@ if ($module_id) {
                     $content_html = '<form method="POST" id="quizForm">';
                     $content_html .= csrf_field();
                     $content_html .= '<input type="hidden" name="action" value="submit_assessment">';
+                    
+                    // Add passing score banner
+                    $content_html .= '<div class="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg text-sm flex items-center gap-2"><i class="fas fa-info-circle text-lg"></i> <div>You need a score of <strong>' . $passing_score . '%</strong> or higher to pass this assessment.</div></div>';
+
                     foreach ($questions as $idx => $q) {
                         $content_html .= '<div class="mb-5 p-5 border border-gray-200 rounded-xl bg-gray-50/50">';
-                        $content_html .= '<label class="font-semibold text-gray-800 text-base">' . htmlspecialchars($q['text']) . '</label>';
-                        $content_html .= '<span class="ml-2 text-xs text-gray-500">(' . ($q['points'] ?? 1) . ' pts)</span><br>';
+                        $content_html .= '<div class="flex justify-between items-start mb-2">';
+                        $content_html .= '<label class="font-semibold text-gray-800 text-base flex-1">' . htmlspecialchars($q['text']) . '</label>';
+                        $content_html .= '<span class="ml-4 text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md whitespace-nowrap"><i class="fas fa-star mr-1"></i>' . ($q['points'] ?? 1) . ' pt' . (($q['points'] ?? 1) == 1 ? '' : 's') . '</span>';
+                        $content_html .= '</div>';
                         $content_html .= '<div class="mt-3 space-y-2">';
                         if ($q['type'] == 'multiple_choice') {
                             foreach ($q['options'] as $opt) {

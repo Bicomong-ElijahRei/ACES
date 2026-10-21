@@ -26,36 +26,61 @@ $total_sessions = (int) $pdo->query("
     SELECT COUNT(*) FROM sessions WHERE is_deleted = 0
 ")->fetchColumn();
 
-// Average progress across all active students
-$avg_progress_row = $pdo->query("
-    SELECT 
-      SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END) AS present_count,
-      COUNT(*) AS total_count
-    FROM registrations r
-    LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id
-    JOIN students s ON s.student_id = r.student_id
-    WHERE s.is_deleted = 0
-")->fetch();
-$avg_progress = ($avg_progress_row['total_count'] > 0)
-    ? round(($avg_progress_row['present_count'] / $avg_progress_row['total_count']) * 100)
-    : 0;
+// --- 1. GLOBAL AVERAGE PROGRESS (Attendance + Modules) ---
+$global_sub_total = (int)$pdo->query("
+    SELECT COUNT(DISTINCT r.student_id, r.subtopic_id) 
+    FROM registrations r 
+    JOIN subtopics s ON r.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+")->fetchColumn();
 
-// At-risk students (progress < 50%)
+$global_sub_done = (int)$pdo->query("
+    SELECT COUNT(DISTINCT a.student_id, a.subtopic_id) 
+    FROM attendance a 
+    JOIN subtopics s ON a.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN students st ON a.student_id = st.student_id AND st.is_deleted = 0
+    WHERE a.attendance_status = 'present' AND a.is_deleted = 0
+")->fetchColumn();
+
+$global_mod_total = (int)$pdo->query("
+    SELECT COUNT(DISTINCT r.student_id, m.module_id) 
+    FROM modules m 
+    JOIN subtopics s ON m.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN registrations r ON r.subtopic_id = s.subtopic_id
+    JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+    WHERE m.is_deleted = 0
+")->fetchColumn();
+
+$global_mod_done = (int)$pdo->query("
+    SELECT COUNT(DISTINCT smp.student_id, smp.module_id) 
+    FROM student_module_progress smp
+    JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0
+    JOIN registrations r ON r.subtopic_id = m.subtopic_id
+    JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+    WHERE smp.completed = 1
+")->fetchColumn();
+
+$total_expected = $global_sub_total + $global_mod_total;
+$total_completed = $global_sub_done + $global_mod_done;
+$avg_progress = $total_expected > 0 ? min(100, round(($total_completed / $total_expected) * 100)) : 0;
+
+// --- 2. AT-RISK STUDENTS (Attendance + Modules < 50%) ---
 $at_risk = 0;
 $at_risk_rows = $pdo->query("
-    SELECT r.student_id, 
-           COUNT(*) AS reg_count,
-           SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END) AS present_count
-    FROM registrations r
-    LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id
-    JOIN students s ON s.student_id = r.student_id
+    SELECT 
+        s.student_id,
+        (SELECT COUNT(*) FROM registrations r WHERE r.student_id = s.student_id) AS sub_total,
+        (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present') AS sub_done,
+        (SELECT COUNT(*) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS mod_total,
+        (SELECT COUNT(*) FROM student_module_progress smp WHERE smp.student_id = s.student_id AND smp.completed = 1) AS mod_done
+    FROM students s
     WHERE s.is_deleted = 0
-    GROUP BY r.student_id
 ")->fetchAll();
 foreach ($at_risk_rows as $row) {
-    if ($row['reg_count'] > 0) {
-        $pct = ($row['present_count'] / $row['reg_count']) * 100;
-        if ($pct < 50) $at_risk++;
+    $t = $row['sub_total'] + $row['mod_total'];
+    $d = $row['sub_done'] + $row['mod_done'];
+    if ($t > 0 && (($d / $t) * 100) < 50) {
+        $at_risk++;
     }
 }
 
@@ -78,12 +103,25 @@ $sessions = $pdo->query("
     ORDER BY s.date DESC, s.title
 ")->fetchAll();
 
-// Compute avg progress per session
+// Compute avg progress per session (Attendance + Modules)
 foreach ($sessions as &$sess) {
-    $sess['has_attendance'] = ($sess['att_total'] > 0);
-    $sess['avg_progress']   = $sess['has_attendance']
-        ? round(($sess['present_count'] / $sess['att_total']) * 100)
-        : 0;
+    // Get modules for this session
+    $stmt_mod = $pdo->prepare("
+        SELECT COUNT(m.module_id) AS total_mods,
+               SUM(CASE WHEN smp.completed = 1 THEN 1 ELSE 0 END) AS done_mods
+        FROM modules m
+        JOIN subtopics st ON m.subtopic_id = st.subtopic_id
+        LEFT JOIN student_module_progress smp ON smp.module_id = m.module_id
+        WHERE st.session_id = ? AND m.is_deleted = 0
+    ");
+    $stmt_mod->execute([$sess['session_id']]);
+    $mod_data = $stmt_mod->fetch();
+    
+    $total_req = (int)$sess['att_total'] + (int)$mod_data['total_mods'];
+    $done_req  = (int)$sess['present_count'] + (int)$mod_data['done_mods'];
+    
+    $sess['has_attendance'] = ($total_req > 0);
+    $sess['avg_progress']   = $total_req > 0 ? round(($done_req / $total_req) * 100) : 0;
 }
 unset($sess);
 

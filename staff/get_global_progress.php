@@ -1,8 +1,4 @@
 <?php
-/**
- * Global student progress — used by the At Risk / Avg Progress drawers
- * on student_progress.php
- */
 require_once __DIR__ . '/../config/env.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -13,24 +9,23 @@ header('Content-Type: application/json');
 $filter = $_GET['filter'] ?? 'all';
 
 try {
-    // Base: all students with aggregate attendance progress
+    // Base: all students with aggregate attendance AND module progress
     $stmt = $pdo->query("
         SELECT 
             s.student_id, s.program, s.section,
             u.full_name,
-            COUNT(r.subtopic_id) AS total_reg,
-            SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END) AS present_reg
+            (SELECT COUNT(DISTINCT r.subtopic_id) FROM registrations r WHERE r.student_id = s.student_id) AS total_reg,
+            (SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS present_reg,
+            (SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS total_mods,
+            (SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND smp.student_id = s.student_id AND smp.completed = 1 AND m.is_deleted = 0) AS done_mods
         FROM students s
         JOIN users u ON u.user_id = s.user_id
-        LEFT JOIN registrations r ON r.student_id = s.student_id
-        LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id
         WHERE s.is_deleted = 0
-        GROUP BY s.student_id
         ORDER BY u.full_name
     ");
     $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Per-student session breakdown
+    // Per-student session breakdown (Fixed placeholder issue)
     $sessStmt = $pdo->prepare("
         SELECT 
             sess.session_id, sess.title AS session_title, sess.phase,
@@ -52,23 +47,17 @@ try {
     ");
 
     foreach ($students as &$s) {
-        $total   = (int) $s['total_reg'];
-        $present = (int) $s['present_reg'];
-        $s['progress_pct'] = $total > 0 ? (int) round(($present / $total) * 100) : 0;
+        // Combined Math (Attendance + Modules)
+        $total_req = (int)$s['total_reg'] + (int)$s['total_mods'];
+        $done_req  = (int)$s['present_reg'] + (int)$s['done_mods'];
+        $s['progress_pct'] = $total_req > 0 ? min(100, (int) round(($done_req / $total_req) * 100)) : 0;
 
         // Pass the student_id twice for the two '?' placeholders
         $sessStmt->execute([$s['student_id'], $s['student_id']]);
         $sessions = $sessStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $modTotal = 0;
-        $modDone  = 0;
-        foreach ($sessions as $row) {
-            $modTotal += (int) $row['modules_total'];
-            $modDone  += (int) $row['modules_completed'];
-        }
-
-        $s['attendance_summary'] = ['present' => $present, 'total' => $total];
-        $s['modules_summary']    = ['completed' => $modDone, 'total' => $modTotal];
+        $s['attendance_summary'] = ['present' => (int)$s['present_reg'], 'total' => (int)$s['total_reg']];
+        $s['modules_summary']    = ['completed' => (int)$s['done_mods'], 'total' => (int)$s['total_mods']];
         $s['sessions']           = $sessions;
     }
     unset($s);
@@ -77,7 +66,7 @@ try {
     if ($filter === 'at-risk') {
         $students = array_values(array_filter(
             $students,
-            fn($x) => $x['progress_pct'] < 50 && $x['attendance_summary']['total'] > 0
+            fn($x) => $x['progress_pct'] < 50 && (($x['total_reg'] + $x['total_mods']) > 0)
         ));
         usort($students, fn($a, $b) => $a['progress_pct'] <=> $b['progress_pct']);
     } elseif ($filter === 'complete') {
