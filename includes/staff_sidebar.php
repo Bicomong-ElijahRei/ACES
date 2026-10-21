@@ -110,7 +110,11 @@ $current = basename($_SERVER['PHP_SELF']);
                     <a href="reports.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'reports.php' ? 'font-bold bg-white/20' : '' ?>">
                         <i class="fas fa-file-export mr-2 w-5 text-center"></i><span class="sidebar-text">Reports & Exports</span>
                     </a>
+                    <a href="support.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'support.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-ticket-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Student Tickets</span>
+                    </a>
                 </div>
+
             </div>
 
             <!-- Account Group -->

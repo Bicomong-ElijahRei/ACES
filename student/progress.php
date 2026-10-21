@@ -106,6 +106,80 @@ function progressBar($percent, $color = '#0a6e2d') {
     $percent = min(100, max(0, $percent));
     return '<div class="w-full bg-gray-200 rounded-full h-2"><div class="h-2 rounded-full" style="width: ' . $percent . '%; background-color: ' . $color . ';"></div></div>';
 }
+// --- COMPLIANCE HISTORY & MISSED TRACKING ---
+// 1. Get student's program and section
+$stmt_stud = $pdo->prepare("SELECT program, section FROM students WHERE student_id = ?");
+$stmt_stud->execute([$_SESSION['student_id']]);
+$stud_info = $stmt_stud->fetch();
+$program = $stud_info['program'] ?? '';
+$section = $stud_info['section'] ?? '';
+
+// 2. Fetch all relevant subtopics
+$stmt_all_subs = $pdo->query("
+    SELECT st.subtopic_id, st.title AS subtopic_title, st.deadline, st.visible_courses, st.visible_for,
+           s.title AS session_title, s.phase, s.date
+    FROM subtopics st
+    JOIN sessions s ON st.session_id = s.session_id
+    WHERE st.is_deleted = 0 AND s.is_deleted = 0
+    ORDER BY s.date DESC
+");
+$all_subs = $stmt_all_subs->fetchAll();
+
+// 3. Fetch student's registrations
+$stmt_regs = $pdo->prepare("SELECT subtopic_id FROM registrations WHERE student_id = ?");
+$stmt_regs->execute([$_SESSION['student_id']]);
+$my_regs = $stmt_regs->fetchAll(PDO::FETCH_COLUMN);
+
+// 4. Fetch student's attendance
+$stmt_atts = $pdo->prepare("SELECT subtopic_id, attendance_status FROM attendance WHERE student_id = ?");
+$stmt_atts->execute([$_SESSION['student_id']]);
+$my_atts_raw = $stmt_atts->fetchAll(PDO::FETCH_ASSOC);
+$my_atts = [];
+foreach ($my_atts_raw as $a) {
+    $my_atts[$a['subtopic_id']] = $a['attendance_status'];
+}
+
+$history_completed = [];
+$history_missed = [];
+$history_pending = [];
+$history_not_registered = [];
+
+foreach ($all_subs as $sub) {
+    // Check visibility
+    $vis_courses = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
+    $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
+    
+    $is_visible = empty($vis_courses) && empty($vis_sections);
+    if (in_array($program, $vis_courses) || in_array($section, $vis_sections)) {
+        $is_visible = true;
+    }
+    
+    if (!$is_visible) continue;
+
+    $sub_id = $sub['subtopic_id'];
+    $is_registered = in_array($sub_id, $my_regs);
+    $att_status = $my_atts[$sub_id] ?? null;
+
+    // Check if the session date is in the past
+    $today = date('Y-m-d');
+    $sub_date = $sub['date'];
+    $is_past = ($sub_date < $today);
+
+    if ($is_registered) {
+        if ($att_status === 'present') {
+            $history_completed[] = $sub;
+        } elseif ($att_status === 'absent' || $is_past) {
+            // FIX: If it's marked absent OR the date has passed, it's missed.
+            $history_missed[] = $sub;
+        } else {
+            // Only pending if the date is in the future
+            $history_pending[] = $sub; 
+        }
+    } else {
+        $history_not_registered[] = $sub;
+    }
+}
+// ---------------------------------------------
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
@@ -220,6 +294,128 @@ function progressBar($percent, $color = '#0a6e2d') {
                     </div>
                 <?php endif; ?>
             </div>
+                        <!-- COMPLIANCE HISTORY -->
+            <div class="mt-8 mb-8">
+                <h3 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-history text-[#0a6e2d] mr-2"></i>Compliance History</h3>
+                
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-200 mb-4 space-x-4">
+                    <button class="history-tab font-bold text-sm pb-2 border-b-2 border-[#0a6e2d] text-[#0a6e2d]" data-target="tab-missed">
+                        <i class="fas fa-times-circle text-red-500 mr-1"></i> Missed (<?= count($history_missed) ?>)
+                    </button>
+                    <button class="history-tab font-semibold text-sm pb-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800" data-target="tab-pending">
+                        <i class="fas fa-clock text-amber-500 mr-1"></i> Pending (<?= count($history_pending) ?>)
+                    </button>
+                    <button class="history-tab font-semibold text-sm pb-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800" data-target="tab-not-reg">
+                        <i class="fas fa-minus-circle text-gray-400 mr-1"></i> Not Registered (<?= count($history_not_registered) ?>)
+                    </button>
+                    <button class="history-tab font-semibold text-sm pb-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800" data-target="tab-completed">
+                        <i class="fas fa-check-circle text-green-500 mr-1"></i> Completed (<?= count($history_completed) ?>)
+                    </button>
+                </div>
+
+                <!-- Content Panels -->
+                <div id="tab-missed" class="history-content block bg-white rounded-xl shadow-sm border border-red-200 overflow-hidden">
+                    <?php if (empty($history_missed)): ?>
+                        <div class="p-6 text-center text-gray-400">No missed subtopics. Great job!</div>
+                    <?php else: ?>
+                        <ul class="divide-y divide-gray-100">
+                            <?php foreach ($history_missed as $sub): ?>
+                                <li class="p-4 flex justify-between items-center hover:bg-red-50 transition">
+                                    <div>
+                                        <p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p>
+                                        <p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['date'])) ?></p>
+                                    </div>
+                                    <span class="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-md border border-red-200">Absent</span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+
+                <div id="tab-pending" class="history-content hidden bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
+                    <?php if (empty($history_pending)): ?>
+                        <div class="p-6 text-center text-gray-400">No pending subtopics.</div>
+                    <?php else: ?>
+                        <ul class="divide-y divide-gray-100">
+                            <?php foreach ($history_pending as $sub): ?>
+                                <li class="p-4 flex justify-between items-center hover:bg-amber-50 transition">
+                                    <div>
+                                        <p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p>
+                                        <p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['date'])) ?></p>
+                                    </div>
+                                    <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-md border border-amber-200">Pending</span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+
+                <div id="tab-not-reg" class="history-content hidden bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <?php if (empty($history_not_registered)): ?>
+                        <div class="p-6 text-center text-gray-400">You registered for all available subtopics.</div>
+                    <?php else: ?>
+                        <ul class="divide-y divide-gray-100">
+                            <?php foreach ($history_not_registered as $sub): ?>
+                                <li class="p-4 flex justify-between items-center hover:bg-gray-50 transition">
+                                    <div>
+                                        <p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p>
+                                        <p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['date'])) ?></p>
+                                    </div>
+                                    <span class="bg-gray-100 text-gray-600 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-300">Unregistered</span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+
+                <div id="tab-completed" class="history-content hidden bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden">
+                    <?php if (empty($history_completed)): ?>
+                        <div class="p-6 text-center text-gray-400">No completed subtopics yet.</div>
+                    <?php else: ?>
+                        <ul class="divide-y divide-gray-100">
+                            <?php foreach ($history_completed as $sub): ?>
+                                <li class="p-4 flex justify-between items-center hover:bg-green-50 transition">
+                                    <div>
+                                        <p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p>
+                                        <p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['date'])) ?></p>
+                                    </div>
+                                    <span class="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md border border-green-200">Present</span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- SCRIPT FOR TABS -->
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const tabs = document.querySelectorAll('.history-tab');
+                const contents = document.querySelectorAll('.history-content');
+
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', function() {
+                        // Reset all tabs
+                        tabs.forEach(t => {
+                            t.classList.remove('border-[#0a6e2d]', 'text-[#0a6e2d]', 'font-bold');
+                            t.classList.add('border-transparent', 'text-gray-500', 'font-semibold');
+                        });
+                        
+                        // Hide all contents
+                        contents.forEach(c => c.classList.add('hidden'));
+
+                        // Activate clicked tab
+                        this.classList.remove('border-transparent', 'text-gray-500', 'font-semibold');
+                        this.classList.add('border-[#0a6e2d]', 'text-[#0a6e2d]', 'font-bold');
+
+                        // Show target content
+                        const targetId = this.getAttribute('data-target');
+                        document.getElementById(targetId).classList.remove('hidden');
+                    });
+                });
+            });
+            </script>
         </main>
     </div>
 </div>

@@ -1,18 +1,4 @@
 <?php
-/**
- * ============================================================
- * ACES System — Student Sessions & Subtopic Selection (Redesigned)
- * ============================================================
- * Design principles applied:
- *   1. Clear visual hierarchy (date, title, status prominent)
- *   2. Progressive disclosure (collapsed cards → expand for details)
- *   3. Progress tracking (how many sessions registered)
- *   4. Frictionless CTAs (clear "Register" buttons)
- *   5. Responsive event cards (mobile-friendly)
- *   6. Immediate feedback (capacity bars, status badges)
- * ============================================================
- */
-
 require_once __DIR__ . '/../config/env.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -24,43 +10,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ---- Student details ----
-$stmt = $pdo->prepare("
-    SELECT u.full_name, s.section, s.program
-    FROM students s
-    JOIN users u ON s.user_id = u.user_id
-    WHERE s.student_id = ?
-");
+$stmt = $pdo->prepare("SELECT u.full_name, s.section, s.program FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.student_id = ?");
 $stmt->execute([$_SESSION['student_id']]);
 $student = $stmt->fetch();
 $full_name = $student['full_name'] ?? 'Student';
 $first_name = explode(' ', $full_name)[0];
 
-// ---- Current module (first incomplete) ----
+// ---- Current module ----
 $stmt_module = $pdo->prepare("
     SELECT m.module_id, m.title, m.description, m.due_date
     FROM modules m
     JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id
     JOIN registrations r ON r.subtopic_id = sub.subtopic_id
     LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = r.student_id
-    WHERE r.student_id = ?
-      AND m.is_deleted = 0
-      AND sub.is_deleted = 0
-      AND (sp.completed IS NULL OR sp.completed = 0)
-    ORDER BY m.due_date ASC
-    LIMIT 1
+    WHERE r.student_id = ? AND m.is_deleted = 0 AND sub.is_deleted = 0 AND (sp.completed IS NULL OR sp.completed = 0)
+    ORDER BY m.due_date ASC LIMIT 1
 ");
 $stmt_module->execute([$_SESSION['student_id']]);
 $current_module = $stmt_module->fetch();
 
 // ---- Upcoming sessions ----
 $today = date('Y-m-d');
-$stmt_sessions = $pdo->prepare("
-    SELECT s.*, u.full_name as creator_name
-    FROM sessions s
-    LEFT JOIN users u ON s.created_by = u.user_id
-    WHERE s.date >= ?
-    ORDER BY s.date ASC
-");
+$stmt_sessions = $pdo->prepare("SELECT s.*, u.full_name as creator_name FROM sessions s LEFT JOIN users u ON s.created_by = u.user_id WHERE s.date >= ? ORDER BY s.date ASC");
 $stmt_sessions->execute([$today]);
 $sessions = $stmt_sessions->fetchAll();
 $student_id = $_SESSION['student_id'];
@@ -71,50 +42,35 @@ foreach ($sessions as &$session) {
     $student_section = $student['section'] ?? '';
 
     $stmt_sub = $pdo->prepare("
-        SELECT sub.*,
-               (SELECT COUNT(*) FROM registrations WHERE subtopic_id = sub.subtopic_id) AS attendee_count,
-               (SELECT COUNT(*) FROM modules WHERE subtopic_id = sub.subtopic_id AND is_deleted = 0) AS module_count
-        FROM subtopics sub
-        WHERE sub.session_id = ? AND sub.is_deleted = 0
-        ORDER BY sub.title
+        SELECT sub.*, (SELECT COUNT(*) FROM registrations WHERE subtopic_id = sub.subtopic_id) AS attendee_count, (SELECT COUNT(*) FROM modules WHERE subtopic_id = sub.subtopic_id AND is_deleted = 0) AS module_count
+        FROM subtopics sub WHERE sub.session_id = ? AND sub.is_deleted = 0 ORDER BY sub.title
     ");
     $stmt_sub->execute([$session['session_id']]);
     $all_subtopics = $stmt_sub->fetchAll();
 
-    // Filter visible subtopics
     $visible_subtopics = [];
     foreach ($all_subtopics as $sub) {
-        $visible  = false;
-        $required = false;
-
+        $visible = false; $required = false;
         $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
         $vis_courses  = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
         $req_sections = json_decode($sub['required_for'] ?? '[]', true) ?: [];
         $req_courses  = json_decode($sub['required_courses'] ?? '[]', true) ?: [];
 
-        if (empty($vis_sections) && empty($vis_courses) && empty($req_sections) && empty($req_courses)) {
-            $visible = true;
-        }
-        if (in_array($student_section, $req_sections) || in_array($student_program, $req_courses)) {
-            $required = true;
-            $visible  = true;
-        }
-        if (in_array($student_section, $vis_sections) || in_array($student_program, $vis_courses)) {
-            $visible = true;
-        }
+        if (empty($vis_sections) && empty($vis_courses) && empty($req_sections) && empty($req_courses)) $visible = true;
+        if (in_array($student_section, $req_sections) || in_array($student_program, $req_courses)) { $required = true; $visible = true; }
+        if (in_array($student_section, $vis_sections) || in_array($student_program, $vis_courses)) { $visible = true; }
 
         if ($visible) {
-            $sub['required'] = $required;
-            $visible_subtopics[] = $sub;
+            $sub_date_check = !empty($sub['subtopic_date']) ? $sub['subtopic_date'] : $session['date'];
+            if ($sub_date_check >= $today) {
+                $sub['required'] = $required;
+                $visible_subtopics[] = $sub;
+            }
         }
     }
 
     // Auto-register required subtopics
-    $stmt_check_reg = $pdo->prepare("
-        SELECT r.registration_id FROM registrations r
-        JOIN subtopics st ON r.subtopic_id = st.subtopic_id
-        WHERE st.session_id = ? AND r.student_id = ?
-    ");
+    $stmt_check_reg = $pdo->prepare("SELECT r.registration_id FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE st.session_id = ? AND r.student_id = ?");
     $stmt_check_reg->execute([$session['session_id'], $student_id]);
     $already_registered = (bool) $stmt_check_reg->fetch();
 
@@ -126,10 +82,7 @@ foreach ($sessions as &$session) {
         $stmt_already->execute([$student_id, $sub['subtopic_id']]);
         if ($stmt_already->fetch()) continue;
 
-        $stmt_reg = $pdo->prepare("
-            INSERT INTO registrations (student_id, session_id, subtopic_id, status, registration_date)
-            VALUES (?, ?, ?, 'auto_assigned', NOW())
-        ");
+        $stmt_reg = $pdo->prepare("INSERT INTO registrations (student_id, session_id, subtopic_id, status, registration_date) VALUES (?, ?, ?, 'auto_assigned', NOW())");
         $stmt_reg->execute([$student_id, $session['session_id'], $sub['subtopic_id']]);
         $already_registered = true;
     }
@@ -138,85 +91,84 @@ foreach ($sessions as &$session) {
     $session['subtopics'] = $visible_subtopics;
 
     if (count($visible_subtopics) > 0) {
-        $all_dates[] = $session['date'];
+        foreach ($visible_subtopics as $v_sub) {
+            $all_dates[] = !empty($v_sub['subtopic_date']) ? $v_sub['subtopic_date'] : $session['date'];
+        }
     }
 
-    $stmt_reg = $pdo->prepare("
-        SELECT r.subtopic_id, st.title AS subtopic_title
-        FROM registrations r
-        JOIN subtopics st ON r.subtopic_id = st.subtopic_id
-        WHERE r.student_id = ? AND r.session_id = ?
-    ");
+    $stmt_reg = $pdo->prepare("SELECT r.subtopic_id, st.title AS subtopic_title FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND r.session_id = ?");
     $stmt_reg->execute([$student_id, $session['session_id']]);
     $reg_rows = $stmt_reg->fetchAll(PDO::FETCH_ASSOC);
-    $session['registered_subtopics']      = array_column($reg_rows, 'subtopic_id');  // keeps original shape
-    $session['registered_subtopics_full'] = $reg_rows;                                 // new: has titles
+    $session['registered_subtopics']      = array_column($reg_rows, 'subtopic_id');
+    $session['registered_subtopics_full'] = $reg_rows;
 }
 unset($session);
-
 $all_dates = array_unique($all_dates);
 
-// ---- Combined Progress Calculation (Attendance + Modules) ----
-
-// 1. Attendance Expected
-$stmt_sub_total = $pdo->prepare("
-    SELECT COUNT(r.subtopic_id)
-    FROM registrations r
-    JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
-    WHERE r.student_id = ?
+// --- PAST SESSIONS HISTORY ---
+$stmt_past_subs = $pdo->prepare("
+    SELECT st.subtopic_id, st.title AS subtopic_title, st.visible_courses, st.visible_for,
+           s.title AS session_title, COALESCE(st.subtopic_date, s.date) AS actual_date, s.phase
+    FROM subtopics st JOIN sessions s ON st.session_id = s.session_id
+    WHERE st.is_deleted = 0 AND s.is_deleted = 0 AND COALESCE(st.subtopic_date, s.date) < ?
+    ORDER BY actual_date DESC
 ");
+$stmt_past_subs->execute([$today]);
+$past_subs = $stmt_past_subs->fetchAll();
+
+$stmt_my_regs = $pdo->prepare("SELECT subtopic_id FROM registrations WHERE student_id = ?");
+$stmt_my_regs->execute([$student_id]);
+$my_regs = $stmt_my_regs->fetchAll(PDO::FETCH_COLUMN);
+
+$stmt_my_atts = $pdo->prepare("SELECT subtopic_id, attendance_status FROM attendance WHERE student_id = ?");
+$stmt_my_atts->execute([$student_id]);
+$my_atts_raw = $stmt_my_atts->fetchAll(PDO::FETCH_ASSOC);
+$my_atts = [];
+foreach ($my_atts_raw as $a) { $my_atts[$a['subtopic_id']] = $a['attendance_status']; }
+
+$past_completed = []; $past_missed = []; $past_not_reg = [];
+foreach ($past_subs as $sub) {
+    $vis_courses = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
+    $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
+    $is_visible = empty($vis_courses) && empty($vis_sections);
+    if (in_array($student['program'] ?? '', $vis_courses) || in_array($student['section'] ?? '', $vis_sections)) $is_visible = true;
+    if (!$is_visible) continue;
+
+    $sub_id = $sub['subtopic_id'];
+    $is_reg = in_array($sub_id, $my_regs);
+    $att = $my_atts[$sub_id] ?? null;
+
+    if ($is_reg) {
+        if ($att === 'present') { $past_completed[] = $sub; } else { $past_missed[] = $sub; }
+    } else { $past_not_reg[] = $sub; }
+}
+
+// ---- Progress Calculation ----
+$stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ?");
 $stmt_sub_total->execute([$student_id]);
 $total_subtopics_expected = (int)$stmt_sub_total->fetchColumn();
 
-// 2. Attendance Completed
-$stmt_sub_done = $pdo->prepare("
-    SELECT COUNT(a.attendance_id)
-    FROM attendance a
-    JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
-    WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0
-");
+$stmt_sub_done = $pdo->prepare("SELECT COUNT(a.attendance_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
 $stmt_sub_done->execute([$student_id]);
 $attended_subtopics = (int)$stmt_sub_done->fetchColumn();
 
-// 3. Modules Expected
-$stmt_total_mods = $pdo->prepare("
-    SELECT COUNT(DISTINCT m.module_id)
-    FROM modules m
-    JOIN registrations r ON m.subtopic_id = r.subtopic_id
-    WHERE r.student_id = ? AND m.is_deleted = 0
-");
+$stmt_total_mods = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = ? AND m.is_deleted = 0");
 $stmt_total_mods->execute([$student_id]);
 $total_modules_expected = (int)$stmt_total_mods->fetchColumn();
 
-// 4. Modules Completed
-$stmt_done_mods = $pdo->prepare("
-    SELECT COUNT(DISTINCT smp.module_id)
-    FROM student_module_progress smp
-    JOIN modules m ON smp.module_id = m.module_id
-    JOIN registrations r ON m.subtopic_id = r.subtopic_id
-    WHERE r.student_id = ? AND smp.completed = 1 AND m.is_deleted = 0
-");
+$stmt_done_mods = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = ? AND smp.completed = 1 AND m.is_deleted = 0");
 $stmt_done_mods->execute([$student_id]);
 $total_modules_done = (int)$stmt_done_mods->fetchColumn();
 
-// Combine them for Overall Progress
 $total_items_expected = $total_subtopics_expected + $total_modules_expected;
 $total_items_completed = $attended_subtopics + $total_modules_done;
-
-// Prevent over 100% by capping completed at expected
-if ($total_items_completed > $total_items_expected) {
-    $total_items_completed = $total_items_expected;
-}
-
-$progress_pct = $total_items_expected > 0
-    ? min(100, round(($total_items_completed / $total_items_expected) * 100))
-    : 0;
+if ($total_items_completed > $total_items_expected) $total_items_completed = $total_items_expected;
+$progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_completed / $total_items_expected) * 100)) : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sessions | ACES Student</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -224,526 +176,205 @@ $progress_pct = $total_items_expected > 0
     <style>
         html, body { height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        /* ============================================================
-           DESIGN SYSTEM — matches staff pages
-           ============================================================ */
-        :root {
-            --primary: #0a6e2d;
-            --primary-dark: #054018;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --neutral-50: #f9fafb;
-            --neutral-100: #f3f4f6;
-            --neutral-200: #e5e7eb;
-            --neutral-400: #9ca3af;
-            --neutral-600: #6b7280;
-            --neutral-800: #1f2937;
-        }
-
-        /* ---------- SUBTOPIC CARDS ---------- */
-        .subtopic-card {
-            background: #fff;
-            border-radius: 10px;
-            border: 1px solid var(--neutral-200);
-            overflow: hidden;
-            transition: all 0.2s;
-        }
-        .subtopic-card:hover { border-color: var(--primary); box-shadow: 0 4px 12px rgba(10,110,45,0.08); }
-        .subtopic-card.is-registered { border-color: var(--success); background: #f0fdf4; }
-        .subtopic-card.is-full { opacity: 0.75; }
-
-        /* ---------- CAPACITY BAR ---------- */
-        .capacity-track { height: 6px; background: var(--neutral-100); border-radius: 9999px; overflow: hidden; }
-        .capacity-fill { height: 100%; border-radius: 9999px; transition: width 0.4s ease; }
-
-        /* ---------- STATUS PILLS ---------- */
-        .status-pill {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 3px 10px; border-radius: 9999px;
-            font-size: 11px; font-weight: 600;
-        }
-        .status-registered { background: #d1fae5; color: #065f46; }
-        .status-available   { background: #dbeafe; color: #1e40af; }
-        .status-filling     { background: #fef3c7; color: #92400e; }
-        .status-full        { background: #fee2e2; color: #991b1b; }
-        .status-required    { background: #ede9fe; color: #5b21b6; }
-
-        /* ---------- SESSION CARDS ---------- */
-        .session-card {
-            background: #fff;
-            border-radius: 14px;
-            border: 1px solid var(--neutral-200);
-            overflow: hidden;
-            transition: all 0.2s;
-            margin-bottom: 20px;
-        }
-        .session-card:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.06); }
-
-        .session-header {
-            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
-            color: #fff;
-            padding: 18px 22px;
-        }
-
-        /* ---------- DATE BADGE ---------- */
-        .date-badge {
-            width: 60px; height: 60px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.25);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            flex-shrink: 0;
-        }
-        .date-badge .month { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.9; }
-        .date-badge .day { font-size: 24px; font-weight: 800; line-height: 1; }
-
-        /* ---------- PROGRESS RING ---------- */
-        .progress-ring { transition: stroke-dashoffset 0.5s ease-out; }
-
-        /* ---------- CALENDAR ---------- */
+        .hero-card { background: linear-gradient(135deg, #e6f5ed 0%, #c8ecd9 100%); border-radius: 14px; padding: 24px; border: 1px solid rgba(10,110,45,0.1); margin-bottom: 24px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-        .calendar-weekday {
-            text-align: center; font-weight: 700; padding: 8px 4px;
-            background: var(--neutral-100); color: var(--neutral-600);
-            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
-            border-radius: 6px;
-        }
-        .calendar-day {
-            aspect-ratio: 1;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 8px; cursor: pointer; font-size: 0.8rem;
-            font-weight: 500; color: var(--neutral-600);
-            transition: all 0.15s;
-            position: relative;
-        }
-        .calendar-day:hover:not(.empty) { background: var(--neutral-100); }
+        .calendar-weekday { text-align: center; font-weight: 700; padding: 8px 4px; background: #f3f4f6; color: #6b7280; font-size: 0.7rem; text-transform: uppercase; border-radius: 6px; }
+        .calendar-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-weight: 500; color: #6b7280; transition: all 0.15s; position: relative; }
+        .calendar-day:hover:not(.empty) { background: #f3f4f6; }
         .calendar-day.empty { cursor: default; color: transparent; }
-        .calendar-day.has-event {
-            background: #dcfce7; color: var(--primary);
-            font-weight: 700;
-        }
-        .calendar-day.has-event::after {
-            content: ''; position: absolute; bottom: 4px;
-            width: 4px; height: 4px; border-radius: 50%;
-            background: var(--primary);
-        }
-        .calendar-day.today {
-            background: var(--primary); color: #fff;
-        }
-        .calendar-day.selected {
-            background: var(--warning); color: #fff;
-            box-shadow: 0 0 0 2px rgba(245,158,11,0.3);
-        }
-
-        /* ---------- HERO PROGRESS ---------- */
-        .hero-card {
-            background: linear-gradient(135deg, #e6f5ed 0%, #c8ecd9 100%);
-            border-radius: 14px;
-            padding: 24px;
-            border: 1px solid rgba(10,110,45,0.1);
-            margin-bottom: 24px;
-        }
-
-        /* ---------- MODAL ---------- */
+        .calendar-day.has-event { background: #dcfce7; color: #0a6e2d; font-weight: 700; }
+        .calendar-day.has-event::after { content: ''; position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: #0a6e2d; }
+        .calendar-day.today { background: #0a6e2d; color: #fff; }
         .modal-content { border-radius: 14px; border: none; overflow: hidden; }
+        .clickable-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .clickable-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.06); }
     </style>
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
-
 <?php include '../includes/student_sidebar.php'; ?>
-
 <div class="flex-1 flex flex-col overflow-hidden">
     <?php include '../includes/student_header.php'; ?>
-
     <main class="flex-1 p-4 md:p-6 overflow-y-auto no-scrollbar">
-        <?php if (!empty($_SESSION['flash'])): 
-            $flash = $_SESSION['flash'];
-            unset($_SESSION['flash']);
-            $colors = [
-                'success' => ['bg-green-50', 'border-green-400', 'text-green-700', 'fa-check-circle'],
-                'error'   => ['bg-red-50',   'border-red-400',   'text-red-700',   'fa-exclamation-circle'],
-                'info'    => ['bg-blue-50',  'border-blue-400',  'text-blue-700',  'fa-info-circle'],
-                'warning' => ['bg-amber-50', 'border-amber-400', 'text-amber-800', 'fa-exclamation-triangle'],
-            ];
-            [$bg, $border, $text, $icon] = $colors[$flash['type']] ?? $colors['info'];
-        ?>
-            <div class="<?= $bg ?> border-l-4 <?= $border ?> <?= $text ?> p-4 rounded-r-lg mb-5 flex items-start gap-3 fade-in">
-                <i class="fas <?= $icon ?> mt-0.5"></i>
-                <span class="text-sm font-medium"><?= htmlspecialchars($flash['text']) ?></span>
-            </div>
-        <?php endif; ?>
-
-        <!-- ============================================================
-             HERO: Welcome + Progress
-             ============================================================ -->
+        
+        <!-- HERO -->
         <div class="hero-card">
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                 <div class="flex-1">
-                    <h1 class="text-2xl md:text-3xl font-extrabold text-[#0a6e2d] mb-2">
-                        <i class="fas fa-hand-pointer mr-2"></i>Select Your Subtopics
-                    </h1>
-                    <p class="text-gray-700 text-sm md:text-base">
-                        Choose <strong>one subtopic</strong> for each upcoming session. Required subtopics are auto-assigned.
-                    </p>
+                    <h1 class="text-2xl md:text-3xl font-extrabold text-[#0a6e2d] mb-2"><i class="fas fa-hand-pointer mr-2"></i>Select Your Subtopics</h1>
+                    <p class="text-gray-700 text-sm md:text-base">Click a session card below to view available subtopics.</p>
                     <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                        <span class="status-pill" style="background:#d1fae5; color:#065f46;">
-                            <i class="fas fa-calendar-check"></i> <?= $attended_subtopics ?>/<?= $total_subtopics_expected ?> Attendance
-                        </span>
-                        <span class="status-pill" style="background:#f3e8ff; color:#6b21a8;">
-                            <i class="fas fa-book"></i> <?= $total_modules_done ?>/<?= $total_modules_expected ?> Modules
-                        </span>
+                        <span class="inline-flex items-center gap-1 bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold"><i class="fas fa-calendar-check"></i> <?= $attended_subtopics ?>/<?= $total_subtopics_expected ?> Attendance</span>
+                        <span class="inline-flex items-center gap-1 bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-semibold"><i class="fas fa-book"></i> <?= $total_modules_done ?>/<?= $total_modules_expected ?> Modules</span>
                     </div>
                 </div>
-
-                <!-- Progress ring -->
                 <div class="flex items-center gap-4">
                     <div class="relative w-20 h-20 flex items-center justify-center">
                         <svg class="w-full h-full" viewBox="0 0 36 36">
                             <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.6"></circle>
-                            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0a6e2d" stroke-width="3"
-                                    stroke-dasharray="<?= $progress_pct ?> 100" stroke-dashoffset="0"
-                                    stroke-linecap="round" class="progress-ring"></circle>
+                            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0a6e2d" stroke-width="3" stroke-dasharray="<?= $progress_pct ?> 100" stroke-dashoffset="0" stroke-linecap="round"></circle>
                         </svg>
                         <div class="absolute text-base font-extrabold text-[#0a6e2d]"><?= $progress_pct ?>%</div>
                     </div>
                     <div class="text-sm">
                         <div class="font-bold text-gray-800">Overall Progress</div>
-                        <div class="text-gray-600"><?= $total_items_completed ?> of <?= $total_items_expected ?> total requirements</div>
+                        <div class="text-gray-600"><?= $total_items_completed ?> of <?= $total_items_expected ?> requirements</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================
-             TWO-COLUMN: Current Module + Calendar
-             ============================================================ -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-
+        <!-- CURRENT MODULE & CALENDAR -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
             <!-- Current Module -->
             <?php if ($current_module): ?>
-                <a href="modules.php?module_id=<?= $current_module['module_id'] ?>"
-                   class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition overflow-hidden block" style="text-decoration:none; color:inherit;">
+                <a href="modules.php?module_id=<?= $current_module['module_id'] ?>" class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition overflow-hidden block" style="text-decoration:none; color:inherit;">
             <?php else: ?>
                 <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <?php endif; ?>
-
                 <div class="bg-[#054018] px-5 py-3 flex items-center justify-between">
-                    <span class="text-white font-bold text-sm">
-                        <i class="fas fa-book-open mr-2"></i>Current Module
-                    </span>
-                    <?php if ($current_module): ?>
-                        <span class="text-white/70 text-xs">Click to open →</span>
-                    <?php endif; ?>
+                    <span class="text-white font-bold text-sm"><i class="fas fa-book-open mr-2"></i>Current Module</span>
+                    <?php if ($current_module): ?><span class="text-white/70 text-xs">Click to open →</span><?php endif; ?>
                 </div>
                 <div class="p-5">
                     <?php if ($current_module): ?>
                         <h4 class="font-bold text-lg text-gray-800"><?= htmlspecialchars($current_module['title']) ?></h4>
-                        <p class="text-gray-600 text-sm mt-2 leading-relaxed">
-                            <?= nl2br(htmlspecialchars(substr($current_module['description'] ?? '', 0, 200))) ?>
-                        </p>
-                        <div class="flex items-center gap-2 mt-3 text-xs text-gray-500">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>Due: <?= date('M d, Y', strtotime($current_module['due_date'])) ?></span>
-                        </div>
+                        <p class="text-gray-600 text-sm mt-2 leading-relaxed"><?= nl2br(htmlspecialchars(substr($current_module['description'] ?? '', 0, 200))) ?></p>
+                        <div class="flex items-center gap-2 mt-3 text-xs text-gray-500"><i class="fas fa-calendar-alt"></i><span>Due: <?= date('M d, Y', strtotime($current_module['due_date'])) ?></span></div>
                     <?php else: ?>
-                        <div class="text-center py-4">
-                            <i class="fas fa-check-circle text-4xl text-green-400 mb-2"></i>
-                            <p class="text-gray-500 text-sm">No pending modules. You're all caught up!</p>
-                        </div>
+                        <div class="text-center py-4"><i class="fas fa-check-circle text-4xl text-green-400 mb-2"></i><p class="text-gray-500 text-sm">No pending modules. You're all caught up!</p></div>
                     <?php endif; ?>
                 </div>
-
             <?php if ($current_module): ?></a><?php else: ?></div><?php endif; ?>
 
-            <!-- Mini Calendar -->
+            <!-- Calendar -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div class="bg-[#054018] px-5 py-3 flex items-center justify-between">
-                    <span class="text-white font-bold text-sm">
-                        <i class="fas fa-calendar-alt mr-2"></i><?= date('F Y') ?>
-                    </span>
+                    <span class="text-white font-bold text-sm"><i class="fas fa-calendar-alt mr-2"></i><?= date('F Y') ?></span>
                     <div class="flex gap-1">
-                        <button id="prevMonthBtn" class="text-white/70 hover:text-white p-1">
-                            <i class="fas fa-chevron-left text-xs"></i>
-                        </button>
-                        <button id="nextMonthBtn" class="text-white/70 hover:text-white p-1">
-                            <i class="fas fa-chevron-right text-xs"></i>
-                        </button>
+                        <button id="prevMonthBtn" class="text-white/70 hover:text-white p-1"><i class="fas fa-chevron-left text-xs"></i></button>
+                        <button id="nextMonthBtn" class="text-white/70 hover:text-white p-1"><i class="fas fa-chevron-right text-xs"></i></button>
                     </div>
                 </div>
                 <div class="p-4" id="miniCalendar"></div>
-                <div class="px-4 pb-4 text-xs text-gray-500 text-center">
-                    <i class="fas fa-info-circle mr-1"></i>Click a highlighted date to expand its sessions
-                </div>
+                <div class="px-4 pb-4 text-xs text-gray-500 text-center"><i class="fas fa-info-circle mr-1"></i>Click a highlighted date to find the session</div>
             </div>
         </div>
 
-        <!-- ============================================================
-             SESSIONS LIST
-             ============================================================ -->
+        <!-- SESSION CARDS GRID -->
+        <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-layer-group text-[#0a6e2d] mr-2"></i>Upcoming Sessions</h2>
         <?php if (count($sessions) == 0): ?>
-            <div class="bg-white rounded-xl shadow-sm p-12 text-center">
-                <i class="fas fa-inbox text-5xl text-gray-300 mb-4"></i>
-                <h3 class="text-lg font-semibold text-gray-700">No Upcoming Sessions</h3>
-                <p class="text-gray-500 text-sm mt-1">Check back soon for new career development activities.</p>
-            </div>
+            <div class="bg-white rounded-xl shadow-sm p-12 text-center"><i class="fas fa-inbox text-5xl text-gray-300 mb-4"></i><h3 class="text-lg font-semibold text-gray-700">No Upcoming Sessions</h3></div>
         <?php else: ?>
-            <?php foreach ($sessions as $session):
-                $session_date = strtotime($session['date']);
-                $is_registered_session = !empty($session['registered_subtopics']);
-                $visible_subs = $session['subtopics'];
-            ?>
-                <?php
-                $existing_name = !empty($session['registered_subtopics_full'])
-                    ? $session['registered_subtopics_full'][0]['subtopic_title']
-                    : '';
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-10" id="sessionGrid">
+                <?php foreach ($sessions as $session): 
+                    $session_date = strtotime($session['date']);
+                    $visible_subs = $session['subtopics'];
+                    $reg_count = count($session['registered_subtopics']);
+                    $total_subs = count($visible_subs);
+                    if ($total_subs === 0) continue;
                 ?>
-                <div class="session-card"
-                    data-session-date="<?= $session['date'] ?>"
-                    data-allow-multiple="<?= (int)($session['allow_multiple'] ?? 0) ?>"
-                    data-registered-count="<?= count($session['registered_subtopics']) ?>"
-                    data-registered-title="<?= htmlspecialchars($existing_name) ?>">
-
-                <!-- Session Header -->
-                    <div class="session-header relative overflow-hidden" style="<?= !empty($session['image_path']) ? 'background-image: url(\'../' . htmlspecialchars($session['image_path']) . '\'); background-size: cover; background-position: center;' : ''; ?>">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-pointer clickable-card flex flex-col h-full group session-card"
+                         data-session-date="<?= $session['date'] ?>"
+                         onclick='openSessionModal(<?= htmlspecialchars(json_encode([
+                             'id' => $session['session_id'], 'title' => $session['title'], 'phase' => $session['phase'],
+                             'date' => date('M d, Y', $session_date), 'time' => date('g:i A', strtotime($session['start_time'])) . ' - ' . date('g:i A', strtotime($session['end_time'])),
+                             'location' => $session['location'], 'description' => $session['description'], 'image' => $session['image_path'],
+                             'reg_count' => $reg_count, 'total_subs' => $total_subs, 'allow_multiple' => (int)($session['allow_multiple'] ?? 0),
+                             'existing_name' => !empty($session['registered_subtopics_full']) ? $session['registered_subtopics_full'][0]['subtopic_title'] : '',
+                             'registered_ids' => $session['registered_subtopics'],
+                             'subtopics' => $visible_subs
+                         ]), ENT_QUOTES, 'UTF-8') ?>)'>
                         
-                        <?php if (!empty($session['image_path'])): ?>
-                            <!-- Dark overlay for readability -->
-                            <div class="absolute inset-0 bg-black/60 z-0"></div>
-                        <?php endif; ?>
-
-                        <div class="flex flex-wrap items-center gap-4 relative z-10">
-                            <!-- Date badge -->
-                            <div class="date-badge">
-                                <span class="month"><?= date('M', $session_date) ?></span>
-                                <span class="day"><?= date('d', $session_date) ?></span>
-                            </div>
-
-                            <!-- Title + meta -->
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-                                          style="background: rgba(255,255,255,0.2);">
-                                        <?= htmlspecialchars($session['phase'] ?? 'Session') ?>
-                                    </span>
-                                    <?php if ($is_registered_session): ?>
-                                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-green-400/30">
-                                            <i class="fas fa-check mr-1"></i>Registered
-                                        </span>
-                                    <?php endif; ?>
-                                </div>
-                                <h3 class="text-lg font-bold leading-tight truncate">
-                                    <?= htmlspecialchars($session['title']) ?>
-                                </h3>
-                                <div class="text-xs text-white/80 mt-1 flex flex-wrap items-center gap-3">
-                                    <span><i class="far fa-clock mr-1"></i><?= date('g:i A', strtotime($session['start_time'])) ?> – <?= date('g:i A', strtotime($session['end_time'])) ?></span>
-                                    <?php if (!empty($session['location'])): ?>
-                                        <span><i class="fas fa-map-marker-alt mr-1"></i><?= htmlspecialchars($session['location']) ?></span>
-                                    <?php endif; ?>
-                                    <span><i class="fas fa-list-ul mr-1"></i><?= count($visible_subs) ?> subtopic<?= count($visible_subs) !== 1 ? 's' : '' ?></span>
-                                </div>
-                            </div>
-
-                            <!-- Session-level status -->
-                            <div class="text-right">
-                                <?php
-                                $registered_count = count($session['registered_subtopics']);
-                                $total_subs = count($visible_subs);
-                                ?>
-                                <div class="text-xs uppercase tracking-wider text-white/70">Registered</div>
-                                <div class="text-xl font-bold"><?= $registered_count ?>/<?= $total_subs ?></div>
-                            </div>
+                        <div class="h-40 bg-gray-100 relative overflow-hidden flex items-center justify-center">
+                            <?php if (!empty($session['image_path'])): ?>
+                                <img src="../<?= htmlspecialchars($session['image_path']) ?>" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                                <div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
+                            <?php else: ?>
+                                <div class="absolute inset-0 bg-gradient-to-br from-[#054018] to-[#0a6e2d] opacity-90"></div>
+                                <i class="fas fa-calendar-alt text-5xl text-white/30 relative z-10"></i>
+                            <?php endif; ?>
+                            <div class="absolute top-3 left-3 z-10"><span class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-md bg-white/90 text-[#0a6e2d] shadow-sm"><?= htmlspecialchars($session['phase']) ?></span></div>
                         </div>
 
-                        <?php if (!empty($session['description'])): ?>
-                            <p class="text-white/80 text-xs mt-3 leading-relaxed">
-                                <?= htmlspecialchars(substr($session['description'], 0, 180)) ?>
-                            </p>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Subtopic Grid -->
-                    <div class="p-4 md:p-5">
-                        <?php if (count($visible_subs) == 0): ?>
-                            <div class="text-center py-6 text-gray-500 text-sm">
-                                <i class="fas fa-hourglass-half mr-2"></i>No subtopics available yet.
+                        <div class="p-5 flex-1 flex flex-col">
+                            <h3 class="font-bold text-gray-900 leading-tight group-hover:text-[#0a6e2d] transition-colors line-clamp-2 mb-2"><?= htmlspecialchars($session['title']) ?></h3>
+                            <div class="text-xs text-gray-500 mb-4 space-y-1">
+                                <div><i class="far fa-calendar-alt mr-2"></i><?= date('M d, Y', $session_date) ?></div>
+                                <div><i class="far fa-clock mr-2"></i><?= date('g:i A', strtotime($session['start_time'])) ?></div>
                             </div>
-                        <?php else: ?>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <?php foreach ($visible_subs as $sub):
-                                    $is_registered = in_array($sub['subtopic_id'], $session['registered_subtopics']);
-                                    $percent_full = ($sub['capacity'] > 0)
-                                        ? round(($sub['attendee_count'] / $sub['capacity']) * 100)
-                                        : 0;
-                                    $is_full = $percent_full >= 100;
-
-                                    if ($is_registered) {
-                                        $status_class = 'status-registered';
-                                        $status_label = 'Registered';
-                                        $status_icon = 'fa-check-circle';
-                                        $bar_color = '#10b981';
-                                    } elseif ($sub['required']) {
-                                        $status_class = 'status-required';
-                                        $status_label = 'Required';
-                                        $status_icon = 'fa-star';
-                                        $bar_color = '#8b5cf6';
-                                    } elseif ($is_full) {
-                                        $status_class = 'status-full';
-                                        $status_label = 'Full';
-                                        $status_icon = 'fa-times-circle';
-                                        $bar_color = '#ef4444';
-                                    } elseif ($percent_full >= 70) {
-                                        $status_class = 'status-filling';
-                                        $status_label = 'Filling up';
-                                        $status_icon = 'fa-exclamation-circle';
-                                        $bar_color = '#f59e0b';
-                                    } else {
-                                        $status_class = 'status-available';
-                                        $status_label = 'Available';
-                                        $status_icon = 'fa-check';
-                                        $bar_color = '#10b981';
-                                    }
-
-                                    $card_class = 'subtopic-card';
-                                    if ($is_registered) $card_class .= ' is-registered';
-                                    if ($is_full && !$is_registered) $card_class .= ' is-full';
-                                ?>
-                                    <div class="<?= $card_class ?>"
-                                         data-subtopic-id="<?= $sub['subtopic_id'] ?>"
-                                         data-session-date="<?= $session['date'] ?>">
-
-                                        <!-- Card header -->
-                                        <div class="p-4 subtopic-title cursor-pointer">
-                                            <div class="flex items-start justify-between gap-2 mb-2">
-                                                <h4 class="font-bold text-sm text-gray-800 leading-snug flex-1 min-w-0">
-                                                    <?= htmlspecialchars($sub['title']) ?>
-                                                </h4>
-                                                <i class="fas fa-chevron-down text-gray-400 text-xs transition-transform subtopic-chevron flex-shrink-0 mt-1"></i>
-                                            </div>
-
-                                            <div class="flex items-center gap-2 flex-wrap">
-                                                <span class="status-pill <?= $status_class ?>">
-                                                    <i class="fas <?= $status_icon ?>"></i> <?= $status_label ?>
-                                                </span>
-                                                
-                                                <!-- DYNAMIC COLOR-CODED ATTENDANCE BADGE -->
-                                                <?php 
-                                                    $attType = $sub['attendance_type'] ?? 'physical';
-                                                    $attColor = match($attType) {
-                                                        'module' => 'background:#f3e8ff; color:#6b21a8;', // Purple
-                                                        'online' => 'background:#dbeafe; color:#1e40af;', // Blue
-                                                        default  => 'background:#d1fae5; color:#065f46;', // Green
-                                                    };
-                                                    $attIcon = match($attType) {
-                                                        'module' => 'fa-book',
-                                                        'online' => 'fa-laptop',
-                                                        default  => 'fa-building',
-                                                    };
-                                                ?>
-                                                <span class="status-pill" style="<?= $attColor ?>">
-                                                    <i class="fas <?= $attIcon ?>"></i> <?= ucfirst($attType) ?>
-                                                </span>
-                                                <!-- END BADGE -->
-                                            </div>
-
-                                            <!-- Capacity bar -->
-                                            <div class="mt-3 flex items-center gap-2">
-                                                <div class="capacity-track flex-1">
-                                                    <div class="capacity-fill" style="width: <?= min(100, $percent_full) ?>%; background: <?= $bar_color ?>;"></div>
-                                                </div>
-                                                <span class="text-[11px] font-semibold text-gray-500 whitespace-nowrap">
-                                                    <?= $sub['attendee_count'] ?>/<?= $sub['capacity'] ?>
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <!-- Expandable details -->
-                                        <div class="subtopic-details hidden border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600 space-y-2">
-                                            <?php if (($sub['attendance_type'] ?? 'physical') === 'module'): ?>
-                                                <div class="flex items-start gap-2">
-                                                    <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
-                                                    <span>Complete all modules to be marked <strong>Present</strong> automatically.</span>
-                                                </div>
-                                            <?php else: ?>
-                                                <div class="flex items-start gap-2">
-                                                    <i class="far fa-clock text-gray-400 mt-0.5"></i>
-                                                    <span><?= date('M d, Y', $session_date) ?> · <?= date('g:i A', strtotime($session['start_time'])) ?> – <?= date('g:i A', strtotime($session['end_time'])) ?></span>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <?php if (!empty($session['proctor']) || !empty($session['creator_name'])): ?>
-                                                <div class="flex items-start gap-2">
-                                                    <i class="fas fa-user text-gray-400 mt-0.5"></i>
-                                                    <span>Proctor: <?= htmlspecialchars($session['proctor'] ?? $session['creator_name']) ?></span>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <?php if (!empty($session['location'])): ?>
-                                                <div class="flex items-start gap-2">
-                                                    <i class="fas fa-map-marker-alt text-gray-400 mt-0.5"></i>
-                                                    <span><?= htmlspecialchars($session['location']) ?></span>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <?php if ($sub['module_count'] > 0): ?>
-                                                <div class="flex items-start gap-2">
-                                                    <i class="fas fa-book text-gray-400 mt-0.5"></i>
-                                                    <span><?= $sub['module_count'] ?> module<?= $sub['module_count'] !== 1 ? 's' : '' ?> included</span>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <?php if (!empty($sub['description'])): ?>
-                                                <div class="pt-2 border-t border-gray-200 mt-2 text-gray-500 italic">
-                                                    <?= nl2br(htmlspecialchars($sub['description'])) ?>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <!-- Action button -->
-                                            <div class="pt-3">
-                                                <?php if ($is_registered): ?>
-                                                    <button disabled class="w-full bg-green-100 text-green-700 py-2 rounded-lg text-xs font-semibold cursor-default">
-                                                        <i class="fas fa-check-circle mr-1"></i>Already Registered
-                                                    </button>
-                                                <?php elseif ($is_full): ?>
-                                                    <button disabled class="w-full bg-red-100 text-red-700 py-2 rounded-lg text-xs font-semibold cursor-not-allowed">
-                                                        <i class="fas fa-times-circle mr-1"></i>No Slots Available
-                                                    </button>
-                                                <?php else:
-                                                    $has_existing = !empty($session['registered_subtopics']) && !($session['allow_multiple'] ?? 0);
-                                                ?>
-                                                    <?php if ($has_existing): ?>
-                                                        <div class="mb-2 flex items-start gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-                                                            <i class="fas fa-exchange-alt mt-0.5"></i>
-                                                            <span>Selecting this will <strong>replace</strong> your current pick: "<?= htmlspecialchars($existing_name) ?>"</span>
-                                                        </div>
-                                                    <?php endif; ?>
-                                                    <form method="POST" action="choose_subtopic.php" class="register-form">
-                                                        <?= csrf_field() ?>
-                                                        <input type="hidden" name="session_id" value="<?= $session['session_id'] ?>">
-                                                        <input type="hidden" name="subtopic_id" value="<?= $sub['subtopic_id'] ?>">
-                                                        <button type="submit" class="w-full <?= $has_existing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#0a6e2d] hover:bg-[#054018]' ?> text-white py-2 rounded-lg text-xs font-semibold transition">
-                                                            <?php if ($has_existing): ?>
-                                                                <i class="fas fa-exchange-alt mr-1"></i>Switch to this Subtopic
-                                                            <?php else: ?>
-                                                                <i class="fas fa-plus-circle mr-1"></i>Register for this Subtopic
-                                                            <?php endif; ?>
-                                                        </button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
+                            <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
+                                <div class="text-xs font-semibold text-gray-500"><i class="fas fa-list-ul mr-1"></i> <?= $total_subs ?> Subtopics</div>
+                                <span class="text-sm font-bold <?= $reg_count > 0 ? 'text-green-600' : 'text-blue-600' ?>"><?= $reg_count ?>/<?= $total_subs ?> Registered</span>
                             </div>
-                        <?php endif; ?>
+                        </div>
                     </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            </div>
         <?php endif; ?>
 
+        <!-- PAST SESSIONS HISTORY -->
+        <div class="mt-8 mb-8">
+            <h3 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-history text-[#0a6e2d] mr-2"></i>Past Sessions History</h3>
+            <div class="flex border-b border-gray-200 mb-4 space-x-4">
+                <button class="history-tab-sess font-bold text-sm pb-2 border-b-2 border-[#0a6e2d] text-[#0a6e2d]" data-target="sess-tab-missed"><i class="fas fa-times-circle text-red-500 mr-1"></i> Missed (<?= count($past_missed) ?>)</button>
+                <button class="history-tab-sess font-semibold text-sm pb-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800" data-target="sess-tab-not-reg"><i class="fas fa-minus-circle text-gray-400 mr-1"></i> Not Registered (<?= count($past_not_reg) ?>)</button>
+                <button class="history-tab-sess font-semibold text-sm pb-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800" data-target="sess-tab-completed"><i class="fas fa-check-circle text-green-500 mr-1"></i> Completed (<?= count($past_completed) ?>)</button>
+            </div>
+
+            <div id="sess-tab-missed" class="history-content-sess block bg-white rounded-xl shadow-sm border border-red-200 overflow-hidden">
+                <?php if (empty($past_missed)): ?><div class="p-6 text-center text-gray-400">No missed subtopics. Great job!</div>
+                <?php else: ?><ul class="divide-y divide-gray-100">
+                    <?php foreach ($past_missed as $sub): ?>
+                        <li class="p-4 flex justify-between items-center hover:bg-red-50 transition">
+                            <div><p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p><p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['actual_date'])) ?></p></div>
+                            <span class="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-md border border-red-200">Missed / Absent</span>
+                        </li>
+                    <?php endforeach; ?></ul><?php endif; ?>
+            </div>
+
+            <div id="sess-tab-not-reg" class="history-content-sess hidden bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <?php if (empty($past_not_reg)): ?><div class="p-6 text-center text-gray-400">You registered for all past available subtopics.</div>
+                <?php else: ?><ul class="divide-y divide-gray-100">
+                    <?php foreach ($past_not_reg as $sub): ?>
+                        <li class="p-4 flex justify-between items-center hover:bg-gray-50 transition">
+                            <div><p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p><p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['actual_date'])) ?></p></div>
+                            <span class="bg-gray-100 text-gray-600 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-300">Unregistered</span>
+                        </li>
+                    <?php endforeach; ?></ul><?php endif; ?>
+            </div>
+
+            <div id="sess-tab-completed" class="history-content-sess hidden bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden">
+                <?php if (empty($past_completed)): ?><div class="p-6 text-center text-gray-400">No completed past subtopics yet.</div>
+                <?php else: ?><ul class="divide-y divide-gray-100">
+                    <?php foreach ($past_completed as $sub): ?>
+                        <li class="p-4 flex justify-between items-center hover:bg-green-50 transition">
+                            <div><p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p><p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['actual_date'])) ?></p></div>
+                            <span class="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md border border-green-200">Present</span>
+                        </li>
+                    <?php endforeach; ?></ul><?php endif; ?>
+            </div>
+        </div>
     </main>
+</div>
+
+<!-- SESSION MODAL -->
+<div class="modal fade" id="sessionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-xl rounded-2xl overflow-hidden">
+            <div class="bg-[#054018] text-white p-6 relative">
+                <button type="button" class="btn-close btn-close-white absolute top-4 right-4 z-10" data-bs-dismiss="modal"></button>
+                <div class="flex items-center gap-4">
+                    <div class="bg-white/20 p-3 rounded-xl hidden sm:block"><i class="fas fa-calendar-check text-3xl"></i></div>
+                    <div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-green-300 mb-1 block" id="modalPhase"></span>
+                        <h2 class="text-2xl font-bold leading-tight" id="modalTitle"></h2>
+                        <div class="flex items-center gap-4 text-sm text-white/80 mt-2" id="modalMeta"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body p-6 bg-gray-50" id="modalBody"></div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -753,153 +384,140 @@ let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
 
 function generateCalendar(year, month) {
-    const firstDay = new Date(year, month, 1);
-    const startWeekday = firstDay.getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-
-    let html = '<div class="calendar-grid">';
-    ['S','M','T','W','T','F','S'].forEach(d => html += `<div class="calendar-weekday">${d}</div>`);
-
+    const firstDay = new Date(year, month, 1); const startWeekday = firstDay.getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date(); const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    let html = '<div class="calendar-grid">'; ['S','M','T','W','T','F','S'].forEach(d => html += `<div class="calendar-weekday">${d}</div>`);
     for (let i = 0; i < startWeekday; i++) html += '<div class="calendar-day empty"></div>';
-
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const hasEvent = eventDates.includes(dateStr);
-        const isToday = dateStr === todayStr;
-        let cls = 'calendar-day';
-        if (hasEvent) cls += ' has-event';
-        if (isToday) cls += ' today';
+        let cls = 'calendar-day'; if (eventDates.includes(dateStr)) cls += ' has-event'; if (dateStr === todayStr) cls += ' today';
         html += `<div class="${cls}" data-date="${dateStr}">${d}</div>`;
     }
-    html += '</div>';
-    return html;
+    return html + '</div>';
 }
 
 function renderCalendar() {
-    const cal = document.getElementById('miniCalendar');
-    if (!cal) return;
-    cal.innerHTML = generateCalendar(currentYear, currentMonth);
-
-    document.getElementById('prevMonthBtn')?.addEventListener('click', () => {
-        currentMonth--;
-        if (currentMonth < 0) { currentMonth = 11; currentYear--; }
-        renderCalendar();
-    });
-    document.getElementById('nextMonthBtn')?.addEventListener('click', () => {
-        currentMonth++;
-        if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-        renderCalendar();
-    });
-
+    const cal = document.getElementById('miniCalendar'); if (!cal) return; cal.innerHTML = generateCalendar(currentYear, currentMonth);
+    document.getElementById('prevMonthBtn')?.addEventListener('click', () => { currentMonth--; if (currentMonth < 0) { currentMonth = 11; currentYear--; } renderCalendar(); });
+    document.getElementById('nextMonthBtn')?.addEventListener('click', () => { currentMonth++; if (currentMonth > 11) { currentMonth = 0; currentYear++; } renderCalendar(); });
     document.querySelectorAll('.calendar-day.has-event').forEach(day => {
         day.addEventListener('click', () => {
-            const date = day.getAttribute('data-date');
-            if (!date) return;
-            document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('selected'));
-            day.classList.add('selected');
+            const date = day.getAttribute('data-date'); if (!date) return;
+            document.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('selected')); day.classList.add('selected');
             filterByDate(date);
         });
     });
 }
 
 function filterByDate(date) {
-    // Collapse all subtopics first
-    document.querySelectorAll('.subtopic-details').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('.subtopic-chevron').forEach(el => el.style.transform = '');
-
-    // Expand matching session
-    document.querySelectorAll(`.subtopic-card[data-session-date="${date}"]`).forEach(card => {
-        const details = card.querySelector('.subtopic-details');
-        const chevron = card.querySelector('.subtopic-chevron');
-        if (details) details.classList.remove('hidden');
-        if (chevron) chevron.style.transform = 'rotate(180deg)';
-    });
-
-    // Scroll to first matching session
-    const firstCard = document.querySelector(`.subtopic-card[data-session-date="${date}"]`);
+    // Find the first session card for this date and trigger its click event to open the modal
+    const firstCard = document.querySelector(`.session-card[data-session-date="${date}"]`);
     if (firstCard) {
-        firstCard.closest('.session-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        firstCard.click();
     }
+}
+
+function openSessionModal(data) {
+    document.getElementById('modalTitle').textContent = data.title;
+    document.getElementById('modalPhase').textContent = data.phase;
+    document.getElementById('modalMeta').innerHTML = `<span><i class="far fa-calendar-alt mr-1"></i>${data.date}</span> <span><i class="far fa-clock mr-1"></i>${data.time}</span> <span><i class="fas fa-map-marker-alt mr-1"></i>${data.location || 'TBA'}</span>`;
+    
+    let html = '';
+    if (data.description) html += `<p class="text-gray-600 text-sm mb-6">${data.description}</p>`;
+    html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
+    
+    data.subtopics.forEach(sub => {
+        // Convert the array to strings so the comparison works perfectly
+        const reg_ids = (data.registered_ids || []).map(String);
+        const is_registered = reg_ids.includes(String(sub.subtopic_id));
+        const percent = sub.capacity > 0 ? Math.round((sub.attendee_count / sub.capacity) * 100) : 0;
+        const is_full = percent >= 100;
+        
+        let statusClass = 'bg-blue-100 text-blue-700 border-blue-200'; let statusText = 'Available';
+        if (sub.required) { statusClass = 'bg-purple-100 text-purple-700 border-purple-200'; statusText = 'Required'; }
+        if (is_registered) { statusClass = 'bg-green-100 text-green-700 border-green-200'; statusText = 'Registered'; }
+        if (is_full && !is_registered) { statusClass = 'bg-red-100 text-red-700 border-red-200'; statusText = 'Full'; }
+
+        const display_date = sub.subtopic_date ? new Date(sub.subtopic_date).toLocaleDateString() : data.date;
+        const display_time = sub.subtopic_start_time ? sub.subtopic_start_time + ' - ' + sub.subtopic_end_time : data.time;
+
+        html += `
+        <div class="bg-white rounded-xl border ${is_registered ? 'border-green-500' : 'border-gray-200'} p-5 flex flex-col shadow-sm relative overflow-hidden">
+            ${sub.image_path ? `<img src="../${sub.image_path}" class="w-full h-32 object-cover rounded-lg mb-4">` : ''}
+            <div class="flex justify-between items-start mb-2">
+                <h4 class="font-bold text-gray-800 text-lg">${sub.title}</h4>
+                <span class="text-[10px] font-bold uppercase px-2 py-1 rounded-md border ${statusClass}">${statusText}</span>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs mb-3">
+                <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded"><i class="fas fa-users mr-1"></i> ${sub.attendee_count}/${sub.capacity}</span>
+                <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded"><i class="fas fa-book mr-1"></i> ${sub.module_count} modules</span>
+            </div>
+            <div class="text-xs text-gray-500 mb-4 space-y-1">
+                <div><i class="far fa-calendar-alt mr-1"></i> ${display_date} · ${display_time}</div>
+                ${sub.deadline ? `<div class="text-amber-600 font-semibold"><i class="fas fa-hourglass-half mr-1"></i> Register by: ${new Date(sub.deadline).toLocaleDateString()}</div>` : ''}
+                ${sub.subtopic_proctor ? `<div><i class="fas fa-user mr-1"></i> Proctor: ${sub.subtopic_proctor}</div>` : ''}
+                ${sub.subtopic_location ? `<div><i class="fas fa-map-marker-alt mr-1"></i> ${sub.subtopic_location}</div>` : ''}
+            </div>
+            ${sub.description ? `<p class="text-xs text-gray-500 mb-4 flex-1 italic">${sub.description}</p>` : '<div class="flex-1"></div>'}
+            
+            <div class="mt-auto pt-3 border-t border-gray-100">
+                ${is_registered ? `<button disabled class="w-full bg-green-50 text-green-700 py-2.5 rounded-lg font-bold text-sm border border-green-200"><i class="fas fa-check-circle mr-1"></i> Already Registered</button>` 
+                : (is_full ? `<button disabled class="w-full bg-red-50 text-red-700 py-2.5 rounded-lg font-bold text-sm border border-red-200"><i class="fas fa-times-circle mr-1"></i> No Slots Available</button>` 
+                : `
+                <form method="POST" action="choose_subtopic.php" class="register-form">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="session_id" value="${data.id}">
+                    <input type="hidden" name="subtopic_id" value="${sub.subtopic_id}">
+                    ${data.reg_count > 0 && data.allow_multiple == 0 ? `<div class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2"><i class="fas fa-exchange-alt mr-1"></i> Replaces current pick: "${data.existing_name}"</div>` : ''}
+                    <button type="submit" class="w-full ${data.reg_count > 0 && data.allow_multiple == 0 ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#0a6e2d] hover:bg-[#054018]'} text-white py-2.5 rounded-lg font-bold text-sm transition">
+                        ${data.reg_count > 0 && data.allow_multiple == 0 ? '<i class="fas fa-exchange-alt mr-1"></i> Switch to this' : '<i class="fas fa-plus-circle mr-1"></i> Register Now'}
+                    </button>
+                </form>`)}
+            </div>
+        </div>`;
+    });
+    html += `</div>`;
+    document.getElementById('modalBody').innerHTML = html;
+    document.querySelectorAll('#modalBody .register-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (data.reg_count > 0 && data.allow_multiple == 0) {
+                const newTitle = this.closest('.bg-white').querySelector('h4').textContent;
+                if (!confirm(`You are switching from "${data.existing_name}" to "${newTitle}". Proceed?`)) {
+                    e.preventDefault();
+                    return;
+                }
+                
+                // CRITICAL FIX: Inject the replace flag so the backend knows to swap
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'replace';
+                hidden.value = '1';
+                this.appendChild(hidden);
+            }
+            
+            // Cleanup backdrop on submit
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+            
+            setTimeout(() => {
+                const btn = this.querySelector('button[type="submit"]'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Processing...';
+            }, 10);
+        });
+    });
+    new bootstrap.Modal(document.getElementById('sessionModal')).show();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     renderCalendar();
-
-    // --- BUG FIX: Prevent double-clicking the register button ---
-    document.querySelectorAll('.register-form').forEach(form => {
-        form.addEventListener('submit', function(e) {
-            // If the confirm dialog is cancelled, the form submission is prevented by the other script.
-            // We just need to disable the button once it actually starts submitting.
-            setTimeout(() => {
-                const btn = this.querySelector('button[type="submit"]');
-                if (btn) {
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Processing...';
-                    btn.classList.add('opacity-75', 'cursor-not-allowed');
-                }
-            }, 10);
-        });
-    });
-
-    // Toggle subtopic details on click
-    document.querySelectorAll('.subtopic-title').forEach(title => {
-        title.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const card = this.closest('.subtopic-card');
-            const details = card.querySelector('.subtopic-details');
-            const chevron = card.querySelector('.subtopic-chevron');
-            const hidden = details.classList.contains('hidden');
-            if (hidden) {
-                details.classList.remove('hidden');
-                chevron.style.transform = 'rotate(180deg)';
-            } else {
-                details.classList.add('hidden');
-                chevron.style.transform = '';
-            }
-        });
-    });
-
-    // ============================================================
-    // SWAP CONFIRMATION
-    // When a student clicks "Switch to this Subtopic" in a
-    // single-choice session, show a confirm dialog and (if approved)
-    // add a hidden `replace=1` field so the backend performs the swap.
-    // ============================================================
-    document.querySelectorAll('.register-form').forEach(form => {
-        form.addEventListener('submit', function(e) {
-            const sessionCard = this.closest('.session-card');
-            if (!sessionCard) return;
-
-            const allowMultiple  = sessionCard.dataset.allowMultiple === '1';
-            const registeredCount = parseInt(sessionCard.dataset.registeredCount || '0', 10);
-            const existingTitle   = sessionCard.dataset.registeredTitle || '';
-
-            // Only intervene for single-choice sessions with an existing pick
-            if (allowMultiple || registeredCount === 0 || !existingTitle) return;
-
-            // Get the new subtopic's title (from its card)
-            const subtopicCard = this.closest('.subtopic-card');
-            const newTitle = subtopicCard?.querySelector('h4')?.textContent.trim() || 'this subtopic';
-
-            const ok = confirm(
-                `You're currently registered for:\n\n"${existingTitle}"\n\n` +
-                `Switch to "${newTitle}"?\n\n` +
-                `Your previous registration will be removed.`
-            );
-
-            if (!ok) {
-                e.preventDefault();
-                return false;
-            }
-
-            // Inject the replace flag so the backend knows to swap
-            const hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = 'replace';
-            hidden.value = '1';
-            this.appendChild(hidden);
+    const sessTabs = document.querySelectorAll('.history-tab-sess');
+    const sessContents = document.querySelectorAll('.history-content-sess');
+    sessTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            sessTabs.forEach(t => { t.classList.remove('border-[#0a6e2d]', 'text-[#0a6e2d]', 'font-bold'); t.classList.add('border-transparent', 'text-gray-500', 'font-semibold'); });
+            sessContents.forEach(c => c.classList.add('hidden'));
+            this.classList.remove('border-transparent', 'text-gray-500', 'font-semibold'); this.classList.add('border-[#0a6e2d]', 'text-[#0a6e2d]', 'font-bold');
+            document.getElementById(this.getAttribute('data-target')).classList.remove('hidden');
         });
     });
 });

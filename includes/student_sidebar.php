@@ -80,6 +80,12 @@ $current = basename($_SERVER['PHP_SELF']);
 
     <!-- Bottom -->
     <div class="mt-auto pt-4 border-t border-white/20">
+        
+        <!-- MOVED SUPPORT LINK HERE -->
+        <a href="support.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2 <?= $current == 'support.php' ? 'font-bold bg-white/20' : '' ?>">
+            <i class="fas fa-headset mr-2 w-5 text-center"></i><span class="sidebar-text">Support</span>
+        </a>
+
         <a href="../logout.php" class="block text-white font-bold hover:text-red-300 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2">
             <i class="fas fa-sign-out-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Logout</span>
         </a>

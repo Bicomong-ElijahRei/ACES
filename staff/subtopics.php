@@ -49,14 +49,18 @@ if ($action === 'create') {
         }
         // -------------------------
 
-        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, description, allow_multiple, created_by, image_path) VALUES (?, ?, CURDATE(), ?, ?, ?, ?)");
-        $stmt->execute([$title, $phase, $description, $allow_multiple, $_SESSION['user_id'], $image_path]);
+        $session_date = !empty($_POST['session_date']) ? $_POST['session_date'] : date('Y-m-d');
+        $session_start = !empty($_POST['session_start_time']) ? $_POST['session_start_time'] : '08:00:00';
+        $session_end = !empty($_POST['session_end_time']) ? $_POST['session_end_time'] : '17:00:00';
+
+        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, start_time, end_time, description, allow_multiple, created_by, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$title, $phase, $session_date, $session_start, $session_end, $description, $allow_multiple, $_SESSION['user_id'], $image_path]);
         $session_id = $pdo->lastInsertId();
 
         $subtopics_json = $_POST['subtopics_data'] ?? '';
         if ($subtopics_json) {
             $subtopics = json_decode($subtopics_json, true);
-            foreach ($subtopics as $sub) {
+            foreach ($subtopics as $index => $sub) {
                 $sub_title = trim($sub['title']);
                 if (!$sub_title) continue;
                 $sub_desc = trim($sub['description']);
@@ -74,23 +78,34 @@ if ($action === 'create') {
                 $required_sections = isset($sub['required_sections']) ? json_encode($sub['required_sections']) : null;
                 $required_courses = isset($sub['required_courses']) ? json_encode($sub['required_courses']) : null;
 
+                // --- SUBTOPIC IMAGE UPLOAD ---
+                $sub_image_path = null;
+                if (isset($_FILES["subtopic_image_$index"]) && $_FILES["subtopic_image_$index"]['error'] === UPLOAD_ERR_OK) {
+                    $ext = strtolower(pathinfo($_FILES["subtopic_image_$index"]['name'], PATHINFO_EXTENSION));
+                    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                        $filename = uniqid('sub_') . '.' . $ext;
+                        $upload_dir = __DIR__ . '/../assets/images/subtopics/';
+                        if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                        if (move_uploaded_file($_FILES["subtopic_image_$index"]['tmp_name'], $upload_dir . $filename)) {
+                            $sub_image_path = 'assets/images/subtopics/' . $filename;
+                        }
+                    }
+                }
+
                 $stmt_sub = $pdo->prepare("
                     INSERT INTO subtopics (
                         session_id, title, description, capacity, deadline,
                         subtopic_date, subtopic_start_time, subtopic_end_time,
                         subtopic_proctor, subtopic_location, is_required,
-                        visible_for, required_for,
-                        visible_courses, required_courses,
-                        attendance_type
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        visible_for, required_for, visible_courses, required_courses,
+                        attendance_type, image_path
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt_sub->execute([
                     $session_id, $sub_title, $sub_desc, $capacity, $deadline,
-                    $sub_date, $sub_start, $sub_end,
-                    $sub_proctor, $sub_location, $is_required,
-                    $visible_sections, $required_sections,
-                    $visible_courses, $required_courses,
-                    $attendance_type
+                    $sub_date, $sub_start, $sub_end, $sub_proctor, $sub_location, $is_required,
+                    $visible_sections, $required_sections, $visible_courses, $required_courses,
+                    $attendance_type, $sub_image_path
                 ]);
             }
         }
@@ -126,19 +141,27 @@ if ($action === 'create') {
         }
         // -------------------------
 
-        $stmt = $pdo->prepare("UPDATE sessions SET title = ?, phase = ?, description = ?, allow_multiple = ? {$image_update_sql} WHERE session_id = ?");
-        $params = array_merge([$title, $phase, $description, $allow_multiple], $image_params, [$id]);
+        $session_date = !empty($_POST['session_date']) ? $_POST['session_date'] : date('Y-m-d');
+        $session_start = !empty($_POST['session_start_time']) ? $_POST['session_start_time'] : '08:00:00';
+        $session_end = !empty($_POST['session_end_time']) ? $_POST['session_end_time'] : '17:00:00';
+
+        // Update the main session
+        $stmt = $pdo->prepare("UPDATE sessions SET title = ?, phase = ?, date = ?, start_time = ?, end_time = ?, description = ?, allow_multiple = ? {$image_update_sql} WHERE session_id = ?");
+        $params = array_merge([$title, $phase, $session_date, $session_start, $session_end, $description, $allow_multiple], $image_params, [$id]);
         $stmt->execute($params);
 
-        $stmt_del = $pdo->prepare("DELETE FROM subtopics WHERE session_id = ?");
-        $stmt_del->execute([$id]);
-
         $subtopics_json = $_POST['subtopics_data'] ?? '';
+        $kept_subtopic_ids = [];
+        
         if ($subtopics_json) {
             $subtopics = json_decode($subtopics_json, true);
-            foreach ($subtopics as $sub) {
+            foreach ($subtopics as $index => $sub) {
                 $sub_title = trim($sub['title']);
                 if (!$sub_title) continue;
+                
+                $subtopic_id = !empty($sub['subtopic_id']) ? (int)$sub['subtopic_id'] : null;
+                $kept_subtopic_ids[] = $subtopic_id;
+                
                 $sub_desc = trim($sub['description']);
                 $capacity = (int)($sub['capacity'] ?? 0);
                 $deadline = $sub['deadline'] ?: null;
@@ -154,25 +177,64 @@ if ($action === 'create') {
                 $required_sections = isset($sub['required_sections']) ? json_encode($sub['required_sections']) : null;
                 $required_courses = isset($sub['required_courses']) ? json_encode($sub['required_courses']) : null;
 
-                $stmt_sub = $pdo->prepare("
-                    INSERT INTO subtopics (
-                        session_id, title, description, capacity, deadline,
-                        subtopic_date, subtopic_start_time, subtopic_end_time,
-                        subtopic_proctor, subtopic_location, is_required,
-                        visible_for, required_for,
-                        visible_courses, required_courses,
-                        attendance_type
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $stmt_sub->execute([
-                    $id, $sub_title, $sub_desc, $capacity, $deadline,
-                    $sub_date, $sub_start, $sub_end,
-                    $sub_proctor, $sub_location, $is_required,
-                    $visible_sections, $required_sections,
-                    $visible_courses, $required_courses,
-                    $attendance_type
-                ]);
+                // --- SUBTOPIC IMAGE UPLOAD ---
+                $sub_image_path = null;
+                if (isset($_FILES["subtopic_image_$index"]) && $_FILES["subtopic_image_$index"]['error'] === UPLOAD_ERR_OK) {
+                    $ext = strtolower(pathinfo($_FILES["subtopic_image_$index"]['name'], PATHINFO_EXTENSION));
+                    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                        $filename = uniqid('sub_') . '.' . $ext;
+                        $upload_dir = __DIR__ . '/../assets/images/subtopics/';
+                        if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                        if (move_uploaded_file($_FILES["subtopic_image_$index"]['tmp_name'], $upload_dir . $filename)) {
+                            $sub_image_path = 'assets/images/subtopics/' . $filename;
+                        }
+                    }
+                }
+
+                if ($subtopic_id) {
+                    // UPDATE (COALESCE keeps the old image if $sub_image_path is NULL)
+                    $stmt_sub = $pdo->prepare("
+                        UPDATE subtopics SET 
+                            title=?, description=?, capacity=?, deadline=?,
+                            subtopic_date=?, subtopic_start_time=?, subtopic_end_time=?,
+                            subtopic_proctor=?, subtopic_location=?, is_required=?,
+                            visible_for=?, required_for=?, visible_courses=?, required_courses=?,
+                            attendance_type=?, image_path = COALESCE(?, image_path), is_deleted=0
+                        WHERE subtopic_id=? AND session_id=?
+                    ");
+                    $stmt_sub->execute([
+                        $sub_title, $sub_desc, $capacity, $deadline,
+                        $sub_date, $sub_start, $sub_end, $sub_proctor, $sub_location, $is_required,
+                        $visible_sections, $required_sections, $visible_courses, $required_courses,
+                        $attendance_type, $sub_image_path, $subtopic_id, $id
+                    ]);
+                } else {
+                    // INSERT
+                    $stmt_sub = $pdo->prepare("
+                        INSERT INTO subtopics (
+                            session_id, title, description, capacity, deadline,
+                            subtopic_date, subtopic_start_time, subtopic_end_time,
+                            subtopic_proctor, subtopic_location, is_required,
+                            visible_for, required_for, visible_courses, required_courses,
+                            attendance_type, image_path
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt_sub->execute([
+                        $id, $sub_title, $sub_desc, $capacity, $deadline,
+                        $sub_date, $sub_start, $sub_end, $sub_proctor, $sub_location, $is_required,
+                        $visible_sections, $required_sections, $visible_courses, $required_courses,
+                        $attendance_type, $sub_image_path
+                    ]);
+                }
             }
+        }
+        
+        // Soft delete removed subtopics
+        $kept_ids_str = implode(',', array_filter($kept_subtopic_ids, fn($v) => $v !== null));
+        if ($kept_ids_str) {
+            $pdo->prepare("UPDATE subtopics SET is_deleted = 1 WHERE session_id = ? AND subtopic_id NOT IN ($kept_ids_str)")->execute([$id]);
+        } else {
+            $pdo->prepare("UPDATE subtopics SET is_deleted = 1 WHERE session_id = ?")->execute([$id]);
         }
         $success = "Session updated successfully.";
     }
@@ -247,15 +309,26 @@ if ($action === 'create') {
     exit;
 }
 
-// Fetch active sessions
-$stmt = $pdo->prepare("
-    SELECT s.*, (SELECT COUNT(*) FROM subtopics WHERE session_id = s.session_id) as subtopic_count
+// Fetch UPCOMING sessions
+$today = date('Y-m-d');
+$stmt_upcoming = $pdo->prepare("
+    SELECT s.*, (SELECT COUNT(*) FROM subtopics WHERE session_id = s.session_id AND is_deleted = 0) as subtopic_count
     FROM sessions s
-    WHERE s.is_deleted = 0
+    WHERE s.is_deleted = 0 AND s.date >= ?
+    ORDER BY s.date ASC
+");
+$stmt_upcoming->execute([$today]);
+$upcoming_sessions = $stmt_upcoming->fetchAll();
+
+// Fetch PAST sessions
+$stmt_past = $pdo->prepare("
+    SELECT s.*, (SELECT COUNT(*) FROM subtopics WHERE session_id = s.session_id AND is_deleted = 0) as subtopic_count
+    FROM sessions s
+    WHERE s.is_deleted = 0 AND s.date < ?
     ORDER BY s.date DESC
 ");
-$stmt->execute();
-$active_sessions = $stmt->fetchAll();
+$stmt_past->execute([$today]);
+$past_sessions = $stmt_past->fetchAll();
 
 // Fetch deleted sessions
 $stmt_deleted = $pdo->prepare("SELECT * FROM sessions WHERE is_deleted = 1 ORDER BY date DESC");
@@ -354,9 +427,10 @@ $course_sections_json = json_encode($course_sections);
                 </div>
             <?php endif; ?>
 
-            <!-- Active Sessions Grid -->
+            <!-- UPCOMING SESSIONS GRID -->
+            <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-calendar-alt text-[#0a6e2d] mr-2"></i>Upcoming Sessions</h2>
             <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-10">
-                <?php foreach ($active_sessions as $session): ?>
+                <?php foreach ($upcoming_sessions as $session): ?>
                     <?php
                     $stmt_sub = $pdo->prepare("SELECT * FROM subtopics WHERE session_id = ? ORDER BY title");
                     $stmt_sub->execute([$session['session_id']]);
@@ -380,7 +454,8 @@ $course_sections_json = json_encode($course_sections);
                                 <div class="flex gap-1">
                                     <?php if (!isViewer() && (isAdmin() || $session['created_by'] == $_SESSION['user_id'])): ?>
                                         <button class="notify-session-btn text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors" data-session-id="<?= $session['session_id'] ?>" title="Notify students"><i class="fas fa-envelope"></i></button>
-                                        <button class="edit-session text-gray-400 hover:text-green-600 p-1.5 rounded-md hover:bg-green-50 transition-colors" data-id="<?= $session['session_id'] ?>" data-bs-toggle="modal" data-bs-target="#editModal" title="Edit session"><i class="fas fa-edit"></i></button>
+                                        <!-- CHANGED TO VIEW BUTTON -->
+                                        <button class="view-session text-gray-400 hover:text-green-600 p-1.5 rounded-md hover:bg-green-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="View session"><i class="fas fa-eye"></i></button>
                                         <button class="delete-session text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="Archive"><i class="fas fa-trash-alt"></i></button>
                                     <?php elseif (!isViewer() && !isAdmin() && $session['created_by'] != $_SESSION['user_id']): ?>
                                         <span class="text-gray-400 text-xs italic" title="Created by another staff member">(other staff)</span>
@@ -388,6 +463,12 @@ $course_sections_json = json_encode($course_sections);
                                 </div>
                             </div>
                             <h3 class="text-lg font-bold text-gray-900 leading-tight"><?= htmlspecialchars($session['title']) ?></h3>
+                            
+                            <!-- ADDED: Session Date Badge -->
+                            <div class="text-xs font-bold text-[#0a6e2d] mt-2 mb-1">
+                                <i class="far fa-calendar-alt mr-1"></i> <?= date('F d, Y', strtotime($session['date'])) ?>
+                            </div>
+
                             <?php if ($session['description']): ?>
                                 <p class="text-sm text-gray-500 mt-1 line-clamp-2"><?= htmlspecialchars($session['description']) ?></p>
                             <?php endif; ?>
@@ -452,13 +533,67 @@ $course_sections_json = json_encode($course_sections);
                         </div>
                     </div>
                 <?php endforeach; ?>
-                <?php if (empty($active_sessions)): ?>
+                <?php if (empty($upcoming_sessions)): ?>
                     <div class="col-span-full text-center py-12 bg-white rounded-xl border border-gray-200 border-dashed">
                         <i class="fas fa-calendar-plus text-5xl text-gray-300 mb-4"></i>
-                        <h3 class="text-lg font-medium text-gray-900">No active sessions</h3>
+                        <h3 class="text-lg font-medium text-gray-900">No upcoming sessions</h3>
                         <p class="text-sm text-gray-500 mt-1">Click "Create Session" to get started.</p>
                     </div>
                 <?php endif; ?>
+            </div>
+
+            <!-- PAST SESSIONS GRID -->
+            <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-history text-gray-500 mr-2"></i>Past Sessions</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-10 opacity-80 hover:opacity-100 transition-opacity">
+                <?php foreach ($past_sessions as $session): ?>
+                    <?php
+                    $stmt_sub = $pdo->prepare("SELECT * FROM subtopics WHERE session_id = ? ORDER BY title");
+                    $stmt_sub->execute([$session['session_id']]);
+                    $subtopics = $stmt_sub->fetchAll();
+                    $phaseColors = [
+                        'Preparation' => 'bg-blue-100 text-blue-800 border-blue-200',
+                        'Pre-Employment' => 'bg-purple-100 text-purple-800 border-purple-200',
+                        'Career Fair' => 'bg-amber-100 text-amber-800 border-amber-200'
+                    ];
+                    $phaseClass = $phaseColors[$session['phase']] ?? 'bg-gray-100 text-gray-800 border-gray-200';
+                    ?>
+                    <div class="bg-gray-50 rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full hover:shadow-md transition-shadow">
+                        <div class="p-5 border-b border-gray-200 bg-gray-100/50">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border <?= $phaseClass ?>"><?= htmlspecialchars($session['phase']) ?></span>
+                                <div class="flex gap-1">
+                                    <?php if (!isViewer() && (isAdmin() || $session['created_by'] == $_SESSION['user_id'])): ?>
+                                        <button class="view-session text-gray-400 hover:text-green-600 p-1.5 rounded-md hover:bg-green-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="View session"><i class="fas fa-eye"></i></button>
+                                        <button class="delete-session text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="Archive"><i class="fas fa-trash-alt"></i></button>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <h3 class="text-lg font-bold text-gray-700 leading-tight"><?= htmlspecialchars($session['title']) ?></h3>
+                            <div class="text-xs font-bold text-gray-500 mt-2 mb-1"><i class="far fa-calendar-alt mr-1"></i> <?= date('F d, Y', strtotime($session['date'])) ?></div>
+                        </div>
+                        <div class="p-5 flex-1 bg-gray-50/50">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Subtopics (<?= count($subtopics) ?>)</h4>
+                            </div>
+                            <?php if (empty($subtopics)): ?>
+                                <div class="text-center py-6 text-gray-400 bg-gray-100 rounded-lg border border-dashed border-gray-200"><p class="text-sm">No subtopics.</p></div>
+                            <?php else: ?>
+                                <div class="space-y-3">
+                                    <?php foreach ($subtopics as $sub): ?>
+                                        <div class="bg-white rounded-lg p-3 border border-gray-200 flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-gray-700 text-sm"><?= htmlspecialchars($sub['title']) ?></div>
+                                                <div class="flex flex-wrap gap-2 mt-2">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-50 border border-gray-200 text-gray-500"><i class="fas fa-users mr-1 text-gray-400"></i> Cap: <?= $sub['capacity'] ?></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
             </div>
 
             <!-- Archives Section -->
@@ -519,7 +654,7 @@ $course_sections_json = json_encode($course_sections);
                         <label class="block text-sm font-medium text-gray-700 mb-1">Session <span class="text-red-500">*</span></label>
                         <select class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" id="notifySession" required>
                             <option value="">Select session…</option>
-                            <?php foreach ($active_sessions as $s): ?>
+                            <?php foreach ($upcoming_sessions as $s): ?>
                                 <option value="<?= $s['session_id'] ?>"><?= htmlspecialchars($s['title']) ?></option>
                             <?php endforeach; ?>
                         </select>
@@ -580,7 +715,7 @@ $course_sections_json = json_encode($course_sections);
                     <!-- Section 1: Session Details -->
                     <div class="bg-white rounded-xl p-5 mb-6 shadow-sm border border-gray-200">
                         <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Session Details</h6>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Session Title <span class="text-red-500">*</span></label>
                                 <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
@@ -592,6 +727,20 @@ $course_sections_json = json_encode($course_sections);
                                     <option value="Pre-Employment">Pre-Employment</option>
                                     <option value="Career Fair">Career Fair</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Session Date <span class="text-red-500">*</span></label>
+                                <input type="date" name="session_date" value="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Session Start Time <span class="text-red-500">*</span></label>
+                                <input type="time" name="session_start_time" value="08:00" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Session End Time <span class="text-red-500">*</span></label>
+                                <input type="time" name="session_end_time" value="17:00" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                             </div>
                         </div>
                         <div class="mt-4">
@@ -641,15 +790,15 @@ $course_sections_json = json_encode($course_sections);
     </div>
 </div>
 
-<!-- ==================== EDIT MODAL ==================== -->
-<div class="modal fade" id="editModal" tabindex="-1">
+<!-- ==================== SESSION VIEW/EDIT MODAL ==================== -->
+<div class="modal fade" id="sessionModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
             <div class="modal-header bg-[#0a6e2d] text-white p-4 border-0">
-                <h5 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Session</h5>
+                <h5 class="text-lg font-bold" id="sessionModalTitle"><i class="fas fa-eye mr-2"></i>View Session</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-4 md:p-6 bg-gray-50" id="editModalBody">
+            <div class="modal-body p-4 md:p-6 bg-gray-50" id="sessionModalBody">
                 <!-- Loaded dynamically via AJAX -->
             </div>
         </div>
@@ -722,7 +871,7 @@ $course_sections_json = json_encode($course_sections);
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">Visible to Courses</label>
-                    <p class="text-xs text-gray-500 mb-2">Leave all unchecked to show to everyone.</p>
+                    <p class="text-[11px] text-gray-500 mb-2 leading-tight">Leave all unchecked to show this subtopic to <strong class="text-gray-700">ALL students</strong>.</p>
                     <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
                         <?php foreach ($courses as $crs): ?>
                         <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="<?= htmlspecialchars($crs) ?>" class="subtopic-visible-course rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <?= htmlspecialchars($crs) ?></label>
@@ -743,7 +892,7 @@ $course_sections_json = json_encode($course_sections);
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">Required for Courses</label>
-                    <p class="text-xs text-gray-500 mb-2">Students in checked courses MUST attend.</p>
+                    <p class="text-[11px] text-gray-500 mb-2 leading-tight">Leave unchecked to make it <strong class="text-gray-700">Optional</strong>. Checked courses MUST attend.</p>
                     <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
                         <?php foreach ($courses as $crs): ?>
                         <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="<?= htmlspecialchars($crs) ?>" class="subtopic-required-course rounded border-gray-300 text-red-600 focus:ring-red-500"> <?= htmlspecialchars($crs) ?></label>
@@ -771,6 +920,11 @@ $course_sections_json = json_encode($course_sections);
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea rows="2" class="w-full border border-gray-300 rounded-lg p-2 subtopic-description focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="Optional details about this subtopic"></textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic Image (Optional)</label>
+                <input type="file" class="w-full border border-gray-300 rounded-lg p-2 subtopic-image bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]" accept="image/png, image/jpeg, image/webp">
+                <p class="text-[11px] text-gray-500 mt-1">Will be displayed to students in the subtopic modal.</p>
             </div>
         </div>
     </div>
@@ -933,6 +1087,18 @@ document.getElementById('createSessionForm').addEventListener('submit', function
     });
     document.getElementById('subtopics_data').value = JSON.stringify(subtopics);
     const formData = new FormData(this);
+    // Append subtopic images with specific indexes matching the valid subtopics
+    let fileIndex = 0;
+    cards.forEach((card) => {
+        const title = card.querySelector('.subtopic-title').value.trim();
+        if (!title) return; // Skip empty cards exactly like the subtopics array does
+        
+        const fileInput = card.querySelector('.subtopic-image');
+        if (fileInput && fileInput.files[0]) {
+            formData.append(`subtopic_image_${fileIndex}`, fileInput.files[0]);
+        }
+        fileIndex++;
+    });
     fetch('subtopics.php', { method: 'POST', body: formData })
         .then(() => location.reload())
         .catch(err => alert('Error: ' + err));
@@ -961,8 +1127,8 @@ document.getElementById('even-split-create')?.addEventListener('click', function
     .catch(err => alert('Error: ' + err));
 });
 
-// ==================== EDIT MODAL – LOAD SESSION DATA ====================
-document.querySelectorAll('.edit-session').forEach(btn => {
+// ==================== VIEW SESSION MODAL ====================
+document.querySelectorAll('.view-session').forEach(btn => {
     btn.addEventListener('click', async function() {
         const id = this.dataset.id;
         try {
@@ -973,243 +1139,11 @@ document.querySelectorAll('.edit-session').forEach(btn => {
             const data = JSON.parse(rawText);
             if (!data.subtopics) data.subtopics = [];
 
-            let html = `
-            <form method="POST" id="editSessionForm">
-                <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
-                <input type="hidden" name="action" value="update">
-                <input type="hidden" name="id" value="${data.session_id}">
-                
-                <div class="bg-white rounded-xl p-5 mb-6 shadow-sm border border-gray-200">
-                    <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Session Details</h6>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
-                            <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(data.title)}" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Phase <span class="text-red-500">*</span></label>
-                            <select name="phase" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
-                                <option value="Preparation" ${data.phase=='Preparation'?'selected':''}>Preparation</option>
-                                <option value="Pre-Employment" ${data.phase=='Pre-Employment'?'selected':''}>Pre-Employment</option>
-                                <option value="Career Fair" ${data.phase=='Career Fair'?'selected':''}>Career Fair</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(data.description)}</textarea>
-                    </div>
-                    <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Session Banner Image (Optional)</label>
-                        <input type="file" name="session_image" accept="image/png, image/jpeg, image/webp" class="w-full border border-gray-300 rounded-lg p-2 bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
-                        <p class="text-xs text-gray-500 mt-1">Upload a new image to replace the current one.</p>
-                    </div>
-                    <div class="mt-4">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" name="allow_multiple" value="1" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" id="edit_allow_multiple" ${data.allow_multiple==1?'checked':''}>
-                            <span class="text-sm text-gray-700">Allow multiple registrations per student in this session</span>
-                        </label>
-                    </div>
-                </div>
+            // Build Read-Only View
+            buildViewModal(data);
 
-                <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-                    <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
-                        <h6 class="font-bold text-gray-800 text-sm uppercase tracking-wider"><i class="fas fa-list-ul text-gray-400 mr-2"></i>Subtopics</h6>
-                        <div class="flex gap-2">
-                            <button type="button" id="even-split-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors border border-gray-300"><i class="fas fa-balance-scale mr-1 text-gray-500"></i> Even Split</button>
-                            <button type="button" id="add-subtopic-edit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm"><i class="fas fa-plus mr-1"></i> Add Subtopic</button>
-                        </div>
-                    </div>
-                    <div id="edit-subtopics-container" class="space-y-4">`;
-
-            data.subtopics.forEach(sub => {
-                function safeArray(val) {
-                    if (Array.isArray(val)) return val;
-                    if (typeof val === 'string') {
-                        try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch(e) {}
-                    }
-                    return [];
-                }
-                let vis_sec = safeArray(sub.visible_for);
-                let vis_crs = safeArray(sub.visible_courses);
-                let req_sec = safeArray(sub.required_for);
-                let req_crs = safeArray(sub.required_courses);
-                const allSecReq = <?= $sections_json ?>.every(s => req_sec.includes(s));
-                const allCrsReq = <?= $courses_json ?>.every(c => req_crs.includes(c));
-                const allRequired = allSecReq && allCrsReq;
-
-                html += `<div class="card mb-4 border border-gray-200 rounded-xl shadow-sm bg-white overflow-hidden">
-                    <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
-                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Subtopic Configuration</span>
-                        <button type="button" class="text-red-500 hover:text-red-700 remove-subtopic-edit text-sm font-medium"><i class="fas fa-trash-alt mr-1"></i> Remove</button>
-                    </div>
-                    
-                    <div class="p-4 md:p-5 space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div class="md:col-span-2">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic Title <span class="text-red-500">*</span></label>
-                                <input type="text" class="w-full border border-gray-300 rounded-lg p-2 subtopic-title focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(sub.title)}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
-                                <input type="number" class="w-full border border-gray-300 rounded-lg p-2 subtopic-capacity focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.capacity}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-                                <input type="datetime-local" class="w-full border border-gray-300 rounded-lg p-2 subtopic-deadline focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.deadline?sub.deadline.slice(0,16):''}">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                                <input type="date" class="w-full border border-gray-300 rounded-lg p-2 subtopic-date focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.subtopic_date||''}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                                <input type="time" class="w-full border border-gray-300 rounded-lg p-2 subtopic-start-time focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.subtopic_start_time||''}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                                <input type="time" class="w-full border border-gray-300 rounded-lg p-2 subtopic-end-time focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.subtopic_end_time||''}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Proctor</label>
-                                <input type="text" class="w-full border border-gray-300 rounded-lg p-2 subtopic-proctor focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(sub.subtopic_proctor)}">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                                <input type="text" class="w-full border border-gray-300 rounded-lg p-2 subtopic-location focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(sub.subtopic_location)}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Attendance Type</label>
-                                    <select class="w-full border border-gray-300 rounded-lg p-2 subtopic-attendance-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
-                                    <option value="physical" ${(sub.attendance_type||'physical')==='physical'?'selected':''}>Physical</option>
-                                    <option value="online" ${sub.attendance_type==='online'?'selected':''}>Online</option>
-                                    <option value="module" ${sub.attendance_type==='module'?'selected':''}>Module</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Visible to Courses</label>
-                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
-                <?= $courses_json ?>?.forEach(c => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${c}" class="subtopic-visible-course rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" ${vis_crs.includes(c)?'checked':''}> ${c}</label>`; });
-                html += `</div></div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Visible to Sections</label>
-                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
-                const anyVisCourse = vis_crs.length > 0;
-                <?= $sections_json ?>?.forEach(s => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${s}" class="subtopic-visible-section rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" ${vis_sec.includes(s)?'checked':''} ${anyVisCourse?'':'disabled'}> ${s}</label>`; });
-                html += `</div></div></div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Required for Courses</label>
-                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
-                <?= $courses_json ?>?.forEach(c => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${c}" class="subtopic-required-course rounded border-gray-300 text-red-600 focus:ring-red-500" ${req_crs.includes(c)?'checked':''} ${allRequired?'disabled':''}> ${c}</label>`; });
-                html += `</div></div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Required for Sections</label>
-                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
-                <?= $sections_json ?>?.forEach(s => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${s}" class="subtopic-required-section rounded border-gray-300 text-red-600 focus:ring-red-500" ${req_sec.includes(s)?'checked':''} ${(allRequired || req_crs.length > 0)?'':'disabled'}> ${s}</label>`; });
-                html += `</div></div></div>
-
-                        <div class="mb-3">
-                            <label class="flex items-center gap-2 cursor-pointer bg-red-50 border border-red-200 p-2 rounded-lg">
-                                <input type="checkbox" class="subtopic-required-all rounded border-red-300 text-red-600 focus:ring-red-500 w-4 h-4" ${allRequired?'checked':''}>
-                                <span class="text-sm font-bold text-red-700">Required for ALL students</span>
-                            </label>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                            <textarea rows="2" class="w-full border border-gray-300 rounded-lg p-2 subtopic-description focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(sub.description)}</textarea>
-                        </div>
-                    </div>
-                </div>`;
-            });
-
-            html += `</div></div>
-                <input type="hidden" name="subtopics_data" id="edit_subtopics_data">
-                <div class="mt-6 flex justify-end gap-3">
-                    <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium text-sm px-8 py-2.5 rounded-lg transition-colors shadow-sm"><i class="fas fa-save mr-1"></i> Update Session</button>
-                </div>
-            </form>`;
-
-            document.getElementById('editModalBody').innerHTML = html;
-            const editContainer = document.getElementById('edit-subtopics-container');
-
-            editContainer.querySelectorAll('.card').forEach(card => linkCourseToSections(card));
-
-            document.getElementById('add-subtopic-edit')?.addEventListener('click', () => {
-                const card = createSubtopicCard();
-                card.querySelector('.remove-subtopic').classList.add('remove-subtopic-edit');
-                card.querySelectorAll('.remove-subtopic-edit').forEach(b => b.addEventListener('click', function(){ this.closest('.card').remove(); }));
-                editContainer.appendChild(card);
-            });
-
-            document.querySelectorAll('.remove-subtopic-edit').forEach(b => {
-                b.addEventListener('click', function(){ this.closest('.card').remove(); });
-            });
-
-            document.querySelectorAll('.subtopic-required-all').forEach(cb => {
-                cb.addEventListener('change', function() {
-                    const card = this.closest('.card');
-                    const checked = this.checked;
-                    const targets = card.querySelectorAll('.subtopic-required-section, .subtopic-required-course');
-                    targets.forEach(c => { c.checked = checked; c.disabled = checked; });
-                    if (!checked) {
-                        card.querySelectorAll('.subtopic-required-course').forEach(c => { c.checked = false; c.disabled = false; });
-                        card.querySelectorAll('.subtopic-required-section').forEach(c => { c.checked = false; c.disabled = true; });
-                    }
-                });
-            });
-
-            document.getElementById('even-split-btn')?.addEventListener('click', () => {
-                if (!confirm('Recalculate capacities for all subtopics?')) return;
-                const fd = new FormData();
-                fd.append('csrf_token', CSRF_TOKEN);
-                fd.append('action','even_split'); fd.append('session_id', data.session_id);
-                fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
-            });
-
-            document.getElementById('editSessionForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const cards = editContainer.querySelectorAll('.card');
-                const subtopics = [];
-                cards.forEach(card => {
-                    const title = card.querySelector('.subtopic-title').value.trim();
-                    if (!title) return;
-                    subtopics.push({
-                        title,
-                        capacity: card.querySelector('.subtopic-capacity').value,
-                        deadline: card.querySelector('.subtopic-deadline').value,
-                        description: card.querySelector('.subtopic-description').value,
-                        date: card.querySelector('.subtopic-date').value,
-                        start_time: card.querySelector('.subtopic-start-time').value,
-                        end_time: card.querySelector('.subtopic-end-time').value,
-                        proctor: card.querySelector('.subtopic-proctor').value,
-                        location: card.querySelector('.subtopic-location').value,
-                        is_required: card.querySelector('.subtopic-required-all').checked ? 1 : 0,
-                        attendance_type: card.querySelector('.subtopic-attendance-type').value,
-                        visible_sections: Array.from(card.querySelectorAll('.subtopic-visible-section:checked')).map(cb => cb.value),
-                        visible_courses: Array.from(card.querySelectorAll('.subtopic-visible-course:checked')).map(cb => cb.value),
-                        required_sections: Array.from(card.querySelectorAll('.subtopic-required-section:checked')).map(cb => cb.value),
-                        required_courses: Array.from(card.querySelectorAll('.subtopic-required-course:checked')).map(cb => cb.value)
-                    });
-                });
-                document.getElementById('edit_subtopics_data').value = JSON.stringify(subtopics);
-                const fd = new FormData(this);
-                fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
-            });
-
-            const modal = new bootstrap.Modal(document.getElementById('editModal'));
+            // Show Modal
+            const modal = new bootstrap.Modal(document.getElementById('sessionModal'));
             modal.show();
             modal._element.addEventListener('hidden.bs.modal', function() {
                 document.body.classList.remove('modal-open');
@@ -1218,12 +1152,349 @@ document.querySelectorAll('.edit-session').forEach(btn => {
             });
 
         } catch(err) {
-            console.error('Edit modal error:', err);
-            document.getElementById('editModalBody').innerHTML = '<div class="alert alert-danger m-4">Error loading session. Check console.</div>';
-            new bootstrap.Modal(document.getElementById('editModal')).show();
+            console.error('View modal error:', err);
+            document.getElementById('sessionModalBody').innerHTML = '<div class="alert alert-danger m-4">Error loading session. Check console.</div>';
+            new bootstrap.Modal(document.getElementById('sessionModal')).show();
         }
     });
 });
+
+function buildViewModal(data) {
+    document.getElementById('sessionModalTitle').innerHTML = `<i class="fas fa-eye mr-2"></i>View Session`;
+    
+    let html = `
+    <div class="bg-white rounded-xl p-5 mb-6 shadow-sm border border-gray-200">
+        <div class="flex justify-between items-start mb-4">
+            <h6 class="font-bold text-gray-800 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Session Details</h6>
+            <button type="button" id="btnEnableEdit" class="bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-blue-200">
+                <i class="fas fa-edit"></i> Edit Session
+            </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Title</label>
+                <div class="text-sm font-medium text-gray-900">${escapeHtml(data.title)}</div>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Phase</label>
+                <div class="text-sm font-medium text-gray-900">${escapeHtml(data.phase)}</div>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Date & Time</label>
+                <div class="text-sm font-medium text-gray-900">${data.date ? new Date(data.date).toLocaleDateString() : 'N/A'} | ${data.start_time} - ${data.end_time}</div>
+            </div>
+        </div>
+        ${data.description ? `<div class="mt-4 pt-4 border-t border-gray-100"><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label><p class="text-sm text-gray-700">${escapeHtml(data.description)}</p></div>` : ''}
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+        <h6 class="font-bold text-gray-800 text-sm uppercase tracking-wider mb-4 border-b border-gray-100 pb-2"><i class="fas fa-list-ul text-gray-400 mr-2"></i>Subtopics (${data.subtopics.length})</h6>
+        <div class="space-y-3">`;
+
+    if (data.subtopics.length === 0) {
+        html += `<div class="text-center py-4 text-gray-500 text-sm">No subtopics added.</div>`;
+    } else {
+        data.subtopics.forEach(sub => {
+            html += `
+            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div class="flex justify-between items-start mb-2">
+                    <div class="font-bold text-gray-800">${escapeHtml(sub.title)}</div>
+                    ${sub.is_required == 1 ? '<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded border border-red-200">REQUIRED</span>' : ''}
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
+                    <div><i class="fas fa-users text-gray-400 mr-1"></i> Cap: ${sub.capacity}</div>
+                    <div><i class="fas fa-laptop text-gray-400 mr-1"></i> ${sub.attendance_type}</div>
+                    <div><i class="fas fa-clock text-gray-400 mr-1"></i> ${sub.deadline ? new Date(sub.deadline).toLocaleDateString() : 'No deadline'}</div>
+                    <div><i class="fas fa-user text-gray-400 mr-1"></i> ${sub.subtopic_proctor || 'TBA'}</div>
+                </div>
+            </div>`;
+        });
+    }
+
+    html += `</div></div>`;
+
+    document.getElementById('sessionModalBody').innerHTML = html;
+
+    // Bind Edit Toggle
+    document.getElementById('btnEnableEdit').addEventListener('click', function() {
+        buildEditModal(data);
+        document.getElementById('sessionModalTitle').innerHTML = `<i class="fas fa-edit mr-2"></i>Edit Session`;
+    });
+}
+
+function buildEditModal(data) {
+    let html = `
+    <form method="POST" id="editSessionForm">
+        <input type="hidden" name="csrf_token" value="${CSRF_TOKEN}">
+        <input type="hidden" name="action" value="update">
+        <input type="hidden" name="id" value="${data.session_id}">
+        
+        <div class="bg-white rounded-xl p-5 mb-6 shadow-sm border border-gray-200">
+            <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Session Details</h6>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
+                    <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(data.title)}" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Phase <span class="text-red-500">*</span></label>
+                    <select name="phase" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                        <option value="Preparation" ${data.phase=='Preparation'?'selected':''}>Preparation</option>
+                        <option value="Pre-Employment" ${data.phase=='Pre-Employment'?'selected':''}>Pre-Employment</option>
+                        <option value="Career Fair" ${data.phase=='Career Fair'?'selected':''}>Career Fair</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Session Date <span class="text-red-500">*</span></label>
+                    <input type="date" name="session_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${data.date ? data.date.slice(0,10) : ''}" required>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Session Start Time <span class="text-red-500">*</span></label>
+                    <input type="time" name="session_start_time" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${data.start_time || '08:00'}" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Session End Time <span class="text-red-500">*</span></label>
+                    <input type="time" name="session_end_time" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${data.end_time || '17:00'}" required>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(data.description)}</textarea>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Session Banner Image (Optional)</label>
+                <input type="file" name="session_image" accept="image/png, image/jpeg, image/webp" class="w-full border border-gray-300 rounded-lg p-2 bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
+                <p class="text-xs text-gray-500 mt-1">Upload a new image to replace the current one.</p>
+            </div>
+            <div class="mt-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="allow_multiple" value="1" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" id="edit_allow_multiple" ${data.allow_multiple==1?'checked':''}>
+                    <span class="text-sm text-gray-700">Allow multiple registrations per student in this session</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
+                <h6 class="font-bold text-gray-800 text-sm uppercase tracking-wider"><i class="fas fa-list-ul text-gray-400 mr-2"></i>Subtopics</h6>
+                <div class="flex gap-2">
+                    <button type="button" id="even-split-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors border border-gray-300"><i class="fas fa-balance-scale mr-1 text-gray-500"></i> Even Split</button>
+                    <button type="button" id="add-subtopic-edit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm"><i class="fas fa-plus mr-1"></i> Add Subtopic</button>
+                </div>
+            </div>
+            <div id="edit-subtopics-container" class="space-y-4">`;
+
+    data.subtopics.forEach(sub => {
+        function safeArray(val) {
+            if (Array.isArray(val)) return val;
+            if (typeof val === 'string') {
+                try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch(e) {}
+            }
+            return [];
+        }
+        let vis_sec = safeArray(sub.visible_for);
+        let vis_crs = safeArray(sub.visible_courses);
+        let req_sec = safeArray(sub.required_for);
+        let req_crs = safeArray(sub.required_courses);
+        const allSecReq = <?= $sections_json ?>.every(s => req_sec.includes(s));
+        const allCrsReq = <?= $courses_json ?>.every(c => req_crs.includes(c));
+        const allRequired = allSecReq && allCrsReq;
+
+        html += `<div class="card mb-4 border border-gray-200 rounded-xl shadow-sm bg-white overflow-hidden">
+            <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Subtopic Configuration</span>
+                <button type="button" class="text-red-500 hover:text-red-700 remove-subtopic-edit text-sm font-medium"><i class="fas fa-trash-alt mr-1"></i> Remove</button>
+            </div>
+            
+            <div class="p-4 md:p-5 space-y-4">
+                <input type="hidden" class="subtopic-id" value="${sub.subtopic_id || ''}">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic Title <span class="text-red-500">*</span></label>
+                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 subtopic-title focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(sub.title)}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
+                        <input type="number" class="w-full border border-gray-300 rounded-lg p-2 subtopic-capacity focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.capacity}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
+                        <input type="datetime-local" class="w-full border border-gray-300 rounded-lg p-2 subtopic-deadline focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.deadline?sub.deadline.slice(0,16):''}">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                        <input type="date" class="w-full border border-gray-300 rounded-lg p-2 subtopic-date focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.subtopic_date||''}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                        <input type="time" class="w-full border border-gray-300 rounded-lg p-2 subtopic-start-time focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.subtopic_start_time||''}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                        <input type="time" class="w-full border border-gray-300 rounded-lg p-2 subtopic-end-time focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${sub.subtopic_end_time||''}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Proctor</label>
+                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 subtopic-proctor focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(sub.subtopic_proctor)}">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                        <input type="text" class="w-full border border-gray-300 rounded-lg p-2 subtopic-location focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${escapeHtml(sub.subtopic_location)}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Attendance Type</label>
+                            <select class="w-full border border-gray-300 rounded-lg p-2 subtopic-attendance-type focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                            <option value="physical" ${(sub.attendance_type||'physical')==='physical'?'selected':''}>Physical</option>
+                            <option value="online" ${sub.attendance_type==='online'?'selected':''}>Online</option>
+                            <option value="module" ${sub.attendance_type==='module'?'selected':''}>Module</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Visible to Courses</label>
+                        <p class="text-[11px] text-gray-500 mb-2 leading-tight">Leave all unchecked to show this subtopic to <strong class="text-gray-700">ALL students</strong>.</p>
+                        <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
+        <?= $courses_json ?>?.forEach(c => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${c}" class="subtopic-visible-course rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" ${vis_crs.includes(c)?'checked':''}> ${c}</label>`; });
+        html += `</div></div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Visible to Sections</label>
+                        <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
+        const anyVisCourse = vis_crs.length > 0;
+        <?= $sections_json ?>?.forEach(s => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${s}" class="subtopic-visible-section rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" ${vis_sec.includes(s)?'checked':''} ${anyVisCourse?'':'disabled'}> ${s}</label>`; });
+        html += `</div></div></div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Required for Courses</label>
+                        <p class="text-[11px] text-gray-500 mb-2 leading-tight">Leave unchecked to make it <strong class="text-gray-700">Optional</strong>. Checked courses MUST attend.</p>
+                        <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
+        <?= $courses_json ?>?.forEach(c => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${c}" class="subtopic-required-course rounded border-gray-300 text-red-600 focus:ring-red-500" ${req_crs.includes(c)?'checked':''} ${allRequired?'disabled':''}> ${c}</label>`; });
+        html += `</div></div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Required for Sections</label>
+                        <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">`;
+        <?= $sections_json ?>?.forEach(s => { html += `<label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" value="${s}" class="subtopic-required-section rounded border-gray-300 text-red-600 focus:ring-red-500" ${req_sec.includes(s)?'checked':''} ${(allRequired || req_crs.length > 0)?'':'disabled'}> ${s}</label>`; });
+        html += `</div></div></div>
+
+                <div class="mb-3">
+                    <label class="flex items-center gap-2 cursor-pointer bg-red-50 border border-red-200 p-2 rounded-lg">
+                        <input type="checkbox" class="subtopic-required-all rounded border-red-300 text-red-600 focus:ring-red-500 w-4 h-4" ${allRequired?'checked':''}>
+                        <span class="text-sm font-bold text-red-700">Required for ALL students</span>
+                    </label>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea rows="2" class="w-full border border-gray-300 rounded-lg p-2 subtopic-description focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(sub.description)}</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic Image (Optional)</label>
+                    <input type="file" class="w-full border border-gray-300 rounded-lg p-2 subtopic-image bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]" accept="image/png, image/jpeg, image/webp">
+                    ${sub.image_path ? `<p class="text-[11px] text-green-600 mt-1"><i class="fas fa-check-circle"></i> Current image uploaded.</p>` : ''}
+                </div>
+            </div>
+        </div>`;
+    });
+
+    html += `</div></div>
+        <input type="hidden" name="subtopics_data" id="edit_subtopics_data">
+        <div class="mt-6 flex justify-end gap-3">
+            <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium text-sm px-8 py-2.5 rounded-lg transition-colors shadow-sm"><i class="fas fa-save mr-1"></i> Update Session</button>
+        </div>
+    </form>`;
+
+    document.getElementById('sessionModalBody').innerHTML = html;
+    const editContainer = document.getElementById('edit-subtopics-container');
+
+    editContainer.querySelectorAll('.card').forEach(card => linkCourseToSections(card));
+
+    document.getElementById('add-subtopic-edit')?.addEventListener('click', () => {
+        const card = createSubtopicCard();
+        card.querySelector('.remove-subtopic').classList.add('remove-subtopic-edit');
+        card.querySelectorAll('.remove-subtopic-edit').forEach(b => b.addEventListener('click', function(){ this.closest('.card').remove(); }));
+        editContainer.appendChild(card);
+    });
+
+    document.querySelectorAll('.remove-subtopic-edit').forEach(b => {
+        b.addEventListener('click', function(){ this.closest('.card').remove(); });
+    });
+
+    document.querySelectorAll('.subtopic-required-all').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const card = this.closest('.card');
+            const checked = this.checked;
+            const targets = card.querySelectorAll('.subtopic-required-section, .subtopic-required-course');
+            targets.forEach(c => { c.checked = checked; c.disabled = checked; });
+            if (!checked) {
+                card.querySelectorAll('.subtopic-required-course').forEach(c => { c.checked = false; c.disabled = false; });
+                card.querySelectorAll('.subtopic-required-section').forEach(c => { c.checked = false; c.disabled = true; });
+            }
+        });
+    });
+
+    document.getElementById('even-split-btn')?.addEventListener('click', () => {
+        if (!confirm('Recalculate capacities for all subtopics?')) return;
+        const fd = new FormData();
+        fd.append('csrf_token', CSRF_TOKEN);
+        fd.append('action','even_split'); fd.append('session_id', data.session_id);
+        fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
+    });
+
+    document.getElementById('editSessionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const cards = editContainer.querySelectorAll('.card');
+        const subtopics = [];
+        cards.forEach(card => {
+            const title = card.querySelector('.subtopic-title').value.trim();
+            if (!title) return;
+            subtopics.push({
+                subtopic_id: card.querySelector('.subtopic-id')?.value || null,
+                title,
+                capacity: card.querySelector('.subtopic-capacity').value,
+                deadline: card.querySelector('.subtopic-deadline').value,
+                description: card.querySelector('.subtopic-description').value,
+                date: card.querySelector('.subtopic-date').value,
+                start_time: card.querySelector('.subtopic-start-time').value,
+                end_time: card.querySelector('.subtopic-end-time').value,
+                proctor: card.querySelector('.subtopic-proctor').value,
+                location: card.querySelector('.subtopic-location').value,
+                is_required: card.querySelector('.subtopic-required-all').checked ? 1 : 0,
+                attendance_type: card.querySelector('.subtopic-attendance-type').value,
+                visible_sections: Array.from(card.querySelectorAll('.subtopic-visible-section:checked')).map(cb => cb.value),
+                visible_courses: Array.from(card.querySelectorAll('.subtopic-visible-course:checked')).map(cb => cb.value),
+                required_sections: Array.from(card.querySelectorAll('.subtopic-required-section:checked')).map(cb => cb.value),
+                required_courses: Array.from(card.querySelectorAll('.subtopic-required-course:checked')).map(cb => cb.value)
+            });
+        });
+        document.getElementById('edit_subtopics_data').value = JSON.stringify(subtopics);
+        const fd = new FormData(this);
+        
+        let fileIndex = 0;
+        cards.forEach((card) => {
+            const title = card.querySelector('.subtopic-title').value.trim();
+            if (!title) return;
+            
+            const fileInput = card.querySelector('.subtopic-image');
+            if (fileInput && fileInput.files[0]) {
+                fd.append(`subtopic_image_${fileIndex}`, fileInput.files[0]);
+            }
+            fileIndex++;
+        });
+
+        fetch('subtopics.php',{method:'POST',body:fd}).then(()=>location.reload()).catch(alert);
+    });
+}
 
 // ==================== DELETE / RESTORE / ARCHIVE TOGGLE ====================
 document.querySelectorAll('.delete-session').forEach(btn => {
