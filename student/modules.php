@@ -300,9 +300,19 @@ if ($module_id) {
         if (strpos($content_raw, 'link:') === 0) {
             $url = substr($content_raw, 5);
             $content_html = '<iframe src="' . htmlspecialchars($url) . '" width="100%" height="600px" frameborder="0" class="rounded-lg border border-gray-200"></iframe>';
-        } elseif (strpos($content_raw, 'quiz:') === 0) {
+                } elseif (strpos($content_raw, 'quiz:') === 0) {
             $quiz_json = substr($content_raw, 5);
-            $questions = json_decode($quiz_json, true);
+            $quiz_data = json_decode($quiz_json, true);
+            
+            // Extract questions based on format (New JSON object vs Old JSON array)
+            if (isset($quiz_data['questions'])) {
+                $questions = $quiz_data['questions'];
+                $passing_score = $quiz_data['passing_score'] ?? 50;
+            } else {
+                $questions = $quiz_data;
+                $passing_score = 50;
+            }
+
             if (is_array($questions)) {
                 if ($current_module['completed']) {
                     $content_html = '<div class="bg-green-50 border-l-4 border-green-500 text-green-800 p-4 rounded-r-lg"><i class="fas fa-check-circle mr-2"></i>You have already completed this assessment. Score: <strong>' . ($current_module['score'] ?? 'N/A') . '%</strong></div>';

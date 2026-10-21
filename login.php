@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         SELECT u.*, s.is_deleted, s.student_id 
         FROM users u 
         LEFT JOIN students s ON u.user_id = s.user_id 
-        WHERE u.email = ? OR s.student_id = ?
+        WHERE u.email = ? OR TRIM(s.student_id) = ?
         LIMIT 1
     ");
     $stmt->execute([$login_id, $login_id]);
