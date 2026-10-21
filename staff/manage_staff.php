@@ -5,25 +5,34 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 
+// Only Admins and Super Admins can access this page
 if (!isAdmin()) {
     header('Location: dashboard.php?error=Access denied');
     exit;
 }
 
-// ---- CSRF check on any POST ----
+// CSRF check
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 }
 
 $staff_name = '';
-$stmt = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
+$stmt = $pdo->prepare("SELECT full_name, staff_role FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
-$staff = $stmt->fetch();
-$staff_name = $staff['full_name'];
+$current_staff = $stmt->fetch();
+$staff_name = $current_staff['full_name'];
+$current_role = $current_staff['staff_role']; // 'superadmin', 'admin', 'lead', 'viewer'
 
 $action = $_POST['action'] ?? '';
 $success = '';
 $error = '';
+
+// Helper function to check permissions
+function canManageUser($current_role, $target_role) {
+    if ($current_role === 'superadmin') return true; // Super admin can manage anyone
+    if ($current_role === 'admin' && in_array($target_role, ['lead', 'viewer'])) return true; // Admin can only manage leads/viewers
+    return false;
+}
 
 // Handle Create Staff
 if ($action === 'create') {
@@ -31,7 +40,6 @@ if ($action === 'create') {
     $email = trim($_POST['email']);
     $role = $_POST['staff_role'];
     
-    // Default random password (user will need to reset it)
     $temp_password = bin2hex(random_bytes(8));
     $hash = password_hash($temp_password, PASSWORD_BCRYPT);
 
@@ -39,41 +47,78 @@ if ($action === 'create') {
         $error = "All fields are required.";
     } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
         $error = "Staff email must be an official KLD email (must end in @kld.edu.ph).";
+    } elseif ($current_role !== 'superadmin' && $role === 'superadmin') {
+        $error = "Only a Super Admin can create another Super Admin.";
     } else {
         $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
         $check->execute([$email]);
         if ($check->fetch()) {
             $error = "Email already exists.";
         } else {
-            $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, staff_role, is_active) VALUES (?, ?, ?, 'staff', ?, 1)");
-            $stmt->execute([$email, $hash, $full_name, $role]);
+            $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, staff_role, is_active, created_by) VALUES (?, ?, ?, 'staff', ?, 1, ?)");
+            $stmt->execute([$email, $hash, $full_name, $role, $_SESSION['user_id']]);
             $success = "Staff account created. Temp password: " . $temp_password;
         }
     }
 } 
 
-// Handle Toggle Status (Active/Inactive)
+// Handle Toggle Status
 elseif ($action === 'toggle_status') {
     $id = (int)$_POST['id'];
-    // Prevent deactivating yourself
+    
     if ($id === $_SESSION['user_id']) {
         $error = "You cannot deactivate your own account.";
     } else {
-        $stmt = $pdo->prepare("UPDATE users SET is_active = NOT is_active WHERE user_id = ?");
+        $stmt = $pdo->prepare("SELECT staff_role FROM users WHERE user_id = ?");
         $stmt->execute([$id]);
-        $success = "Status updated successfully.";
+        $target_role = $stmt->fetchColumn();
+
+        if (!canManageUser($current_role, $target_role)) {
+            $error = "You do not have permission to modify this user.";
+        } else {
+            $stmt = $pdo->prepare("UPDATE users SET is_active = NOT is_active WHERE user_id = ?");
+            $stmt->execute([$id]);
+            $success = "Status updated successfully.";
+        }
     }
 }
 
 // Handle Delete Staff
 elseif ($action === 'delete') {
     $id = (int)$_POST['id'];
+    
     if ($id === $_SESSION['user_id']) {
         $error = "You cannot delete your own account.";
     } else {
-        $stmt = $pdo->prepare("DELETE FROM users WHERE user_id = ?");
+        $stmt = $pdo->prepare("SELECT staff_role FROM users WHERE user_id = ?");
         $stmt->execute([$id]);
-        $success = "Staff account deleted.";
+        $target_role = $stmt->fetchColumn();
+
+        if (!canManageUser($current_role, $target_role)) {
+            $error = "You do not have permission to delete this user.";
+        } else {
+            try {
+                $pdo->beginTransaction();
+                
+                // FIX CRASH: Reassign any sessions/modules they created to the current Super Admin
+                $reassign_id = $_SESSION['user_id'];
+                $pdo->prepare("UPDATE sessions SET created_by = ? WHERE created_by = ?")->execute([$reassign_id, $id]);
+                $pdo->prepare("UPDATE modules SET created_by = ? WHERE created_by = ?")->execute([$reassign_id, $id]);
+                
+                // If you have a staff_action_log table, you might need to handle it here too:
+                // $pdo->prepare("UPDATE staff_action_log SET staff_id = ? WHERE staff_id = ?")->execute([$reassign_id, $id]);
+
+                // Now safely delete the user
+                $stmt = $pdo->prepare("DELETE FROM users WHERE user_id = ?");
+                $stmt->execute([$id]);
+                
+                $pdo->commit();
+                $success = "Staff account deleted and data reassigned successfully.";
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $error = "Error deleting account: " . $e->getMessage();
+            }
+        }
     }
 }
 
@@ -98,8 +143,6 @@ $staff_members = $stmt->fetchAll();
         html, body { height: 100%; margin: 0; padding: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* Modal Fixes */
         .modal-backdrop { z-index: 1040 !important; }
         .modal { z-index: 1050 !important; }
     </style>
@@ -169,11 +212,15 @@ $staff_members = $stmt->fetchAll();
                             
                             // Role badge styling
                             $roleClass = 'bg-gray-100 text-gray-800 border-gray-200';
-                            if ($staff_member['staff_role'] === 'admin') $roleClass = 'bg-purple-100 text-purple-800 border-purple-200';
+                            if ($staff_member['staff_role'] === 'superadmin') $roleClass = 'bg-red-100 text-red-800 border-red-200';
+                            elseif ($staff_member['staff_role'] === 'admin') $roleClass = 'bg-purple-100 text-purple-800 border-purple-200';
                             elseif ($staff_member['staff_role'] === 'lead') $roleClass = 'bg-blue-100 text-blue-800 border-blue-200';
                             
                             // Status badge styling
-                            $statusClass = $staff_member['is_active'] ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200';
+                            $statusClass = $staff_member['is_active'] ? 'bg-green-100 text-green-800 border-green-200' : 'bg-gray-100 text-gray-800 border-gray-200';
+                            
+                            // Check if current user can manage this target
+                            $can_manage = canManageUser($current_role, $staff_member['staff_role']) && !$is_self;
                         ?>
                             <tr class="hover:bg-gray-50 transition-colors duration-150 <?= $is_self ? 'bg-green-50/30' : '' ?>">
                                 <td class="py-4 px-6">
@@ -199,7 +246,7 @@ $staff_members = $stmt->fetchAll();
                                 </td>
                                 <td class="py-4 px-4 text-center">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border <?= $statusClass ?>">
-                                        <span class="w-1.5 h-1.5 rounded-full mr-1.5 <?= $staff_member['is_active'] ? 'bg-green-600' : 'bg-red-600' ?>"></span>
+                                        <span class="w-1.5 h-1.5 rounded-full mr-1.5 <?= $staff_member['is_active'] ? 'bg-green-600' : 'bg-gray-600' ?>"></span>
                                         <?= $staff_member['is_active'] ? 'Active' : 'Inactive' ?>
                                     </span>
                                 </td>
@@ -211,11 +258,7 @@ $staff_members = $stmt->fetchAll();
                                 </td>
                                 <td class="py-4 px-6 text-right">
                                     <div class="flex items-center justify-end gap-2">
-                                        <a href="edit_staff.php?id=<?= $staff_member['user_id'] ?>" class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors" title="Edit Account">
-                                            <i class="fas fa-edit"></i>
-                                        </a>
-                                        
-                                        <?php if (!$is_self): ?>
+                                        <?php if ($can_manage): ?>
                                             <form method="POST" style="display:inline;">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="toggle_status">
@@ -233,6 +276,8 @@ $staff_members = $stmt->fetchAll();
                                                     <i class="fas fa-trash-alt"></i>
                                                 </button>
                                             </form>
+                                        <?php else: ?>
+                                            <span class="text-xs text-gray-400 italic px-2" title="You cannot manage this user">Protected</span>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -246,7 +291,7 @@ $staff_members = $stmt->fetchAll();
     </main>
 </div>
 
-<!-- ==================== CREATE STAFF MODAL ==================== -->
+<!-- CREATE STAFF MODAL -->
 <div class="modal fade" id="createStaffModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
@@ -264,14 +309,17 @@ $staff_members = $stmt->fetchAll();
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Email Address <span class="text-red-500">*</span></label>
-                        <input type="email" name="email" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                        <input type="email" name="email" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required placeholder="name@kld.edu.ph">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Role <span class="text-red-500">*</span></label>
                         <select name="staff_role" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                             <option value="viewer">Viewer — Read-only access</option>
                             <option value="lead">Lead — Manage sessions and attendance</option>
-                            <option value="admin">Admin — Full system access</option>
+                            <option value="admin">Admin — Manage staff and full system access</option>
+                            <?php if ($current_role === 'superadmin'): ?>
+                                <option value="superadmin">Super Admin — Ultimate access</option>
+                            <?php endif; ?>
                         </select>
                     </div>
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">

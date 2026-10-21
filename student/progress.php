@@ -12,6 +12,10 @@ $stmt_attended = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attend
 $stmt_attended->execute([$_SESSION['student_id']]);
 $attended_subtopics = (int)$stmt_attended->fetchColumn();
 
+// Force values to be integers before calculating
+$total_registered_subtopics = (int)$total_registered_subtopics;
+$attended_subtopics = (int)$attended_subtopics;
+
 $attendance_compliance_pct = $total_registered_subtopics > 0 ? round(($attended_subtopics / $total_registered_subtopics) * 100) : 0;
 
 // ---- Module Progress ----

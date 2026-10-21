@@ -39,7 +39,11 @@ function redirectIfNotStudent() {
  * Returns true if the current user is a staff member with the admin role.
  */
 function isAdmin() {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'staff' && isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'admin';
+    return isset($_SESSION['staff_role']) && in_array($_SESSION['staff_role'], ['admin', 'superadmin']);
+}
+
+function isSuperAdmin() {
+    return isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'superadmin';
 }
 
 /**

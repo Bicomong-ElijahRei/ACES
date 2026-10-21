@@ -827,6 +827,22 @@ function filterByDate(date) {
 document.addEventListener('DOMContentLoaded', () => {
     renderCalendar();
 
+    // --- BUG FIX: Prevent double-clicking the register button ---
+    document.querySelectorAll('.register-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            // If the confirm dialog is cancelled, the form submission is prevented by the other script.
+            // We just need to disable the button once it actually starts submitting.
+            setTimeout(() => {
+                const btn = this.querySelector('button[type="submit"]');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Processing...';
+                    btn.classList.add('opacity-75', 'cursor-not-allowed');
+                }
+            }, 10);
+        });
+    });
+
     // Toggle subtopic details on click
     document.querySelectorAll('.subtopic-title').forEach(title => {
         title.addEventListener('click', function(e) {

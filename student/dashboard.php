@@ -159,7 +159,7 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
                             <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#e5e7eb" stroke-width="4"></circle>
                             <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0a6e2d" stroke-width="4" stroke-dasharray="<?= $overall_pct ?> 100" stroke-dashoffset="0" stroke-linecap="round"></circle>
                         </svg>
-                        <div class="absolute text-2xl font-extrabold text-[#0a6e2d]"><?= $overall_pct ?>%</div>
+                        <div class="absolute text-3xl font-extrabold text-[#0a6e2d]"><?= $overall_pct ?>%</div>
                     </div>
                 </div>
 

@@ -78,15 +78,20 @@ foreach ($at_risk_students_raw as $s) {
     $total = $s['sub_total'] + $s['mod_total'];
     $done = $s['sub_done'] + $s['mod_done'];
     
-    // Only calculate if they have requirements
+    // Always set a default to prevent sorting errors
+    $s['progress_pct'] = 0;
+    $s['initials'] = strtoupper(implode('', array_map(fn($w) => $w[0] ?? '', array_slice(explode(' ', $s['full_name']), 0, 2))));
+
     if ($total > 0) {
         $s['progress_pct'] = round(($done / $total) * 100);
-        $s['initials'] = strtoupper(implode('', array_map(fn($w) => $w[0] ?? '', array_slice(explode(' ', $s['full_name']), 0, 2))));
-        $at_risk_students[] = $s;
+        // Only add to At-Risk if they actually have requirements and are below 50%
+        if ($s['progress_pct'] < 50) {
+            $at_risk_students[] = $s;
+        }
     }
 }
 
-// Sort by lowest progress
+// Sort by lowest progress safely
 usort($at_risk_students, function($a, $b) {
     return $a['progress_pct'] <=> $b['progress_pct'];
 });
@@ -180,8 +185,8 @@ unset($m);
             font-size: 18px;
             flex-shrink: 0;
         }
-        .stat-value { font-size: 24px; font-weight: 700; color: var(--neutral-800); line-height: 1; }
-        .stat-label { font-size: 11px; color: var(--neutral-600); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; font-weight: 600; }
+        .stat-value { font-size: 32px; font-weight: 800; color: var(--neutral-800); line-height: 1; }
+        .stat-label { font-size: 13px; color: var(--neutral-600); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 6px; font-weight: 700; }
 
         /* Panels */
         .panel {

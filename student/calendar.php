@@ -134,13 +134,17 @@ $calendarHtml = generateCalendar($month, $year, $sessions_by_date, $holidays, $s
     <style>
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
         .calendar-weekday { text-align: center; font-weight: 700; padding: 12px 0; background: #f0fdf4; color: #065f46; border-radius: 6px; }
-        .calendar-day { min-height: 120px; border: 1px solid #e2e8f0; padding: 8px; position: relative; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; }
+        .calendar-day { min-height: 120px; border: 1px solid #e2e8f0; padding: 8px; position: relative; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .calendar-day:hover { background: #f8fafc; }
         .calendar-day.empty { background: #f8fafc; cursor: default; border: none; }
         .calendar-day.has-session { border-top: 4px solid #10b981; }
         .calendar-day.has-holiday { border-top: 4px solid #ef4444; }
         .calendar-day.has-school-event { border-top: 4px solid #f59e0b; }
         .calendar-day.has-module { border-top: 4px solid #3b82f6; }
+        
+        /* Fix Modal Z-Index */
+        .modal-backdrop { z-index: 1040 !important; }
+        .modal { z-index: 1050 !important; }
     </style>
 </head>
 <body class="h-full bg-[#dcf3e6] font-sans overflow-hidden">

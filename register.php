@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $student_id  = trim($_POST['student_id']  ?? '');
     $telephone   = trim($_POST['telephone']   ?? '');
     $mobile      = trim($_POST['mobile']      ?? '');
-    $email       = trim($_POST['email']       ?? '');
+    $email       = strtolower(trim($_POST['email'] ?? ''));
     $username    = trim($_POST['username']    ?? '');
     $password    = $_POST['password']         ?? '';
     $confirm     = $_POST['confirm_password'] ?? '';
@@ -51,6 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Passwords do not match.";
     } elseif (strlen($password) < 6) {
         $error = "Password must be at least 6 characters.";
+    } elseif (!preg_match('/^[0-9\-]+$/', $mobile)) {
+        $error = "Please enter a valid mobile number (numbers only).";
     } elseif (!$terms) {
         $error = "You must agree to the Terms and Conditions.";
     } else {
@@ -71,6 +73,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $check2->execute([$student_id]);
             if ($check2->fetch()) {
                 throw new Exception("Student number already registered.");
+            }
+
+            // Check if username already exists
+            if (!empty($username)) {
+                $check3 = $pdo->prepare("SELECT student_id FROM students WHERE username = ?");
+                $check3->execute([$username]);
+                if ($check3->fetch()) {
+                    throw new Exception("Username is already taken. Please choose another one.");
+                }
             }
 
             // Insert into users (role = student) — is_verified defaults to 0
@@ -296,13 +307,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    </div>
 
       <script>
-        // Simple client-side password match check
+        // Client-side password match check AND button buffering
         document.querySelector('form').addEventListener('submit', function(e) {
             let password = document.querySelector('input[name="password"]').value;
             let confirm = document.querySelector('input[name="confirm_password"]').value;
+            
             if (password !== confirm) {
                 alert('Passwords do not match.');
-                e.preventDefault();
+                e.preventDefault(); // Stop submission
+                return false;
+            } else {
+                // Passwords match! Disable the button so they can't double-click
+                const btn = this.querySelector('button[type="submit"]');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Registering...';
+                    btn.classList.add('opacity-75', 'cursor-not-allowed');
+                    // Remove the hover effects so it looks properly disabled
+                    btn.classList.remove('hover:-translate-y-0.5', 'hover:shadow-lg', 'hover:bg-[#00a86f]');
+                }
             }
         });
 
