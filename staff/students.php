@@ -134,9 +134,9 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
     exit;
 }
 
-// Fetch filter values
-$courses = $pdo->query("SELECT DISTINCT program FROM students WHERE is_deleted = 0 ORDER BY program")->fetchAll(PDO::FETCH_COLUMN);
-$sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted = 0 ORDER BY section")->fetchAll(PDO::FETCH_COLUMN);
+// Fetch filter values directly from the new configuration tables
+$courses = $pdo->query("SELECT name FROM courses ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+$sections = $pdo->query("SELECT name FROM sections ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
 
 // Fetch active students
 $sql_active = "SELECT s.student_id, s.program, s.section, s.middle_name, u.full_name, u.email FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 0";
@@ -292,9 +292,14 @@ function parseStudentName($full_name, $middle_name) {
                     <button type="button" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
                         <i class="fa-solid fa-filter text-gray-500"></i> Filter
                     </button>
-                    <button id="exportBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                        <button id="exportBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
                         <i class="fa-solid fa-download text-gray-500"></i> Export
                     </button>
+                    
+                    <!-- NEW: MANAGE COURSES BUTTON -->
+                    <a href="manage_courses.php" class="bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-graduation-cap text-[#0a6e2d]"></i> Manage Courses
+                    </a>
                 </div>
                 
                 <div class="relative w-full md:w-72">

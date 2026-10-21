@@ -12,6 +12,10 @@ require_once __DIR__ . '/config/env.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/csrf.php';
 
+// Fetch dynamic courses and sections
+$courses_list = $pdo->query("SELECT * FROM courses ORDER BY name")->fetchAll();
+$sections_list = $pdo->query("SELECT * FROM sections ORDER BY name")->fetchAll();
+
 $error = '';
 $success = '';
 
@@ -205,17 +209,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Course <span class="text-red-500">*</span></label>
-                        <select name="course" required class="border border-gray-300 p-2.5 rounded-lg text-sm bg-gray-50 focus:bg-white appearance-none cursor-pointer">
+                        <select name="course" id="courseSelect" required class="border border-gray-300 p-2.5 rounded-lg text-sm bg-gray-50 focus:bg-white appearance-none cursor-pointer">
                             <option value="">Select Course</option>
-                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Information Systems') ? 'selected' : '' ?>>BS Information Systems</option>
-                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Psychology') ? 'selected' : '' ?>>BS Psychology</option>
-                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Midwifery') ? 'selected' : '' ?>>BS Midwifery</option>
-                            <option <?= (isset($_POST['course']) && $_POST['course'] == 'BS Engineering') ? 'selected' : '' ?>>BS Engineering</option>
+                            <?php foreach ($courses_list as $c): ?>
+                                <option value="<?= htmlspecialchars($c['name']) ?>" <?= (isset($_POST['course']) && $_POST['course'] == $c['name']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($c['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Year & Section <span class="text-red-500">*</span></label>
-                        <input type="text" name="section" value="<?= htmlspecialchars($_POST['section'] ?? '') ?>" placeholder="e.g., 401" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <select name="section" id="sectionSelect" required class="border border-gray-300 p-2.5 rounded-lg text-sm bg-gray-50 focus:bg-white appearance-none cursor-pointer">
+                            <option value="">Select Course First</option>
+                        </select>
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Student Number <span class="text-red-500">*</span></label>
@@ -288,7 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
    </div>
 
-   <script>
+      <script>
         // Simple client-side password match check
         document.querySelector('form').addEventListener('submit', function(e) {
             let password = document.querySelector('input[name="password"]').value;
@@ -297,6 +304,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 alert('Passwords do not match.');
                 e.preventDefault();
             }
+        });
+
+        // Dynamic Course -> Section Dropdowns
+        const coursesData = <?= json_encode($courses_list) ?>;
+        const sectionsData = <?= json_encode($sections_list) ?>;
+        const courseSelect = document.getElementById('courseSelect');
+        const sectionSelect = document.getElementById('sectionSelect');
+
+        // Grab previously selected values (for repopulating after a validation error)
+        const oldCourse = "<?= htmlspecialchars($_POST['course'] ?? '') ?>";
+        const oldSection = "<?= htmlspecialchars($_POST['section'] ?? '') ?>";
+
+        function populateSections(courseName, selectedSection = '') {
+            sectionSelect.innerHTML = '<option value="">Select Section</option>';
+            
+            if (!courseName) {
+                sectionSelect.innerHTML = '<option value="">Select Course First</option>';
+                return;
+            }
+
+            // Find the course ID
+            const courseObj = coursesData.find(c => c.name === courseName);
+            if (!courseObj) return;
+
+            // Filter sections for this course
+            const filteredSections = sectionsData.filter(s => s.course_id == courseObj.id);
+            
+            if (filteredSections.length === 0) {
+                sectionSelect.innerHTML = '<option value="">No sections available</option>';
+                return;
+            }
+
+            filteredSections.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.name;
+                opt.textContent = s.name;
+                if (s.name === selectedSection) opt.selected = true;
+                sectionSelect.appendChild(opt);
+            });
+        }
+
+        // Run on page load (this restores the dropdowns if the form fails validation)
+        if (oldCourse) {
+            populateSections(oldCourse, oldSection);
+        }
+
+        // Run on change
+        courseSelect.addEventListener('change', function() {
+            populateSections(this.value);
         });
    </script>
 </body>
