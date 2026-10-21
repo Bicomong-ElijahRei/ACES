@@ -1,0 +1,223 @@
+<?php
+require_once '../config/database.php';
+require_once '../includes/auth.php';
+redirectIfNotStudent();
+
+// ---- Attendance Compliance ----
+$stmt_total_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
+$stmt_total_reg->execute([$_SESSION['student_id']]);
+$total_registered_subtopics = (int)$stmt_total_reg->fetchColumn();
+
+$stmt_attended = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
+$stmt_attended->execute([$_SESSION['student_id']]);
+$attended_subtopics = (int)$stmt_attended->fetchColumn();
+
+$attendance_compliance_pct = $total_registered_subtopics > 0 ? round(($attended_subtopics / $total_registered_subtopics) * 100) : 0;
+
+// ---- Module Progress ----
+$stmt_registered = $pdo->prepare("SELECT DISTINCT r.subtopic_id FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ?");
+$stmt_registered->execute([$_SESSION['student_id']]);
+$registered_ids = $stmt_registered->fetchAll(PDO::FETCH_COLUMN);
+
+$modules = [];
+$total_modules = 0;
+$completed_modules = 0;
+$subtopics_progress = [];
+
+if (!empty($registered_ids)) {
+    $placeholders = implode(',', array_fill(0, count($registered_ids), '?'));
+    $stmt_mod = $pdo->prepare("SELECT m.module_id, m.subtopic_id, m.title, m.due_date, IF(sp.completed, 1, 0) as completed FROM modules m LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = ? WHERE m.subtopic_id IN ($placeholders) AND m.is_deleted = 0 ORDER BY m.subtopic_id");
+    $params = array_merge([$_SESSION['student_id']], $registered_ids);
+    $stmt_mod->execute($params);
+    $modules = $stmt_mod->fetchAll();
+
+    $modules_by_subtopic = [];
+    foreach ($modules as $mod) {
+        $sid = $mod['subtopic_id'];
+        $modules_by_subtopic[$sid][] = $mod;
+        $total_modules++;
+        if ($mod['completed']) $completed_modules++;
+    }
+
+    $stmt_sub = $pdo->prepare("SELECT subtopic_id, title FROM subtopics WHERE subtopic_id IN ($placeholders)");
+    $stmt_sub->execute($registered_ids);
+    $subtopic_titles = [];
+    while ($row = $stmt_sub->fetch()) {
+        $subtopic_titles[$row['subtopic_id']] = $row['title'];
+    }
+
+    foreach ($registered_ids as $sid) {
+        $title = $subtopic_titles[$sid] ?? 'Unknown';
+        $sub_mods = $modules_by_subtopic[$sid] ?? [];
+        $sub_total = count($sub_mods);
+        $sub_completed = 0;
+        foreach ($sub_mods as $m) { if ($m['completed']) $sub_completed++; }
+        $sub_percent = $sub_total > 0 ? round(($sub_completed / $sub_total) * 100) : 0;
+        $subtopics_progress[] = [
+            'subtopic_id' => $sid,
+            'title' => $title,
+            'total' => $sub_total,
+            'completed' => $sub_completed,
+            'percent' => $sub_percent,
+            'modules' => $sub_mods
+        ];
+    }
+}
+$module_completion_pct = $total_modules > 0 ? round(($completed_modules / $total_modules) * 100) : 0;
+
+// --- PHASE BREAKDOWN LOGIC ---
+$phases = ['Preparation', 'Pre-Employment', 'Career Fair'];
+$phase_progress = [];
+$student_id = $_SESSION['student_id'] ?? '';
+
+foreach ($phases as $phase) {
+    $stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE r.student_id = ? AND s.phase = ?");
+    $stmt_sub_total->execute([$student_id, $phase]);
+    $sub_total = (int)$stmt_sub_total->fetchColumn();
+
+    $stmt_sub_done = $pdo->prepare("SELECT COUNT(a.attendance_id) FROM attendance a JOIN subtopics st ON a.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND s.phase = ?");
+    $stmt_sub_done->execute([$student_id, $phase]);
+    $sub_done = (int)$stmt_sub_done->fetchColumn();
+
+    $stmt_mod_total = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND m.is_deleted = 0 AND s.phase = ?");
+    $stmt_mod_total->execute([$student_id, $phase]);
+    $mod_total = (int)$stmt_mod_total->fetchColumn();
+
+    $stmt_mod_done = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0 JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND smp.completed = 1 AND s.phase = ?");
+    $stmt_mod_done->execute([$student_id, $phase]);
+    $mod_done = (int)$stmt_mod_done->fetchColumn();
+
+    $total_items = $sub_total + $mod_total;
+    $done_items = $sub_done + $mod_done;
+    $pct = $total_items > 0 ? min(100, round(($done_items / $total_items) * 100)) : 0;
+
+    $phase_progress[$phase] = [
+        'total' => $total_items, 'done' => $done_items, 'pct' => $pct,
+        'sub_total' => $sub_total, 'sub_done' => $sub_done,
+        'mod_total' => $mod_total, 'mod_done' => $mod_done
+    ];
+}
+
+function progressBar($percent, $color = '#0a6e2d') {
+    $percent = min(100, max(0, $percent));
+    return '<div class="w-full bg-gray-200 rounded-full h-2"><div class="h-2 rounded-full" style="width: ' . $percent . '%; background-color: ' . $color . ';"></div></div>';
+}
+?>
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <title>My Progress | ACES</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .clickable-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .clickable-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    </style>
+</head>
+<body class="h-full bg-[#dcf3e6] font-sans overflow-hidden">
+<div class="h-screen flex flex-col md:flex-row overflow-hidden">
+    <?php include '../includes/student_sidebar.php'; ?>
+    <div class="flex-1 flex flex-col overflow-hidden w-full">
+        <?php include '../includes/student_header.php'; ?>
+        
+        <main class="flex-1 p-6 overflow-y-auto no-scrollbar w-full">
+            <div class="mb-8 flex justify-between items-end">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-[#0a6e2d]">Detailed Progress</h2>
+                    <p class="text-gray-600 mt-1">View your complete breakdown of attendance and modules by phase.</p>
+                </div>
+                <a href="calendar.php" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-bold text-sm transition shadow-sm hidden md:inline-flex items-center gap-2">
+                    <i class="fas fa-calendar-alt"></i> View Calendar
+                </a>
+            </div>
+
+            <!-- TIER 1: QUICK SUMMARY CARDS -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+                <!-- Attendance Summary -->
+                <a href="sessions.php" class="block bg-white rounded-xl shadow-sm border border-gray-200 p-5 clickable-card hover:border-blue-500 flex items-center justify-between group">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Attendance</h3>
+                        <div class="text-2xl font-extrabold text-gray-800"><?= $attended_subtopics ?> <span class="text-sm text-gray-400 font-medium">/ <?= $total_registered_subtopics ?></span></div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-2xl font-extrabold text-blue-600"><?= $attendance_compliance_pct ?>%</div>
+                        <div class="text-xs text-blue-500 group-hover:underline">Manage &rarr;</div>
+                    </div>
+                </a>
+
+                <!-- Module Summary -->
+                <a href="modules.php" class="block bg-white rounded-xl shadow-sm border border-gray-200 p-5 clickable-card hover:border-purple-500 flex items-center justify-between group">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Modules</h3>
+                        <div class="text-2xl font-extrabold text-gray-800"><?= $completed_modules ?> <span class="text-sm text-gray-400 font-medium">/ <?= $total_modules ?></span></div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-2xl font-extrabold text-purple-600"><?= $module_completion_pct ?>%</div>
+                        <div class="text-xs text-purple-500 group-hover:underline">Manage &rarr;</div>
+                    </div>
+                </a>
+            </div>
+
+            <!-- TIER 2: PHASE BREAKDOWN -->
+            <h3 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-layer-group text-[#0a6e2d] mr-2"></i>Career Phase Breakdown</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+                <?php foreach ($phase_progress as $phase_name => $data): ?>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                        <div class="flex justify-between items-center mb-3">
+                            <h4 class="font-bold text-gray-800 text-sm"><?= $phase_name ?></h4>
+                            <span class="text-sm font-extrabold <?= $data['pct'] === 100 ? 'text-green-600' : 'text-[#0a6e2d]' ?>"><?= $data['pct'] ?>%</span>
+                        </div>
+                        <?= progressBar($data['pct'], $data['pct'] === 100 ? '#10b981' : '#0a6e2d') ?>
+                        <div class="flex gap-3 text-[11px] font-semibold text-gray-500 mt-3">
+                            <span><i class="fas fa-calendar-check text-blue-500"></i> <?= $data['sub_done'] ?>/<?= $data['sub_total'] ?> Sessions</span>
+                            <span><i class="fas fa-book text-purple-500"></i> <?= $data['mod_done'] ?>/<?= $data['mod_total'] ?> Modules</span>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- TIER 3: DETAILED SUBTOPIC BREAKDOWN -->
+            <h3 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-book-open text-[#0a6e2d] mr-2"></i>Module Breakdown by Subtopic</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <?php if (!empty($subtopics_progress)): ?>
+                    <?php foreach ($subtopics_progress as $sub): ?>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col h-full">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-bold text-sm text-gray-800 leading-tight pr-2"><?= htmlspecialchars($sub['title']) ?></h4>
+                                <span class="text-xs font-bold text-[#0a6e2d] bg-green-50 px-2 py-1 rounded-md whitespace-nowrap"><?= $sub['percent'] ?>%</span>
+                            </div>
+                            <?= progressBar($sub['percent'], $sub['percent'] === 100 ? '#10b981' : '#0a6e2d') ?>
+                            
+                            <div class="mt-4 space-y-2 flex-1">
+                                <?php if (empty($sub['modules'])): ?>
+                                    <p class="text-xs text-gray-400 italic">No modules in this subtopic.</p>
+                                <?php else: ?>
+                                    <?php foreach ($sub['modules'] as $mod): ?>
+                                        <a href="modules.php?module_id=<?= $mod['module_id'] ?>" class="flex items-start gap-2 text-xs border-b border-gray-100 pb-2 group hover:bg-gray-50 -mx-2 px-2 py-1 rounded transition-colors">
+                                            <i class="fas <?= $mod['completed'] ? 'fa-check-circle text-green-500' : 'fa-circle text-gray-300' ?> mt-0.5 group-hover:scale-110 transition-transform"></i>
+                                            <span class="text-gray-700 group-hover:text-[#0a6e2d] font-medium leading-tight flex-1"><?= htmlspecialchars($mod['title']) ?></span>
+                                            <i class="fas fa-chevron-right text-[10px] text-gray-300 mt-0.5 group-hover:text-[#0a6e2d]"></i>
+                                        </a>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                            <a href="modules.php" class="mt-4 block text-center w-full bg-gray-50 hover:bg-[#0a6e2d] text-gray-600 hover:text-white text-xs font-bold py-2 rounded-lg transition-colors border border-gray-200 hover:border-[#0a6e2d]">
+                                Go to Modules
+                            </a>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="col-span-full bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
+                        <i class="fas fa-folder-open text-4xl mb-3 text-gray-300"></i>
+                        <p>No subtopics registered yet.</p>
+                        <a href="sessions.php" class="text-[#0a6e2d] font-bold hover:underline mt-2 inline-block">Register for Sessions</a>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </main>
+    </div>
+</div>
+</body>
+</html>

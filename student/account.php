@@ -25,7 +25,7 @@ $error = '';
 
 // Handle Profile Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_profile') {
-    csrf_verify();
+    csrf_verify(); // BUG FIX: Added missing CSRF verification
     $full_name = trim($_POST['full_name']);
     $email = trim($_POST['email']);
     $mobile = trim($_POST['mobile']);
@@ -35,28 +35,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $error = "Full Name and Email are required.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
+    } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
+        $error = "Email must be an official KLD email (must end in @kld.edu.ph).";
     } else {
-        try {
-            $pdo->beginTransaction();
-            // Update users table
-            $stmt_upd_u = $pdo->prepare("UPDATE users SET full_name = ?, email = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
-            $stmt_upd_u->execute([$full_name, $email, $_SESSION['student_id']]);
-            
-            // Update students table
-            $stmt_upd_s = $pdo->prepare("UPDATE students SET mobile = ?, telephone = ? WHERE student_id = ?");
-            $stmt_upd_s->execute([$mobile, $telephone, $_SESSION['student_id']]);
-            
-            $pdo->commit();
-            $success = "Profile updated successfully.";
-            
-            // Refresh data
-            $student['full_name'] = $full_name;
-            $student['email'] = $email;
-            $student['mobile'] = $mobile;
-            $student['telephone'] = $telephone;
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = "Update failed: " . $e->getMessage();
+        // Check for duplicates
+        $stmt_dup = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != (SELECT user_id FROM students WHERE student_id = ?)");
+        $stmt_dup->execute([$email, $_SESSION['student_id']]);
+        
+        if ($stmt_dup->fetch()) {
+            $error = "That email address is already in use by another account.";
+        } elseif ($email !== $student['email']) {
+            // EMAIL CHANGE DETECTED - Trigger PIN
+            $pin = sprintf("%06d", mt_rand(1, 999999));
+            $expiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+
+            $stmt_pin = $pdo->prepare("UPDATE users SET pending_email = ?, email_change_pin = ?, email_pin_expiry = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
+            $stmt_pin->execute([$email, $pin, $expiry, $_SESSION['student_id']]);
+
+            require_once __DIR__ . '/../includes/send_email.php';
+            $subject = "ACES - Verify Your New Email Address";
+            $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
+            sendEmail($email, $subject, $body);
+
+            $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
+            header("Location: ../verify_email_change.php");
+            exit;
+        } else {
+            // Email NOT changed - Update other fields directly
+            try {
+                $pdo->beginTransaction();
+                $stmt_upd_u = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
+                $stmt_upd_u->execute([$full_name, $_SESSION['student_id']]);
+                
+                $stmt_upd_s = $pdo->prepare("UPDATE students SET mobile = ?, telephone = ? WHERE student_id = ?");
+                $stmt_upd_s->execute([$mobile, $telephone, $_SESSION['student_id']]);
+                
+                $pdo->commit();
+                $success = "Profile updated successfully.";
+                
+                $student['full_name'] = $full_name;
+                $student['mobile'] = $mobile;
+                $student['telephone'] = $telephone;
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $error = "Update failed: " . $e->getMessage();
+            }
         }
     }
 }

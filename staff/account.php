@@ -22,24 +22,43 @@ $user_data = $stmt_user->fetch();
 
 // --- Handle Profile Update ---
 if ($action === 'update_profile') {
+    csrf_verify(); // BUG FIX: Added missing CSRF verification
     $full_name = trim($_POST['full_name']);
     $email = trim($_POST['email']);
 
     if (!$full_name || !$email) {
         $error = "Name and email are required.";
+    } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
+        $error = "Email must be an official KLD email (must end in @kld.edu.ph).";
     } else {
         // Check if email is taken by another user
         $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
         $check->execute([$email, $_SESSION['user_id']]);
+        
         if ($check->fetch()) {
             $error = "That email address is already in use.";
+        } elseif ($email !== $user_data['email']) {
+            // EMAIL CHANGE DETECTED - Trigger PIN
+            $pin = sprintf("%06d", mt_rand(1, 999999));
+            $expiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+
+            $stmt_pin = $pdo->prepare("UPDATE users SET pending_email = ?, email_change_pin = ?, email_pin_expiry = ? WHERE user_id = ?");
+            $stmt_pin->execute([$email, $pin, $expiry, $_SESSION['user_id']]);
+
+            require_once __DIR__ . '/../includes/send_email.php';
+            $subject = "ACES - Verify Your New Email Address";
+            $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
+            sendEmail($email, $subject, $body);
+
+            $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
+            header("Location: ../verify_email_change.php");
+            exit;
         } else {
-            $stmt = $pdo->prepare("UPDATE users SET full_name = ?, email = ? WHERE user_id = ?");
-            $stmt->execute([$full_name, $email, $_SESSION['user_id']]);
+            // Email NOT changed
+            $stmt = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = ?");
+            $stmt->execute([$full_name, $_SESSION['user_id']]);
             $success = "Profile updated successfully.";
-            // Refresh local data
             $user_data['full_name'] = $full_name;
-            $user_data['email'] = $email;
         }
     }
 }

@@ -37,6 +37,8 @@ if ($action === 'create') {
 
     if (!$full_name || !$email || !$role) {
         $error = "All fields are required.";
+    } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
+        $error = "Staff email must be an official KLD email (must end in @kld.edu.ph).";
     } else {
         $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
         $check->execute([$email]);

@@ -30,7 +30,8 @@ $current = basename($_SERVER['PHP_SELF']);
         z-index: 40;
     }
 </style>
-<aside id="staffSidebar" class="hidden md:flex w-64 bg-[#0a6e2d] text-white flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 overflow-hidden">
+
+<aside id="staffSidebar" class="hidden md:flex w-64 bg-[#0a6e2d] text-white flex-col p-4 shrink-0 h-screen sticky top-0 transition-all duration-300 overflow-y-auto">
     <!-- Top brand & collapse toggle -->
     <div>
         <div class="flex items-center justify-between mb-8">
@@ -49,20 +50,20 @@ $current = basename($_SERVER['PHP_SELF']);
         </div>
 
         <!-- Navigation Groups -->
-        <nav class="space-y-4 text-sm opacity-90">
+        <nav class="space-y-1 text-sm">
 
             <!-- Main Group -->
             <div class="sidebar-group">
-                <button class="group-header flex items-center justify-between w-full text-left hover:text-green-200 py-1">
-                    <span><i class="fas fa-th-large mr-2 w-4 text-center"></i><span class="sidebar-text">Main</span></span>
+                <button class="group-header flex items-center justify-between w-full text-left text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors">
+                    <span><i class="fas fa-th-large mr-2 w-5 text-center"></i><span class="sidebar-text">Main</span></span>
                     <i class="fas fa-chevron-down text-xs transition-transform duration-200 sidebar-text"></i>
                 </button>
-                <div class="group-links ml-6 mt-2 space-y-2 hidden">
-                    <a href="calendar.php" class="block hover:text-green-200 sidebar-link <?= $current == 'calendar.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="far fa-calendar-alt mr-2 w-4 text-center"></i><span class="sidebar-text">Calendar</span>
+                <div class="group-links ml-4 mt-1 space-y-1 hidden">
+                    <a href="calendar.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'calendar.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="far fa-calendar-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Calendar</span>
                     </a>
-                    <a href="dashboard.php" class="block hover:text-green-200 sidebar-link <?= $current == 'dashboard.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-tachometer-alt mr-2 w-4 text-center"></i><span class="sidebar-text">Dashboard</span>
+                    <a href="dashboard.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'dashboard.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-tachometer-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Dashboard</span>
                     </a>
                 </div>
             </div>
@@ -70,22 +71,22 @@ $current = basename($_SERVER['PHP_SELF']);
             <!-- Management Group -->
             <?php if (!isViewer()): ?>
             <div class="sidebar-group">
-                <button class="group-header flex items-center justify-between w-full text-left hover:text-green-200 py-1">
-                    <span><i class="fas fa-cogs mr-2 w-4 text-center"></i><span class="sidebar-text">Management</span></span>
+                <button class="group-header flex items-center justify-between w-full text-left text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors">
+                    <span><i class="fas fa-cogs mr-2 w-5 text-center"></i><span class="sidebar-text">Management</span></span>
                     <i class="fas fa-chevron-down text-xs transition-transform duration-200 sidebar-text"></i>
                 </button>
-                <div class="group-links ml-6 mt-2 space-y-2 hidden">
-                    <a href="students.php" class="block hover:text-green-200 sidebar-link <?= $current == 'students.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-user-graduate mr-2 w-4 text-center"></i><span class="sidebar-text">Student Info</span>
+                <div class="group-links ml-4 mt-1 space-y-1 hidden">
+                    <a href="students.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'students.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-user-graduate mr-2 w-5 text-center"></i><span class="sidebar-text">Student Info</span>
                     </a>
-                    <a href="attendance.php" class="block hover:text-green-200 sidebar-link <?= $current == 'attendance.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-clipboard-check mr-2 w-4 text-center"></i><span class="sidebar-text">Attendance</span>
+                    <a href="attendance.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'attendance.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-clipboard-check mr-2 w-5 text-center"></i><span class="sidebar-text">Attendance</span>
                     </a>
-                    <a href="subtopics.php" class="block hover:text-green-200 sidebar-link <?= $current == 'subtopics.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-list-alt mr-2 w-4 text-center"></i><span class="sidebar-text">Sessions</span>
+                    <a href="subtopics.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'subtopics.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-list-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Sessions</span>
                     </a>
-                    <a href="modules.php" class="block hover:text-green-200 sidebar-link <?= $current == 'modules.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-book-open mr-2 w-4 text-center"></i><span class="sidebar-text">Modules</span>
+                    <a href="modules.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'modules.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-book-open mr-2 w-5 text-center"></i><span class="sidebar-text">Modules</span>
                     </a>
                 </div>
             </div>
@@ -93,53 +94,53 @@ $current = basename($_SERVER['PHP_SELF']);
 
             <!-- Reports Group -->
             <div class="sidebar-group">
-                <button class="group-header flex items-center justify-between w-full text-left hover:text-green-200 py-1">
-                    <span><i class="fas fa-chart-bar mr-2 w-4 text-center"></i><span class="sidebar-text">Reports</span></span>
+                <button class="group-header flex items-center justify-between w-full text-left text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors">
+                    <span><i class="fas fa-chart-bar mr-2 w-5 text-center"></i><span class="sidebar-text">Reports</span></span>
                     <i class="fas fa-chevron-down text-xs transition-transform duration-200 sidebar-text"></i>
                 </button>
-                <div class="group-links ml-6 mt-2 space-y-2 hidden">
-                    <a href="student_progress.php" class="block hover:text-green-200 sidebar-link <?= $current == 'student_progress.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-chart-line mr-2 w-4 text-center"></i><span class="sidebar-text">Student Progress</span>
+                <div class="group-links ml-4 mt-1 space-y-1 hidden">
+                    <a href="student_progress.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'student_progress.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-chart-line mr-2 w-5 text-center"></i><span class="sidebar-text">Student Progress</span>
                     </a>
                     <?php if (isAdmin()): ?>
-                    <a href="registrants.php" class="block hover:text-green-200 sidebar-link <?= $current == 'registrants.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-list-ul mr-2 w-4 text-center"></i><span class="sidebar-text">Registrants</span>
+                    <a href="registrants.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'registrants.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-list-ul mr-2 w-5 text-center"></i><span class="sidebar-text">Registrants</span>
                     </a>
                     <?php endif; ?>
-                    <a href="reports.php" class="block hover:text-green-200 sidebar-link <?= $current == 'reports.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-file-export mr-2 w-4 text-center"></i><span class="sidebar-text">Reports & Exports</span>
+                    <a href="reports.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'reports.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-file-export mr-2 w-5 text-center"></i><span class="sidebar-text">Reports & Exports</span>
                     </a>
                 </div>
             </div>
 
             <!-- Account Group -->
             <div class="sidebar-group">
-                <button class="group-header flex items-center justify-between w-full text-left hover:text-green-200 py-1">
-                    <span><i class="fas fa-user-circle mr-2 w-4 text-center"></i><span class="sidebar-text">Account</span></span>
+                <button class="group-header flex items-center justify-between w-full text-left text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors">
+                    <span><i class="fas fa-user-circle mr-2 w-5 text-center"></i><span class="sidebar-text">Account</span></span>
                     <i class="fas fa-chevron-down text-xs transition-transform duration-200 sidebar-text"></i>
                 </button>
-                <div class="group-links ml-6 mt-2 space-y-2 hidden">
+                <div class="group-links ml-4 mt-1 space-y-1 hidden">
                     <?php if (isAdmin()): ?>
-                    <a href="manage_staff.php" class="block hover:text-green-200 sidebar-link <?= $current == 'manage_staff.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-users-cog mr-2 w-4 text-center"></i><span class="sidebar-text">Manage Staff</span>
+                    <a href="manage_staff.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'manage_staff.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-users-cog mr-2 w-5 text-center"></i><span class="sidebar-text">Manage Staff</span>
                     </a>
                     <?php endif; ?>
-                    <a href="account.php" class="block hover:text-green-200 sidebar-link <?= $current == 'account.php' ? 'font-bold border-l-4 border-white pl-2' : '' ?>">
-                        <i class="fas fa-cog mr-2 w-4 text-center"></i><span class="sidebar-text">Account Settings</span>
+                    <a href="account.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'account.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-cog mr-2 w-5 text-center"></i><span class="sidebar-text">Account Settings</span>
                     </a>
                 </div>
             </div>
         </nav>
     </div>
 
-    <!-- Bottom -->
+    <!-- Bottom (Pushed to bottom with mt-auto) -->
     <div class="mt-auto pt-4 border-t border-white/20">
-        <a href="../logout.php" class="block font-bold hover:text-red-300 sidebar-text mb-2">
-            <i class="fas fa-sign-out-alt mr-2 w-4 text-center"></i><span class="sidebar-text">Logout</span>
+        <a href="../logout.php" class="block text-white font-bold hover:text-red-300 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2">
+            <i class="fas fa-sign-out-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Logout</span>
         </a>
-        <div class="flex gap-4 text-lg opacity-80 sidebar-text">
-            <i class="fa-brands fa-facebook cursor-pointer"></i>
-            <i class="fa-brands fa-google cursor-pointer"></i>
+        <div class="flex gap-4 text-lg opacity-80 sidebar-text px-3">
+            <i class="fa-brands fa-facebook cursor-pointer hover:text-white"></i>
+            <i class="fa-brands fa-google cursor-pointer hover:text-white"></i>
         </div>
     </div>
 </aside>
@@ -192,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // ---------- GROUP EXPANSION BEHAVIOR ----------
+    // ---------- GROUP EXPANSION BEHAVIOR (Preserved exactly as is) ----------
     let openGroup = null;
     let closeTimeout = null;
 

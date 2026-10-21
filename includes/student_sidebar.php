@@ -24,6 +24,7 @@ $current = basename($_SERVER['PHP_SELF']);
             height: 100vh;
             z-index: 50;
             box-shadow: 2px 0 15px rgba(0,0,0,0.4);
+            overflow-y: auto;
         }
         #studentSidebarBackdrop.active { display: block; }
     }
@@ -34,8 +35,10 @@ $current = basename($_SERVER['PHP_SELF']);
         background: rgba(0,0,0,0.5);
         z-index: 40;
     }
+    
 </style>
-<aside id="studentSidebar" class="hidden md:flex w-64 bg-[#0a6e2d] text-white flex-col justify-between p-4 shrink-0 h-full transition-all duration-300 overflow-hidden">
+
+<aside id="studentSidebar" class="hidden md:flex w-64 bg-[#0a6e2d] text-white flex-col p-4 shrink-0 h-screen sticky top-0 transition-all duration-300 overflow-y-auto">
     <div>
         <!-- Top brand & collapse toggle -->
         <div class="flex items-center justify-between mb-8">
@@ -52,31 +55,37 @@ $current = basename($_SERVER['PHP_SELF']);
             <h2 class="text-xl font-bold leading-tight">Welcome<br><?= htmlspecialchars($first_name) ?></h2>
         </div>
 
-        <!-- Navigation -->
-        <nav class="space-y-4 text-sm opacity-90">
-            <a href="dashboard.php" class="block hover:text-green-200 <?= $current == 'dashboard.php' ? 'font-bold border-l-4 border-white pl-3' : '' ?>">
-                <i class="fas fa-tachometer-alt mr-2 w-4 text-center"></i><span class="sidebar-text">Dashboard</span>
+        <!-- Navigation (Fixed: added text-white, reduced spacing) -->
+        <nav class="space-y-1 text-sm opacity-90">
+            <a href="dashboard.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'dashboard.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-tachometer-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Dashboard</span>
             </a>
-            <a href="sessions.php" class="block hover:text-green-200 <?= $current == 'sessions.php' ? 'font-bold border-l-4 border-white pl-3' : '' ?>">
-                <i class="fas fa-book mr-2 w-4 text-center"></i><span class="sidebar-text">Subtopics</span>
+            <a href="sessions.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'sessions.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-book mr-2 w-5 text-center"></i><span class="sidebar-text">Subtopics</span>
             </a>
-            <a href="modules.php" class="block hover:text-green-200 <?= $current == 'modules.php' ? 'font-bold border-l-4 border-white pl-3' : '' ?>">
-                <i class="fas fa-book-open mr-2 w-4 text-center"></i><span class="sidebar-text">Modules</span>
+            <a href="calendar.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'calendar.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-calendar-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Calendar</span>
             </a>
-            <a href="account.php" class="block hover:text-green-200 <?= $current == 'account.php' ? 'font-bold border-l-4 border-white pl-3' : '' ?>">
-                <i class="fas fa-cog mr-2 w-4 text-center"></i><span class="sidebar-text">Account Settings</span>
+            <a href="progress.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'progress.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-chart-pie mr-2 w-5 text-center"></i><span class="sidebar-text">My Progress</span>
+            </a>
+            <a href="modules.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'modules.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-book-open mr-2 w-5 text-center"></i><span class="sidebar-text">Modules</span>
+            </a>
+            <a href="account.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'account.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-cog mr-2 w-5 text-center"></i><span class="sidebar-text">Account Settings</span>
             </a>
         </nav>
     </div>
 
     <!-- Bottom -->
     <div class="mt-auto pt-4 border-t border-white/20">
-        <a href="../logout.php" class="block font-bold hover:text-red-300 sidebar-text mb-2">
-            <i class="fas fa-sign-out-alt mr-2 w-4 text-center"></i><span class="sidebar-text">Logout</span>
+        <a href="../logout.php" class="block text-white font-bold hover:text-red-300 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2">
+            <i class="fas fa-sign-out-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Logout</span>
         </a>
-        <div class="flex gap-4 text-lg opacity-80 sidebar-text">
-            <i class="fa-brands fa-facebook cursor-pointer"></i>
-            <i class="fa-brands fa-google cursor-pointer"></i>
+        <div class="flex gap-4 text-lg opacity-80 sidebar-text px-3">
+            <i class="fa-brands fa-facebook cursor-pointer hover:text-white"></i>
+            <i class="fa-brands fa-google cursor-pointer hover:text-white"></i>
         </div>
     </div>
 </aside>
@@ -93,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const backdrop = document.getElementById('studentSidebarBackdrop');
     const textElements = sidebar.querySelectorAll('.sidebar-text');
 
-    // Desktop collapse toggle (existing behavior)
+    // Desktop collapse toggle
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
             sidebar.classList.toggle('w-64');
@@ -114,7 +123,14 @@ document.addEventListener('DOMContentLoaded', function() {
         document.body.style.overflow = '';
     }
 
-    if (mobileBtn) mobileBtn.addEventListener('click', openMobile);
+    // Attach mobile button listener
+    if (mobileBtn) {
+        mobileBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            openMobile();
+        });
+    }
+    
     if (backdrop) backdrop.addEventListener('click', closeMobile);
 
     document.addEventListener('keydown', function(e) {
@@ -123,7 +139,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Close when any nav link is tapped
     sidebar.querySelectorAll('nav a').forEach(function(a) {
-        a.addEventListener('click', closeMobile);
+        a.addEventListener('click', function() {
+            if (window.innerWidth < 768) closeMobile();
+        });
     });
 });
 </script>
