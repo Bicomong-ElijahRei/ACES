@@ -29,9 +29,26 @@ $first_name = explode(' ', trim($staff_name))[0];
 $active_sessions = (int) $pdo->query("SELECT COUNT(*) FROM sessions WHERE is_deleted = 0")->fetchColumn();
 $total_students  = (int) $pdo->query("SELECT COUNT(*) FROM students WHERE is_deleted = 0")->fetchColumn();
 
-$att_present = (int) $pdo->query("SELECT COUNT(*) FROM attendance WHERE attendance_status = 'present' AND is_deleted = 0")->fetchColumn();
-$att_total   = (int) $pdo->query("SELECT COUNT(*) FROM attendance WHERE is_deleted = 0")->fetchColumn();
-$overall_att_pct = $att_total > 0 ? round(($att_present / $att_total) * 100) : 0;
+// ---------- PENDING TICKETS ----------
+$pending_tickets = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'open'")->fetchColumn();
+
+// Unified Math: Present / Total Registrations
+$att_present = (int) $pdo->query("
+    SELECT COUNT(DISTINCT a.student_id, a.subtopic_id) 
+    FROM attendance a 
+    JOIN subtopics s ON a.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN students st ON a.student_id = st.student_id AND st.is_deleted = 0
+    WHERE a.attendance_status = 'present' AND a.is_deleted = 0
+")->fetchColumn();
+
+$att_total = (int) $pdo->query("
+    SELECT COUNT(DISTINCT r.student_id, r.subtopic_id) 
+    FROM registrations r 
+    JOIN subtopics s ON r.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+")->fetchColumn();
+
+$overall_att_pct = $att_total > 0 ? min(100, round(($att_present / $att_total) * 100)) : 0;
 
 $total_submissions = (int) $pdo->query("
     SELECT COUNT(*) FROM registrations r
@@ -96,7 +113,10 @@ usort($at_risk_students, function($a, $b) {
     return $a['progress_pct'] <=> $b['progress_pct'];
 });
 
-// Limit to top 5
+// Count total before slicing for the badge
+$total_at_risk = count($at_risk_students);
+
+// Limit to top 5 for the list
 $at_risk_students = array_slice($at_risk_students, 0, 5);
 
 // ---------- UPCOMING SESSIONS ----------
@@ -490,6 +510,16 @@ unset($m);
                 <p class="text-sm text-gray-500 mt-1">Here's what's happening with ACES today.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                
+                <!-- NEW: PENDING TICKETS BADGE -->
+                <?php if ($pending_tickets > 0): ?>
+                    <a href="support.php" class="bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 text-sm font-bold px-3 py-2 rounded-lg inline-flex items-center gap-2 transition-colors shadow-sm animate-pulse" title="View Pending Tickets">
+                        <i class="fas fa-ticket-alt"></i> 
+                        <?= $pending_tickets ?> Pending Ticket<?= $pending_tickets > 1 ? 's' : '' ?>
+                    </a>
+                <?php endif; ?>
+                <!-- END BADGE -->
+
                 <a href="student_progress.php"
                    class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition">
                     <i class="fas fa-chart-line text-[#0a6e2d]"></i> View Student Progress
@@ -678,7 +708,7 @@ unset($m);
                         <div class="panel-title text-red-600">
                             <i class="fas fa-exclamation-triangle"></i> At-Risk Students
                         </div>
-                        <span class="text-xs text-gray-400"><?= count($at_risk_students) ?></span>
+                        <span class="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full"><?= $total_at_risk ?> Total</span>
                     </div>
                     <?php if (empty($at_risk_students)): ?>
                         <div class="text-center py-8 text-gray-400">
@@ -708,9 +738,9 @@ unset($m);
                                 </div>
                             <?php endforeach; ?>
                         </div>
-                        <div class="px-4 py-3 border-t border-gray-100 bg-gray-50">
-                            <a href="student_progress.php" class="text-xs text-[#0a6e2d] font-semibold hover:underline w-full text-center block">
-                                View all students →
+                        <div class="px-4 py-3 border-t border-gray-100 bg-red-50 hover:bg-red-100 transition-colors">
+                            <a href="student_progress.php?view=at-risk" class="text-xs text-red-700 font-bold w-full flex items-center justify-center gap-1">
+                                <i class="fas fa-exclamation-triangle"></i> View All <?= $total_at_risk ?> At-Risk Students
                             </a>
                         </div>
                     <?php endif; ?>
@@ -736,9 +766,9 @@ unset($m);
                                 $phaseKey = str_replace(' ', '-', $u['phase']);
                                 $daysLeft = (int)ceil((strtotime($u['date']) - time()) / 86400);
                             ?>
-                                <div class="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-green-200 transition">
+                                <a href="subtopics.php?view_session=<?= $u['session_id'] ?>" class="block p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-green-300 hover:shadow-sm transition group">
                                     <div class="flex items-start justify-between gap-2 mb-1">
-                                        <div class="text-sm font-semibold text-gray-800 flex-1 min-w-0 truncate">
+                                        <div class="text-sm font-semibold text-gray-800 flex-1 min-w-0 truncate group-hover:text-[#0a6e2d] transition-colors">
                                             <?= htmlspecialchars($u['title']) ?>
                                         </div>
                                         <span class="text-[10px] font-bold text-[#0a6e2d] whitespace-nowrap">
@@ -753,7 +783,7 @@ unset($m);
                                             <?= date('M d', strtotime($u['date'])) ?>
                                         </span>
                                     </div>
-                                </div>
+                                </a>
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>

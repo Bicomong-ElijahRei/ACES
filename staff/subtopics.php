@@ -1657,6 +1657,22 @@ function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
 }
+// ==================== DEEP-LINK HANDLER ====================
+// If arriving from dashboard with ?view_session=X, auto-open the view modal
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewSessionId = urlParams.get('view_session');
+
+    if (viewSessionId) {
+        const btn = document.querySelector(`.view-session[data-id="${viewSessionId}"]`);
+        if (btn) {
+            // Small delay to ensure everything is rendered
+            setTimeout(() => {
+                btn.click();
+            }, 100);
+        }
+    }
+});
 </script>
 </body>
 </html>
