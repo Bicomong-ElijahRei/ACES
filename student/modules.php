@@ -272,7 +272,7 @@ function getPreview($content, $type) {
     if ($type == 'module') {
         if (strpos($content, 'file:') === 0) return '[File] ' . basename(substr($content, 5));
         if (strpos($content, 'link:') === 0) return '[Link] ' . substr($content, 5);
-        if (strpos($content, 'text:') === 0) return substr(strip_tags(substr($content, 5)), 0, 50) . '...';
+        if (strpos($content, 'text:') === 0) return mb_substr(strip_tags(substr($content, 5)), 0, 50) . '...';
         return 'Module content';
     } else {
         if (strpos($content, 'link:') === 0) return '[External Assessment]';

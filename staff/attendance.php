@@ -58,18 +58,23 @@ if ($action === 'bulk_delete' && isset($_POST['ids'])) {
     header('Location: attendance.php?permanently_deleted=1');
     exit;
 } elseif ($action === 'change_status' && isset($_POST['ids']) && isset($_POST['new_status'])) {
-    $ids = explode(',', $_POST['ids']);
+    $ids = array_filter(explode(',', $_POST['ids']));
+    if (empty($ids)) {
+            header('Location: attendance.php?error=Access denied');
+        exit;
+    }
     $new_status = $_POST['new_status'];
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $pdo->prepare("UPDATE attendance SET attendance_status = ?, validated = IF(? = 'present', 1, 0), auto_generated = 0 WHERE attendance_id IN ($placeholders)");
-    $stmt->execute([$new_status, $new_status, ...$ids]);
+    $stmt = $pdo->prepare("UPDATE attendance SET attendance_status = ?, validated = IF(? = 'pending', 0, 1), auto_generated = 0, recorded_by = ? WHERE attendance_id IN ($placeholders)");
+    $params = array_merge([$new_status, $new_status, $_SESSION['user_id']], $ids);
+    $stmt->execute($params);
     header('Location: attendance.php?status_updated=1');
     exit;
 } elseif ($action === 'single_change' && isset($_POST['id']) && isset($_POST['status'])) {
     $id = (int)$_POST['id'];
     $new_status = $_POST['status'];
-    $stmt = $pdo->prepare("UPDATE attendance SET attendance_status = ?, validated = IF(? = 'present', 1, 0), auto_generated = 0 WHERE attendance_id = ?");
-    $stmt->execute([$new_status, $new_status, $id]);
+    $stmt = $pdo->prepare("UPDATE attendance SET attendance_status = ?, validated = IF(? = 'pending', 0, 1), auto_generated = 0, recorded_by = ? WHERE attendance_id = ?");
+    $stmt->execute([$new_status, $new_status, $_SESSION['user_id'], $id]);
     header('Location: attendance.php?status_updated=1');
     exit;
 }
@@ -150,6 +155,12 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
             </div>
 
             <!-- Flash Messages -->
+            <?php if (isset($_GET['error'])): ?>
+                <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                    <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($_GET['error']) ?>
+                    <button type="button" class="ml-auto text-red-700 hover:text-red-900" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            <?php endif; ?>
             <?php if (isset($_GET['deleted'])): ?>
                 <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
                     <i class="fas fa-check-circle"></i> Selected records archived.
@@ -221,7 +232,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                 <th class="py-4 px-4 w-10 text-center"><input type="checkbox" id="selectAllCheckbox" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"></th>
                                 <th class="py-4 px-4">Student No.</th>
                                 <th class="py-4 px-4">Student Name</th>
-                                <th class="py-4 px-4">Date</th>
+                                <th class="py-4 px-4">Recorded On</th>
                                 <th class="py-4 px-4">Course</th>
                                 <th class="py-4 px-4">Section</th>
                                 <th class="py-4 px-4">Subtopic / Session</th>
@@ -233,7 +244,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                         </thead>
                         <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
                             <?php
-                            $sql = "SELECT a.attendance_id, a.attendance_status, a.attendance_date,
+                            $sql = "SELECT a.attendance_id, a.attendance_status, a.attendance_date, a.auto_generated,
                                            st.student_id, u.full_name, st.program, st.section,
                                            sub.title as subtopic_title, sess.title as session_title,
                                            sess.date as session_date
@@ -242,7 +253,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                     JOIN users u ON st.user_id = u.user_id
                                     JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id
                                     JOIN sessions sess ON a.session_id = sess.session_id
-                                    WHERE a.is_deleted = 0";
+                                    WHERE a.is_deleted = 0 AND sub.is_deleted = 0 AND sess.is_deleted = 0 AND st.is_deleted = 0";
                             $params = [];
                             if (!empty($_GET['subtopic_id'])) { $sql .= " AND a.subtopic_id = ?"; $params[] = $_GET['subtopic_id']; }
                             if (!empty($_GET['course']))     { $sql .= " AND st.program = ?";      $params[] = $_GET['course']; }
@@ -278,6 +289,9 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold <?= $badgeClass ?>">
                                             <?= ucfirst($att['attendance_status']) ?>
                                         </span>
+                                        <?php if (!empty($att['auto_generated']) && $att['auto_generated'] == 1): ?>
+                                            <div class="mt-1"><span class="inline-flex items-center text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded"><i class="fas fa-robot mr-1"></i> Auto</span></div>
+                                        <?php endif; ?>
                                     </td>
                                     <?php if (!isViewer()): ?>
                                     <td class="py-4 px-4 text-center">
@@ -305,7 +319,12 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                 <div id="archiveHeader" class="px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors">
                     <div class="flex items-center gap-2 font-bold text-gray-800">
                         <i class="fas fa-archive text-gray-400"></i> Archived Records 
-                        <span class="bg-gray-100 text-gray-600 py-0.5 px-2.5 rounded-full text-xs font-semibold ml-1"><?= $pdo->query("SELECT COUNT(*) FROM attendance WHERE is_deleted = 1")->fetchColumn() ?></span>
+                        <span class="bg-gray-100 text-gray-600 py-0.5 px-2.5 rounded-full text-xs font-semibold ml-1"><?= $pdo->query("
+                            SELECT COUNT(*) FROM attendance a
+                            JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id
+                            JOIN sessions sess ON a.session_id = sess.session_id
+                            WHERE a.is_deleted = 1 OR sub.is_deleted = 1 OR sess.is_deleted = 1
+                        ")->fetchColumn() ?></span>
                     </div>
                     <i class="fas fa-chevron-down text-gray-400 transition-transform duration-200"></i>
                 </div>
@@ -363,7 +382,8 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                             JOIN students st ON a.student_id = st.student_id
                                             JOIN users u ON st.user_id = u.user_id
                                             JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id
-                                            WHERE a.is_deleted = 1";
+                                            JOIN sessions sess ON a.session_id = sess.session_id
+                                            WHERE (a.is_deleted = 1 OR sub.is_deleted = 1 OR sess.is_deleted = 1)";
                                 $params_arch = [];
                                 if (!empty($_GET['arch_subtopic_id'])) { $sql_arch .= " AND a.subtopic_id = ?";        $params_arch[] = $_GET['arch_subtopic_id']; }
                                 if (!empty($_GET['arch_course']))      { $sql_arch .= " AND st.program = ?";           $params_arch[] = $_GET['arch_course']; }
@@ -684,6 +704,14 @@ $(document).ready(function() {
         $('#archiveContent').toggleClass('hidden');
         $(this).find('.fa-chevron-down').toggleClass('rotate-180');
     });
+
+    // Auto-open the archive accordion if any archive filter is active
+    <?php if (isset($_GET['archive_filter']) || !empty($_GET['arch_status']) || !empty($_GET['arch_course']) || !empty($_GET['arch_section']) || !empty($_GET['arch_subtopic_id'])): ?>
+    (function() {
+        $('#archiveContent').removeClass('hidden');
+        $('#archiveHeader .fa-chevron-down').addClass('rotate-180');
+    })();
+    <?php endif; ?>
 
     <?php if (!isViewer()): ?>
     // ============================================

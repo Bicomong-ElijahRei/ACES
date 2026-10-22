@@ -107,6 +107,63 @@ if ($action === 'create') {
                     $visible_sections, $required_sections, $visible_courses, $required_courses,
                     $attendance_type, $sub_image_path
                 ]);
+                
+                $new_subtopic_id = $pdo->lastInsertId();
+
+                // --- AUTO ASSIGN FOR REQUIRED SUBTOPICS ---
+                if ($is_required || !empty($sub['required_courses']) || !empty($sub['required_sections'])) {
+                    $student_query = "SELECT student_id FROM students WHERE is_deleted = 0";
+                    $s_params = [];
+                    
+                    if (!$is_required) {
+                        if (!empty($sub['required_courses'])) {
+                            $ph = implode(',', array_fill(0, count($sub['required_courses']), '?'));
+                            $student_query .= " AND program IN ($ph)";
+                            $s_params = array_merge($s_params, $sub['required_courses']);
+                        }
+                        if (!empty($sub['required_sections'])) {
+                            $ph = implode(',', array_fill(0, count($sub['required_sections']), '?'));
+                            $student_query .= " AND section IN ($ph)";
+                            $s_params = array_merge($s_params, $sub['required_sections']);
+                        }
+                    }
+                    
+                    $stmt_s = $pdo->prepare($student_query);
+                    $stmt_s->execute($s_params);
+                    $students_to_assign = $stmt_s->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    if (!empty($students_to_assign)) {
+                        // 1. Batch Insert Registrations (1 query instead of 2300)
+                        $reg_placeholders = [];
+                        $reg_values = [];
+                        foreach ($students_to_assign as $sid) {
+                            $reg_placeholders[] = "(?, ?, ?, 'assigned', NOW())";
+                            array_push($reg_values, $sid, $session_id, $new_subtopic_id);
+                        }
+                        $sql_reg = "INSERT IGNORE INTO registrations (student_id, session_id, subtopic_id, status, registration_date) VALUES " . implode(',', $reg_placeholders);
+                        $pdo->prepare($sql_reg)->execute($reg_values);
+
+                        // 2. Fetch existing attendance (1 query)
+                        $stmt_att_check = $pdo->prepare("SELECT student_id FROM attendance WHERE subtopic_id = ?");
+                        $stmt_att_check->execute([$new_subtopic_id]);
+                        $existing_att = $stmt_att_check->fetchAll(PDO::FETCH_COLUMN);
+
+                        // 3. Batch Insert Attendance (1 query instead of 2300)
+                        $att_placeholders = [];
+                        $att_values = [];
+                        foreach ($students_to_assign as $sid) {
+                            if (!in_array($sid, $existing_att)) {
+                                $att_placeholders[] = "(?, ?, ?, CURDATE(), 'pending', 0, 0)";
+                                array_push($att_values, $sid, $session_id, $new_subtopic_id);
+                            }
+                        }
+                        if (!empty($att_placeholders)) {
+                            $sql_att = "INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, is_deleted) VALUES " . implode(',', $att_placeholders);
+                            $pdo->prepare($sql_att)->execute($att_values);
+                        }
+                    }
+                }
+                // --- END AUTO ASSIGN ---
             }
         }
         $success = "Session created successfully.";
@@ -225,7 +282,63 @@ if ($action === 'create') {
                         $visible_sections, $required_sections, $visible_courses, $required_courses,
                         $attendance_type, $sub_image_path
                     ]);
+                    $subtopic_id = $pdo->lastInsertId();
                 }
+
+                // --- AUTO ASSIGN FOR REQUIRED SUBTOPICS ---
+                if ($is_required || !empty($sub['required_courses']) || !empty($sub['required_sections'])) {
+                    $student_query = "SELECT student_id FROM students WHERE is_deleted = 0";
+                    $s_params = [];
+                    
+                    if (!$is_required) {
+                        if (!empty($sub['required_courses'])) {
+                            $ph = implode(',', array_fill(0, count($sub['required_courses']), '?'));
+                            $student_query .= " AND program IN ($ph)";
+                            $s_params = array_merge($s_params, $sub['required_courses']);
+                        }
+                        if (!empty($sub['required_sections'])) {
+                            $ph = implode(',', array_fill(0, count($sub['required_sections']), '?'));
+                            $student_query .= " AND section IN ($ph)";
+                            $s_params = array_merge($s_params, $sub['required_sections']);
+                        }
+                    }
+                    
+                    $stmt_s = $pdo->prepare($student_query);
+                    $stmt_s->execute($s_params);
+                    $students_to_assign = $stmt_s->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    if (!empty($students_to_assign)) {
+                        // 1. Batch Insert Registrations
+                        $reg_placeholders = [];
+                        $reg_values = [];
+                        foreach ($students_to_assign as $sid) {
+                            $reg_placeholders[] = "(?, ?, ?, 'assigned', NOW())";
+                            array_push($reg_values, $sid, $id, $subtopic_id);
+                        }
+                        $sql_reg = "INSERT IGNORE INTO registrations (student_id, session_id, subtopic_id, status, registration_date) VALUES " . implode(',', $reg_placeholders);
+                        $pdo->prepare($sql_reg)->execute($reg_values);
+
+                        // 2. Fetch existing attendance
+                        $stmt_att_check = $pdo->prepare("SELECT student_id FROM attendance WHERE subtopic_id = ?");
+                        $stmt_att_check->execute([$subtopic_id]);
+                        $existing_att = $stmt_att_check->fetchAll(PDO::FETCH_COLUMN);
+
+                        // 3. Batch Insert Attendance
+                        $att_placeholders = [];
+                        $att_values = [];
+                        foreach ($students_to_assign as $sid) {
+                            if (!in_array($sid, $existing_att)) {
+                                $att_placeholders[] = "(?, ?, ?, CURDATE(), 'pending', 0, 0)";
+                                array_push($att_values, $sid, $id, $subtopic_id);
+                            }
+                        }
+                        if (!empty($att_placeholders)) {
+                            $sql_att = "INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, is_deleted) VALUES " . implode(',', $att_placeholders);
+                            $pdo->prepare($sql_att)->execute($att_values);
+                        }
+                    }
+                }
+                // --- END AUTO ASSIGN ---
             }
         }
         
@@ -266,20 +379,46 @@ if ($action === 'create') {
     if (empty($subtopic_ids)) {
         $error = "No subtopics to distribute.";
     } else {
-        $stmt = $pdo->query("SELECT section, COUNT(*) as cnt FROM students GROUP BY section");
-        $sections = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
         $num_subtopics = count($subtopic_ids);
         foreach ($subtopic_ids as $sub_id) {
+            // Fetch this subtopic's visibility rules
+            $stmt_vis = $pdo->prepare("SELECT visible_courses, required_courses FROM subtopics WHERE subtopic_id = ?");
+            $stmt_vis->execute([$sub_id]);
+            $vis = $stmt_vis->fetch();
+            $vis_courses = json_decode($vis['visible_courses'] ?? '[]', true) ?: [];
+            $req_courses = json_decode($vis['required_courses'] ?? '[]', true) ?: [];
+
+            // Build course filter
+            $course_filter = array_unique(array_merge($vis_courses, $req_courses));
+            
+            if (empty($course_filter)) {
+                // Public subtopic: count all active students
+                $stmt = $pdo->query("SELECT program, section, COUNT(*) as cnt FROM students WHERE is_deleted = 0 GROUP BY program, section");
+            } else {
+                // Restricted subtopic: only count students in the allowed courses
+                $placeholders = implode(',', array_fill(0, count($course_filter), '?'));
+                $stmt = $pdo->prepare("SELECT program, section, COUNT(*) as cnt FROM students WHERE is_deleted = 0 AND program IN ($placeholders) GROUP BY program, section");
+                $stmt->execute($course_filter);
+            }
+            
+            $sections = $stmt->fetchAll();
             $total_cap = 0;
-            foreach ($sections as $section => $cnt) {
+
+            // Clear previous capacities for this subtopic (so stale rows don't linger)
+            $pdo->prepare("DELETE FROM subtopic_section_capacity WHERE subtopic_id = ?")->execute([$sub_id]);
+
+            foreach ($sections as $row) {
+                $section_key = $row['program'] . '-' . $row['section']; // Unique key combining program + section
+                $cnt = (int)$row['cnt'];
                 $per_subtopic = ceil($cnt / $num_subtopics);
                 $total_cap += $per_subtopic;
+                
                 $stmt_cap = $pdo->prepare("
                     INSERT INTO subtopic_section_capacity (subtopic_id, section, capacity)
                     VALUES (?, ?, ?)
                     ON DUPLICATE KEY UPDATE capacity = ?
                 ");
-                $stmt_cap->execute([$sub_id, $section, $per_subtopic, $per_subtopic]);
+                $stmt_cap->execute([$sub_id, $section_key, $per_subtopic, $per_subtopic]);
             }
             $stmt_upd = $pdo->prepare("UPDATE subtopics SET capacity = ? WHERE subtopic_id = ?");
             $stmt_upd->execute([$total_cap, $sub_id]);
@@ -291,7 +430,7 @@ if ($action === 'create') {
     $courses = isset($_POST['courses']) ? json_decode($_POST['courses'], true) : [];
 
     $params = [];
-    $sql = "SELECT COUNT(*) FROM students WHERE 1=1";
+    $sql = "SELECT COUNT(*) FROM students WHERE is_deleted = 0";
     if (!empty($sections)) {
         $placeholders = implode(',', array_fill(0, count($sections), '?'));
         $sql .= " AND section IN ($placeholders)";
