@@ -4,11 +4,11 @@ require_once '../includes/auth.php';
 redirectIfNotStudent();
 
 // ---- Attendance Compliance ----
-$stmt_total_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
+$stmt_total_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
 $stmt_total_reg->execute([$_SESSION['student_id']]);
 $total_registered_subtopics = (int)$stmt_total_reg->fetchColumn();
 
-$stmt_attended = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
+$stmt_attended = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned') WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
 $stmt_attended->execute([$_SESSION['student_id']]);
 $attended_subtopics = (int)$stmt_attended->fetchColumn();
 
@@ -19,7 +19,7 @@ $attended_subtopics = (int)$attended_subtopics;
 $attendance_compliance_pct = $total_registered_subtopics > 0 ? round(($attended_subtopics / $total_registered_subtopics) * 100) : 0;
 
 // ---- Module Progress ----
-$stmt_registered = $pdo->prepare("SELECT DISTINCT r.subtopic_id FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ?");
+$stmt_registered = $pdo->prepare("SELECT DISTINCT r.subtopic_id FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
 $stmt_registered->execute([$_SESSION['student_id']]);
 $registered_ids = $stmt_registered->fetchAll(PDO::FETCH_COLUMN);
 
@@ -75,19 +75,19 @@ $phase_progress = [];
 $student_id = $_SESSION['student_id'] ?? '';
 
 foreach ($phases as $phase) {
-    $stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE r.student_id = ? AND s.phase = ?");
+    $stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE r.student_id = ? AND s.phase = ? AND r.status IN ('assigned','auto_assigned')");
     $stmt_sub_total->execute([$student_id, $phase]);
     $sub_total = (int)$stmt_sub_total->fetchColumn();
 
-    $stmt_sub_done = $pdo->prepare("SELECT COUNT(a.attendance_id) FROM attendance a JOIN subtopics st ON a.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND s.phase = ?");
+    $stmt_sub_done = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics st ON a.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned') WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0 AND s.phase = ?");
     $stmt_sub_done->execute([$student_id, $phase]);
     $sub_done = (int)$stmt_sub_done->fetchColumn();
 
-    $stmt_mod_total = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND m.is_deleted = 0 AND s.phase = ?");
+    $stmt_mod_total = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned') WHERE r.student_id = ? AND m.is_deleted = 0 AND s.phase = ?");
     $stmt_mod_total->execute([$student_id, $phase]);
     $mod_total = (int)$stmt_mod_total->fetchColumn();
 
-    $stmt_mod_done = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0 JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND smp.completed = 1 AND s.phase = ?");
+    $stmt_mod_done = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0 JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned') WHERE r.student_id = ? AND smp.completed = 1 AND s.phase = ?");
     $stmt_mod_done->execute([$student_id, $phase]);
     $mod_done = (int)$stmt_mod_done->fetchColumn();
 
@@ -117,21 +117,23 @@ $section = $stud_info['section'] ?? '';
 // 2. Fetch all relevant subtopics
 $stmt_all_subs = $pdo->query("
     SELECT st.subtopic_id, st.title AS subtopic_title, st.deadline, st.visible_courses, st.visible_for,
-           s.title AS session_title, s.phase, s.date
+           st.required_courses, st.required_for,
+           s.title AS session_title, s.phase, s.date,
+           COALESCE(st.subtopic_date, s.date) AS effective_date
     FROM subtopics st
     JOIN sessions s ON st.session_id = s.session_id
     WHERE st.is_deleted = 0 AND s.is_deleted = 0
-    ORDER BY s.date DESC
+    ORDER BY effective_date DESC
 ");
 $all_subs = $stmt_all_subs->fetchAll();
 
 // 3. Fetch student's registrations
-$stmt_regs = $pdo->prepare("SELECT subtopic_id FROM registrations WHERE student_id = ?");
+$stmt_regs = $pdo->prepare("SELECT subtopic_id FROM registrations WHERE student_id = ? AND status IN ('assigned','auto_assigned')");
 $stmt_regs->execute([$_SESSION['student_id']]);
 $my_regs = $stmt_regs->fetchAll(PDO::FETCH_COLUMN);
 
 // 4. Fetch student's attendance
-$stmt_atts = $pdo->prepare("SELECT subtopic_id, attendance_status FROM attendance WHERE student_id = ?");
+$stmt_atts = $pdo->prepare("SELECT subtopic_id, attendance_status FROM attendance WHERE student_id = ? AND is_deleted = 0");
 $stmt_atts->execute([$_SESSION['student_id']]);
 $my_atts_raw = $stmt_atts->fetchAll(PDO::FETCH_ASSOC);
 $my_atts = [];
@@ -149,9 +151,33 @@ foreach ($all_subs as $sub) {
     $vis_courses = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
     $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
     
-    $is_visible = empty($vis_courses) && empty($vis_sections);
-    if (in_array($program, $vis_courses) || in_array($section, $vis_sections)) {
+    $vis_courses  = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
+    $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
+    $req_courses  = json_decode($sub['required_courses'] ?? '[]', true) ?: [];
+    $req_sections = json_decode($sub['required_for'] ?? '[]', true) ?: [];
+    
+    $has_vis = !empty($vis_courses) || !empty($vis_sections);
+    $has_req = !empty($req_courses) || !empty($req_sections);
+    
+    $is_visible = false;
+    
+    if (!$has_vis && !$has_req) {
         $is_visible = true;
+    } else {
+        // AND logic for required
+        if ($has_req) {
+            $match = true;
+            if (!empty($req_courses) && !in_array($program, $req_courses)) $match = false;
+            if (!empty($req_sections) && !in_array($section, $req_sections)) $match = false;
+            if ($match) $is_visible = true;
+        }
+        // AND logic for visible
+        if ($has_vis) {
+            $match = true;
+            if (!empty($vis_courses) && !in_array($program, $vis_courses)) $match = false;
+            if (!empty($vis_sections) && !in_array($section, $vis_sections)) $match = false;
+            if ($match) $is_visible = true;
+        }
     }
     
     if (!$is_visible) continue;

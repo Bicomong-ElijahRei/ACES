@@ -57,6 +57,9 @@ function isLead() {
  * Returns true if the current user is a staff member with the viewer role.
  */
 function isViewer() {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'staff' && isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'viewer';
+    // Treat missing/null staff_role as viewer (deny by default)
+    if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'staff') return false;
+    $role = $_SESSION['staff_role'] ?? 'viewer';
+    return $role === 'viewer' || $role === '' || $role === null;
 }
 ?>

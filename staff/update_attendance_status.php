@@ -136,7 +136,7 @@ if ($att->fetch()) {
 } else {
     $insert = $pdo->prepare("
         INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
-        VALUES (?, ?, ?, ?, IF(? = 'pending', 0, 1), 0, ?, CURDATE())
+        VALUES (?, ?, ?, ?, IF(? = 'pending', 0, 1), 0, ?, NOW())
     ");
     $insert->execute([$student_id, $session_id, $subtopic_id, $status, $status, $_SESSION['user_id']]);
 }

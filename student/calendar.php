@@ -24,6 +24,7 @@ $stmt_sessions = $pdo->prepare("
     JOIN registrations r ON s.session_id = r.session_id
     JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
     WHERE r.student_id = ? AND s.is_deleted = 0 AND s.date BETWEEN ? AND ?
+      AND r.status IN ('assigned','auto_assigned')
     ORDER BY s.date ASC
 ");
 $stmt_sessions->execute([$_SESSION['student_id'], $first_day_of_month, $last_day_of_month]);
@@ -54,10 +55,11 @@ while ($row = $stmt_events->fetch()) {
 
 // Fetch modules due
 $stmt_modules_due = $pdo->prepare("
-    SELECT m.due_date, m.title
+    SELECT m.due_date, m.title, m.module_id
     FROM modules m
     JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
-    JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.student_id = ?
+    JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+    JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.student_id = ? AND r.status IN ('assigned','auto_assigned')
     WHERE m.is_deleted = 0 AND m.due_date BETWEEN ? AND ?
     ORDER BY m.due_date
 ");
@@ -77,15 +79,16 @@ $stmt_registered_subtopics = $pdo->prepare("
            s.title AS session_title, s.date, s.start_time, s.end_time
     FROM subtopics sub
     JOIN sessions s ON sub.session_id = s.session_id AND s.is_deleted = 0
-    JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.student_id = ?
-    WHERE sub.is_deleted = 0 AND s.date BETWEEN ? AND ?
+    JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.student_id = ? AND r.status IN ('assigned','auto_assigned')
+    WHERE sub.is_deleted = 0 AND COALESCE(sub.subtopic_date, s.date) BETWEEN ? AND ?
     ORDER BY s.date, sub.title
 ");
 $stmt_registered_subtopics->execute([$_SESSION['student_id'], $first_day_of_month, $last_day_of_month]);
 $my_subtopics_by_date = [];
 while ($row = $stmt_registered_subtopics->fetch()) {
-    if (empty($row['date'])) continue;
-    $day = date('j', strtotime($row['date']));
+    $effective = !empty($row['subtopic_date']) ? $row['subtopic_date'] : $row['date'];
+    if (empty($effective)) continue;
+    $day = date('j', strtotime($effective));
     $my_subtopics_by_date[$day][] = $row;
 }
 

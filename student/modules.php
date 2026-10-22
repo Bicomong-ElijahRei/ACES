@@ -89,13 +89,15 @@ if ($action === 'mark_complete' && $module_id) {
                         $existing = $stmtAtt->fetch();
 
                         if ($existing) {
-                            if ($existing['auto_generated'] == 1 && $existing['attendance_status'] !== 'present') {
+                            // Auto-present if staff has NOT already made a decision
+                            // (pending = system created it, not yet verified)
+                            if ($existing['attendance_status'] === 'pending') {
                                 $stmtUpdAtt = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1, auto_generated = 1, recorded_by = NULL WHERE attendance_id = ?");
                                 $stmtUpdAtt->execute([$existing['attendance_id']]);
                             }
                         } else {
                             $stmtInsAtt = $pdo->prepare("
-                                INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
+                                INSERT IGNORE INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
                                 VALUES (?, ?, ?, 'present', 1, 1, NULL, NOW())
                             ");
                             $stmtInsAtt->execute([$student_id, $sub['session_id'], $subtopic_id]);
@@ -216,13 +218,13 @@ if ($action === 'submit_assessment' && $module_id) {
                             $existing = $stmtAtt->fetch();
 
                             if ($existing) {
-                                if ($existing['auto_generated'] == 1 && $existing['attendance_status'] !== 'present') {
+                                if ($existing['attendance_status'] === 'pending') {
                                     $stmtUpdAtt = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1, auto_generated = 1, recorded_by = NULL WHERE attendance_id = ?");
                                     $stmtUpdAtt->execute([$existing['attendance_id']]);
                                 }
                             } else {
                                 $stmtInsAtt = $pdo->prepare("
-                                    INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
+                                    INSERT IGNORE INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
                                     VALUES (?, ?, ?, 'present', 1, 1, NULL, NOW())
                                 ");
                                 $stmtInsAtt->execute([$student_id, $sub['session_id'], $subtopic_id]);

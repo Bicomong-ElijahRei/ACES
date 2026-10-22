@@ -33,6 +33,8 @@ $stmt = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $staff = $stmt->fetch();
 $staff_name = $staff['full_name'] ?? '';
+$calendar_flash = $_SESSION['calendar_flash'] ?? '';
+unset($_SESSION['calendar_flash']);
 
 // ============================================================
 // HANDLE ADD EVENT
@@ -42,19 +44,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_event'])) {
     $date        = $_POST['event_date'] ?? '';
     $name        = trim($_POST['event_name'] ?? '');
     $description = trim($_POST['event_description'] ?? '');
+    $flash = '';
 
     if ($date && $name) {
-        if ($type === 'holiday') {
-            $stmt = $pdo->prepare("INSERT INTO holidays (date, name) VALUES (?, ?)");
-            $stmt->execute([$date, $name]);
-        } elseif ($type === 'school_event') {
-            $stmt = $pdo->prepare("INSERT INTO school_events (date, name, description) VALUES (?, ?, ?)");
-            $stmt->execute([$date, $name, $description]);
+        try {
+            if ($type === 'holiday') {
+                $stmt = $pdo->prepare("INSERT IGNORE INTO holidays (date, name) VALUES (?, ?)");
+                $stmt->execute([$date, $name]);
+                $flash = $stmt->rowCount() > 0 ? 'Holiday added.' : 'A holiday already exists on this date.';
+            } elseif ($type === 'school_event') {
+                $stmt = $pdo->prepare("INSERT IGNORE INTO school_events (date, name, description) VALUES (?, ?, ?)");
+                $stmt->execute([$date, $name, $description]);
+                $flash = $stmt->rowCount() > 0 ? 'Event added.' : 'An event already exists on this date.';
+            }
+        } catch (Exception $e) {
+            $flash = 'Error: ' . $e->getMessage();
         }
     }
 
     $month = isset($_GET['month']) ? (int)$_GET['month'] : date('n');
     $year  = isset($_GET['year'])  ? (int)$_GET['year']  : date('Y');
+    $_SESSION['calendar_flash'] = $flash;
     header("Location: calendar.php?month=$month&year=$year");
     exit;
 }
@@ -103,14 +113,15 @@ $stmt = $pdo->prepare("
     SELECT st.subtopic_id, st.title AS subtopic_title, st.description,
            st.subtopic_date, st.subtopic_start_time, st.subtopic_end_time,
            st.subtopic_location, st.subtopic_proctor,
-           s.title AS session_title
+           s.title AS session_title, s.date AS session_date,
+           COALESCE(st.subtopic_date, s.date) AS effective_date
     FROM subtopics st
-    JOIN sessions s ON st.session_id = s.session_id
-    WHERE st.is_deleted = 0 AND st.subtopic_date BETWEEN ? AND ?
+    JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0
+    WHERE st.is_deleted = 0 AND COALESCE(st.subtopic_date, s.date) BETWEEN ? AND ?
 ");
 $stmt->execute([$start_date, $end_date]);
 while ($row = $stmt->fetch()) {
-    $date = $row['subtopic_date'];
+    $date = $row['effective_date'];
     $events[$date][] = [
         'type'        => 'subtopic',
         'title'       => $row['subtopic_title'],
@@ -151,9 +162,11 @@ while ($row = $stmt->fetch()) {
 
 // Modules (due dates)
 $stmt = $pdo->prepare("
-    SELECT module_id, title, due_date, type, subtopic_id
-    FROM modules
-    WHERE is_deleted = 0 AND due_date BETWEEN ? AND ?
+    SELECT m.module_id, m.title, m.due_date, m.type, m.subtopic_id
+    FROM modules m
+    JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0
+    JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0
+    WHERE m.is_deleted = 0 AND m.due_date BETWEEN ? AND ?
 ");
 $stmt->execute([$start_date, $end_date]);
 while ($row = $stmt->fetch()) {
@@ -457,6 +470,14 @@ $events_json = json_encode($events);
     <?php include '../includes/header.php'; ?>
     <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
 
+        <?php if ($calendar_flash): ?>
+            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg text-sm flex items-center gap-2">
+                <i class="fas fa-info-circle"></i>
+                <?= htmlspecialchars($calendar_flash) ?>
+                <button onclick="this.parentElement.remove()" class="ml-auto text-blue-600">&times;</button>
+            </div>
+        <?php endif; ?>
+
         <!-- Header -->
         <div class="flex justify-between items-center mb-6">
             <div>
@@ -719,11 +740,14 @@ $(document).ready(function() {
     }
 
     function getEventLink(ev) {
-        if (ev.type === 'session' || ev.type === 'subtopic') {
-            return `<a href="subtopics.php" class="modal-event-link"><i class="fas fa-external-link-alt"></i> Manage Sessions & Subtopics</a>`;
+        if (ev.type === 'session') {
+            return `<a href="subtopics.php?view_session=${ev.id}" class="modal-event-link"><i class="fas fa-external-link-alt"></i> View Session</a>`;
+        }
+        if (ev.type === 'subtopic') {
+            return `<a href="subtopics.php" class="modal-event-link"><i class="fas fa-external-link-alt"></i> Manage Subtopics</a>`;
         }
         if (ev.type === 'module') {
-            return `<a href="modules.php" class="modal-event-link"><i class="fas fa-external-link-alt"></i> Manage Modules</a>`;
+            return `<a href="modules.php?view_module=${ev.id}" class="modal-event-link"><i class="fas fa-external-link-alt"></i> View Module</a>`;
         }
         return '';
     }

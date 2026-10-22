@@ -128,6 +128,22 @@ if ($action === 'create') {
                         }
                     }
                     
+                    // NEW: Enforce allow_multiple
+                    $stmt_allow = $pdo->prepare("SELECT allow_multiple FROM sessions WHERE session_id = ?");
+                    $stmt_allow->execute([$session_id]);
+                    $allow_multiple = (bool)$stmt_allow->fetchColumn();
+                    
+                    if (!$allow_multiple) {
+                        $student_query .= " AND NOT EXISTS (
+                            SELECT 1 FROM registrations r2 
+                            JOIN subtopics st2 ON r2.subtopic_id = st2.subtopic_id 
+                            WHERE r2.student_id = students.student_id 
+                              AND st2.session_id = ? 
+                              AND r2.status IN ('assigned','auto_assigned')
+                        )";
+                        $s_params[] = $session_id;
+                    }
+                    
                     $stmt_s = $pdo->prepare($student_query);
                     $stmt_s->execute($s_params);
                     $students_to_assign = $stmt_s->fetchAll(PDO::FETCH_COLUMN);
@@ -301,6 +317,22 @@ if ($action === 'create') {
                             $student_query .= " AND section IN ($ph)";
                             $s_params = array_merge($s_params, $sub['required_sections']);
                         }
+                    }
+                    
+                    // NEW: Enforce allow_multiple
+                    $stmt_allow = $pdo->prepare("SELECT allow_multiple FROM sessions WHERE session_id = ?");
+                    $stmt_allow->execute([$id]);
+                    $allow_multiple = (bool)$stmt_allow->fetchColumn();
+                    
+                    if (!$allow_multiple) {
+                        $student_query .= " AND NOT EXISTS (
+                            SELECT 1 FROM registrations r2 
+                            JOIN subtopics st2 ON r2.subtopic_id = st2.subtopic_id 
+                            WHERE r2.student_id = students.student_id 
+                              AND st2.session_id = ? 
+                              AND r2.status IN ('assigned','auto_assigned')
+                        )";
+                        $s_params[] = $id;
                     }
                     
                     $stmt_s = $pdo->prepare($student_query);

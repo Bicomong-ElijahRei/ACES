@@ -75,10 +75,26 @@ $at_risk = 0;
 $at_risk_rows = $pdo->query("
     SELECT 
         s.student_id,
-        (SELECT COUNT(*) FROM registrations r WHERE r.student_id = s.student_id) AS sub_total,
-        (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present') AS sub_done,
-        (SELECT COUNT(*) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS mod_total,
-        (SELECT COUNT(*) FROM student_module_progress smp WHERE smp.student_id = s.student_id AND smp.completed = 1) AS mod_done
+        (SELECT COUNT(*) FROM registrations r 
+            JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned')) AS sub_total,
+        (SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a 
+            JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned')
+            WHERE a.student_id = s.student_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS sub_done,
+        (SELECT COUNT(*) FROM registrations r 
+            JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            JOIN modules m ON m.subtopic_id = sub.subtopic_id AND m.is_deleted = 0
+            WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned')) AS mod_total,
+        (SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp 
+            JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0
+            JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.status IN ('assigned','auto_assigned')
+            WHERE smp.student_id = s.student_id AND smp.completed = 1 AND r.student_id = s.student_id) AS mod_done
     FROM students s
     WHERE s.is_deleted = 0
 ")->fetchAll();

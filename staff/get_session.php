@@ -11,7 +11,7 @@ if (!$id) {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT * FROM sessions WHERE session_id = ?");
+$stmt = $pdo->prepare("SELECT * FROM sessions WHERE session_id = ? AND is_deleted = 0");
 $stmt->execute([$id]);
 $session = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -28,7 +28,7 @@ $stmt_sub = $pdo->prepare("
            required_for, visible_for, required_courses, visible_courses,
            attendance_type, is_deleted
     FROM subtopics
-    WHERE session_id = ?
+    WHERE session_id = ? AND is_deleted = 0
     ORDER BY subtopic_id
 ");
 $stmt_sub->execute([$id]);

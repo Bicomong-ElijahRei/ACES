@@ -20,10 +20,11 @@ $first_name = explode(' ', $full_name)[0];
 $stmt_module = $pdo->prepare("
     SELECT m.module_id, m.title, m.description, m.due_date
     FROM modules m
-    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id
-    JOIN registrations r ON r.subtopic_id = sub.subtopic_id
+    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+    JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.status IN ('assigned','auto_assigned')
     LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = r.student_id
-    WHERE r.student_id = ? AND m.is_deleted = 0 AND sub.is_deleted = 0 AND (sp.completed IS NULL OR sp.completed = 0)
+    WHERE r.student_id = ? AND m.is_deleted = 0 AND (sp.completed IS NULL OR sp.completed = 0)
     ORDER BY m.due_date ASC LIMIT 1
 ");
 $stmt_module->execute([$_SESSION['student_id']]);
@@ -31,7 +32,7 @@ $current_module = $stmt_module->fetch();
 
 // ---- Upcoming sessions ----
 $today = date('Y-m-d');
-$stmt_sessions = $pdo->prepare("SELECT s.*, u.full_name as creator_name FROM sessions s LEFT JOIN users u ON s.created_by = u.user_id WHERE s.date >= ? ORDER BY s.date ASC");
+$stmt_sessions = $pdo->prepare("SELECT s.*, u.full_name as creator_name FROM sessions s LEFT JOIN users u ON s.created_by = u.user_id WHERE s.date >= ? AND s.is_deleted = 0 ORDER BY s.date ASC");
 $stmt_sessions->execute([$today]);
 $sessions = $stmt_sessions->fetchAll();
 $student_id = $_SESSION['student_id'];
@@ -41,11 +42,21 @@ foreach ($sessions as &$session) {
     $student_program = $student['program'] ?? '';
     $student_section = $student['section'] ?? '';
 
+    $section_key = $student['program'] . '-' . $student['section'];
     $stmt_sub = $pdo->prepare("
-        SELECT sub.*, (SELECT COUNT(*) FROM registrations WHERE subtopic_id = sub.subtopic_id) AS attendee_count, (SELECT COUNT(*) FROM modules WHERE subtopic_id = sub.subtopic_id AND is_deleted = 0) AS module_count
-        FROM subtopics sub WHERE sub.session_id = ? AND sub.is_deleted = 0 ORDER BY sub.title
+        SELECT sub.*, 
+               (SELECT COUNT(*) FROM registrations r JOIN students s ON r.student_id = s.student_id 
+                WHERE r.subtopic_id = sub.subtopic_id AND s.program = ? AND s.section = ? 
+                AND r.status IN ('assigned','auto_assigned')) AS section_attendee_count,
+               (SELECT capacity FROM subtopic_section_capacity 
+                WHERE subtopic_id = sub.subtopic_id AND section = ?) AS section_capacity,
+               (SELECT COUNT(*) FROM registrations WHERE subtopic_id = sub.subtopic_id AND status IN ('assigned','auto_assigned')) AS attendee_count,
+               (SELECT COUNT(*) FROM modules WHERE subtopic_id = sub.subtopic_id AND is_deleted = 0) AS module_count
+        FROM subtopics sub 
+        WHERE sub.session_id = ? AND sub.is_deleted = 0 
+        ORDER BY sub.title
     ");
-    $stmt_sub->execute([$session['session_id']]);
+    $stmt_sub->execute([$student_program, $student_section, $section_key, $session['session_id']]);
     $all_subtopics = $stmt_sub->fetchAll();
 
     $visible_subtopics = [];
@@ -56,9 +67,27 @@ foreach ($sessions as &$session) {
         $req_sections = json_decode($sub['required_for'] ?? '[]', true) ?: [];
         $req_courses  = json_decode($sub['required_courses'] ?? '[]', true) ?: [];
 
-        if (empty($vis_sections) && empty($vis_courses) && empty($req_sections) && empty($req_courses)) $visible = true;
-        if (in_array($student_section, $req_sections) || in_array($student_program, $req_courses)) { $required = true; $visible = true; }
-        if (in_array($student_section, $vis_sections) || in_array($student_program, $vis_courses)) { $visible = true; }
+        $has_vis_restrictions = !empty($vis_sections) || !empty($vis_courses);
+        $has_req_restrictions = !empty($req_sections) || !empty($req_courses);
+
+        // Public
+        if (!$has_vis_restrictions && !$has_req_restrictions) $visible = true;
+
+        // Required (AND logic)
+        if ($has_req_restrictions) {
+            $match_req = true;
+            if (!empty($req_courses) && !in_array($student_program, $req_courses)) $match_req = false;
+            if (!empty($req_sections) && !in_array($student_section, $req_sections)) $match_req = false;
+            if ($match_req) { $required = true; $visible = true; }
+        }
+
+        // Visible (AND logic)
+        if ($has_vis_restrictions) {
+            $match_vis = true;
+            if (!empty($vis_courses) && !in_array($student_program, $vis_courses)) $match_vis = false;
+            if (!empty($vis_sections) && !in_array($student_section, $vis_sections)) $match_vis = false;
+            if ($match_vis) $visible = true;
+        }
 
         if ($visible) {
             $sub_date_check = !empty($sub['subtopic_date']) ? $sub['subtopic_date'] : $session['date'];
@@ -82,7 +111,7 @@ foreach ($sessions as &$session) {
         $stmt_already->execute([$student_id, $sub['subtopic_id']]);
         if ($stmt_already->fetch()) continue;
 
-        $stmt_reg = $pdo->prepare("INSERT INTO registrations (student_id, session_id, subtopic_id, status, registration_date) VALUES (?, ?, ?, 'auto_assigned', NOW())");
+        $stmt_reg = $pdo->prepare("INSERT IGNORE INTO registrations (student_id, session_id, subtopic_id, status, registration_date) VALUES (?, ?, ?, 'auto_assigned', NOW())");
         $stmt_reg->execute([$student_id, $session['session_id'], $sub['subtopic_id']]);
         $already_registered = true;
     }
@@ -120,7 +149,7 @@ $stmt_my_regs = $pdo->prepare("SELECT subtopic_id FROM registrations WHERE stude
 $stmt_my_regs->execute([$student_id]);
 $my_regs = $stmt_my_regs->fetchAll(PDO::FETCH_COLUMN);
 
-$stmt_my_atts = $pdo->prepare("SELECT subtopic_id, attendance_status FROM attendance WHERE student_id = ?");
+$stmt_my_atts = $pdo->prepare("SELECT subtopic_id, attendance_status FROM attendance WHERE student_id = ? AND is_deleted = 0");
 $stmt_my_atts->execute([$student_id]);
 $my_atts_raw = $stmt_my_atts->fetchAll(PDO::FETCH_ASSOC);
 $my_atts = [];
@@ -131,7 +160,12 @@ foreach ($past_subs as $sub) {
     $vis_courses = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
     $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
     $is_visible = empty($vis_courses) && empty($vis_sections);
-    if (in_array($student['program'] ?? '', $vis_courses) || in_array($student['section'] ?? '', $vis_sections)) $is_visible = true;
+    if (!empty($vis_courses) || !empty($vis_sections)) {
+        $match_vis = true;
+        if (!empty($vis_courses) && !in_array($student['program'] ?? '', $vis_courses)) $match_vis = false;
+        if (!empty($vis_sections) && !in_array($student['section'] ?? '', $vis_sections)) $match_vis = false;
+        $is_visible = $match_vis;
+    }
     if (!$is_visible) continue;
 
     $sub_id = $sub['subtopic_id'];
@@ -144,19 +178,19 @@ foreach ($past_subs as $sub) {
 }
 
 // ---- Progress Calculation ----
-$stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ?");
+$stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
 $stmt_sub_total->execute([$student_id]);
 $total_subtopics_expected = (int)$stmt_sub_total->fetchColumn();
 
-$stmt_sub_done = $pdo->prepare("SELECT COUNT(a.attendance_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
+$stmt_sub_done = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned') WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
 $stmt_sub_done->execute([$student_id]);
 $attended_subtopics = (int)$stmt_sub_done->fetchColumn();
 
-$stmt_total_mods = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = ? AND m.is_deleted = 0");
+$stmt_total_mods = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id AND r.status IN ('assigned','auto_assigned') JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND m.is_deleted = 0");
 $stmt_total_mods->execute([$student_id]);
 $total_modules_expected = (int)$stmt_total_mods->fetchColumn();
 
-$stmt_done_mods = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = ? AND smp.completed = 1 AND m.is_deleted = 0");
+$stmt_done_mods = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0 JOIN registrations r ON m.subtopic_id = r.subtopic_id AND r.status IN ('assigned','auto_assigned') JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND smp.completed = 1");
 $stmt_done_mods->execute([$student_id]);
 $total_modules_done = (int)$stmt_done_mods->fetchColumn();
 
@@ -379,6 +413,10 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]);
+}
 const eventDates = <?= json_encode(array_values($all_dates)) ?>;
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
@@ -423,15 +461,19 @@ function openSessionModal(data) {
     document.getElementById('modalMeta').innerHTML = `<span><i class="far fa-calendar-alt mr-1"></i>${data.date}</span> <span><i class="far fa-clock mr-1"></i>${data.time}</span> <span><i class="fas fa-map-marker-alt mr-1"></i>${data.location || 'TBA'}</span>`;
     
     let html = '';
-    if (data.description) html += `<p class="text-gray-600 text-sm mb-6">${data.description}</p>`;
+    if (data.description) html += `<p class="text-gray-600 text-sm mb-6">${escapeHtml(data.description)}</p>`;
     html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
     
     data.subtopics.forEach(sub => {
         // Convert the array to strings so the comparison works perfectly
         const reg_ids = (data.registered_ids || []).map(String);
         const is_registered = reg_ids.includes(String(sub.subtopic_id));
-        const percent = sub.capacity > 0 ? Math.round((sub.attendee_count / sub.capacity) * 100) : 0;
-        const is_full = percent >= 100;
+        // Use section-specific capacity when available
+        const has_section_cap = (sub.section_capacity !== null && sub.section_capacity > 0);
+        const display_cap = has_section_cap ? sub.section_capacity : sub.capacity;
+        const display_count = has_section_cap ? sub.section_attendee_count : sub.attendee_count;
+        const percent = display_cap > 0 ? Math.round((display_count / display_cap) * 100) : 0;
+        const is_full = display_cap > 0 && display_count >= display_cap;
         
         let statusClass = 'bg-blue-100 text-blue-700 border-blue-200'; let statusText = 'Available';
         if (sub.required) { statusClass = 'bg-purple-100 text-purple-700 border-purple-200'; statusText = 'Required'; }
@@ -449,7 +491,7 @@ function openSessionModal(data) {
                 <span class="text-[10px] font-bold uppercase px-2 py-1 rounded-md border ${statusClass}">${statusText}</span>
             </div>
             <div class="flex flex-wrap gap-2 text-xs mb-3">
-                <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded"><i class="fas fa-users mr-1"></i> ${sub.attendee_count}/${sub.capacity}</span>
+                <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded"><i class="fas fa-users mr-1"></i> ${display_count}/${display_cap}</span>
                 <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded"><i class="fas fa-book mr-1"></i> ${sub.module_count} modules</span>
             </div>
             <div class="text-xs text-gray-500 mb-4 space-y-1">
