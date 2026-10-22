@@ -70,13 +70,15 @@ $courses   = aces_post_array('courses');
 $sections  = aces_post_array('sections');
 $message   = trim($_POST['message'] ?? '');
 
-// ---- Build recipient query ----
-$sql = "SELECT DISTINCT u.email, u.full_name, s.student_id, sub.title AS subtopic_title, sub.subtopic_id
+// ---- Build recipient query (GROUP_CONCAT for unique subtopics per student) ----
+$sql = "SELECT u.email, u.full_name, s.student_id,
+               GROUP_CONCAT(DISTINCT sub.title SEPARATOR ', ') AS subtopic_titles
         FROM registrations r
         JOIN students s ON r.student_id = s.student_id
         JOIN users u ON s.user_id = u.user_id
         JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id
-        WHERE r.session_id = ? AND sub.is_deleted = 0 AND s.is_deleted = 0";
+        WHERE r.session_id = ? AND sub.is_deleted = 0 AND s.is_deleted = 0
+          AND r.status IN ('assigned','auto_assigned')";
 
 $params = [$session_id];
 
@@ -96,6 +98,9 @@ if (!empty($sections)) {
     $params = array_merge($params, $sections);
 }
 
+// CRITICAL: Group by student so GROUP_CONCAT aggregates properly per student
+$sql .= " GROUP BY s.student_id, u.email, u.full_name";
+
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $recipients = $stmt->fetchAll();
@@ -104,12 +109,20 @@ if (empty($recipients)) {
     exit(json_encode(['success' => false, 'error' => 'No matching students.']));
 }
 
-// ---- Build email ----
+// Skip students with invalid email addresses
+$recipients = array_filter($recipients, fn($r) => !empty($r['email']) && strpos($r['email'], '@') !== false);
+
+if (empty($recipients)) {
+    exit(json_encode(['success' => false, 'error' => 'No students with valid email addresses.']));
+}
+
+// ---- Build email template (with [Student] and [Subtopics] placeholders) ----
 $subject = "ACES Notification – Session Update";
 $body = "<div style='font-family:Arial; max-width:600px'>
     <h2 style='color:#0a6e2d'>ACES Notification</h2>
+    <p>Hi [Student],</p>
     <p>You are receiving this because you are registered for a session.</p>
-    <p><strong>Session:</strong> (details below)</p>
+    <p><strong>Your registered subtopic(s):</strong> [Subtopics]</p>
     <hr>";
 
 if ($message) {
@@ -124,11 +137,18 @@ $sent = 0;
 $errors = [];
 foreach ($recipients as $r) {
     $personalBody = str_replace('[Student]', htmlspecialchars($r['full_name']), $body);
+    $personalBody = str_replace('[Subtopics]', htmlspecialchars($r['subtopic_titles'] ?? ''), $personalBody);
+    
     $result = sendEmail($r['email'], $subject, $personalBody);
-    if (!empty($result['success'])) {
+    
+    // Handle both array and bool return types from sendEmail()
+    $isSuccess = is_array($result) ? !empty($result['success']) : ($result === true);
+    
+    if ($isSuccess) {
         $sent++;
     } else {
-        $errors[] = $r['email'] . ': ' . ($result['message'] ?? 'unknown error');
+        $errMsg = is_array($result) ? ($result['message'] ?? 'unknown error') : 'sendEmail returned false';
+        $errors[] = $r['email'] . ': ' . $errMsg;
     }
 }
 

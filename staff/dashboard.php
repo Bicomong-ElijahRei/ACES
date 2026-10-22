@@ -155,12 +155,13 @@ $upcoming = $pdo->query("
 $modules_summary = $pdo->query("
     SELECT 
         m.module_id, m.title, m.type,
-        COUNT(DISTINCT r.student_id) AS student_count,
-        COUNT(DISTINCT CASE WHEN sp.completed = 1 THEN sp.student_id END) AS completed_count
+        COUNT(DISTINCT CASE WHEN stu.is_deleted = 0 THEN r.student_id END) AS student_count,
+        COUNT(DISTINCT CASE WHEN sp.completed = 1 AND stu.is_deleted = 0 THEN sp.student_id END) AS completed_count
     FROM modules m
     LEFT JOIN subtopics st ON st.subtopic_id = m.subtopic_id AND st.is_deleted = 0
     LEFT JOIN sessions ss ON st.session_id = ss.session_id AND ss.is_deleted = 0
     LEFT JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned')
+    LEFT JOIN students stu ON r.student_id = stu.student_id
     LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = r.student_id
     WHERE m.is_deleted = 0
     GROUP BY m.module_id

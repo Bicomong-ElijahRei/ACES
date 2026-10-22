@@ -252,10 +252,11 @@ $stmt = $pdo->prepare("
            sub.title AS subtopic_title, sub.subtopic_id,
            sp.completed, sp.score
     FROM registrations r
-    JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id
-    JOIN modules m ON m.subtopic_id = sub.subtopic_id
+    JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+    JOIN modules m ON m.subtopic_id = sub.subtopic_id AND m.is_deleted = 0
     LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = r.student_id
-    WHERE r.student_id = ? AND m.is_deleted = 0 AND sub.is_deleted = 0
+    WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')
     ORDER BY m.due_date ASC, m.module_id ASC
 ");
 $stmt->execute([$student_id]);
@@ -333,15 +334,23 @@ if ($module_id) {
     if ($current_module['type'] == 'module') {
         $content_raw = $current_module['content'];
         if (strpos($content_raw, 'file:') === 0) {
-            $file = basename(substr($content_raw, 5));
+            $raw_file = substr($content_raw, 5);           // Full stored value (e.g. "modules/abc.pdf")
+            $file = basename($raw_file);                    // Just the filename (e.g. "abc.pdf")
             $file_exists = false;
             
-            // Check absolute server paths reliably
-            if (file_exists(__DIR__ . '/../uploads/' . $file)) {
-                $file_path = "../uploads/$file";
+            // Try full path first (works with subfolder-structured uploads)
+            if (file_exists(__DIR__ . '/../uploads/' . $raw_file)) {
+                $file_path = "../uploads/" . $raw_file;
                 $file_exists = true;
-            } elseif (file_exists(__DIR__ . '/../uploads/modules/' . $file)) {
-                $file_path = "../uploads/modules/$file";
+            } 
+            // Fallback: try with modules/ prefix (for legacy records)
+            elseif (file_exists(__DIR__ . '/../uploads/modules/' . $file)) {
+                $file_path = "../uploads/modules/" . $file;
+                $file_exists = true;
+            }
+            // Fallback: try flat uploads/ dir (for very old records)
+            elseif (file_exists(__DIR__ . '/../uploads/' . $file)) {
+                $file_path = "../uploads/" . $file;
                 $file_exists = true;
             }
             

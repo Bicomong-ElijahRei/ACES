@@ -116,7 +116,9 @@ foreach ($sessions as $session) {
             $sub_id = $sub['subtopic_id'];
 
             // Determine the effective capacity for this student's section
-            $has_sec_cap = isset($section_caps[$sub_id][$student_section_key]);
+            // Note: capacity 0 means "no per-section limit" (fall back to global)
+            $has_sec_cap = isset($section_caps[$sub_id][$student_section_key]) 
+                         && (int)$section_caps[$sub_id][$student_section_key] > 0;
             $cap = $has_sec_cap ? $section_caps[$sub_id][$student_section_key] : (int)$sub['capacity'];
             if ($cap <= 0) continue;
 

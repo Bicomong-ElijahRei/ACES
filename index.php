@@ -6,6 +6,7 @@
  */
 
 require_once __DIR__ . '/config/env.php';
+require_once __DIR__ . '/includes/session.php';   // ← Handles remember-me restoration + idle timeout
 require_once __DIR__ . '/includes/csrf.php';
 
 // If already logged in, redirect by role
@@ -283,6 +284,8 @@ if (isset($_SESSION['user_id'])) {
                     Please verify your email before logging in. Check your inbox (and spam folder).
                     <br><small>Didn't receive it? <a href="register.php" style="color: #0a6e2d; font-weight: bold;">Register again</a>.</small>
                 </div>
+            <?php elseif ($_GET['error'] == 'deactivated'): ?>
+                <div class="error-message">Your account has been deactivated. Please contact the ACES Super Admin.</div>
             <?php else: ?>
                 <div class="error-message">Invalid student number / email or password.</div>
             <?php endif; ?>

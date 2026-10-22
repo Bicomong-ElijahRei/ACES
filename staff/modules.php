@@ -65,8 +65,7 @@ if ($action === 'create') {
         if ($content_type == 'file' && isset($_FILES['module_file']) && $_FILES['module_file']['error'] == UPLOAD_ERR_OK) {
             $upload_result = aces_upload('module_file', 'modules');
             if ($upload_result['ok']) {
-                $filename = basename($upload_result['path']);
-                $content  = 'file:' . $filename;
+                $content  = 'file:' . $upload_result['path'];  // Keep full relative path
             } else {
                 $error = 'File upload failed: ' . $upload_result['error'];
             }
@@ -137,7 +136,8 @@ if ($action === 'create') {
 $stmt = $pdo->prepare("
     SELECT m.*, sub.title as subtopic_title
     FROM modules m
-    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id
+    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
     WHERE m.is_deleted = 0
     ORDER BY m.due_date ASC, m.module_id DESC
 ");
@@ -171,15 +171,22 @@ $stmt_deleted->execute();
 $deleted_items = $stmt_deleted->fetchAll();
 
 // Fetch all subtopics for dropdowns
-$subtopics = $pdo->query("SELECT subtopic_id, title FROM subtopics ORDER BY title")->fetchAll();
+$subtopics = $pdo->query("
+    SELECT s.subtopic_id, s.title 
+    FROM subtopics s
+    JOIN sessions sess ON s.session_id = sess.session_id AND sess.is_deleted = 0
+    WHERE s.is_deleted = 0
+    ORDER BY s.title
+")->fetchAll();
 
 // Content helper
 function renderContent($content) {
     if (empty($content)) return '';
     if (strpos($content, 'file:') === 0) {
         $file = substr($content, 5);
-        $url = file_exists(__DIR__ . '/../uploads/' . $file)
-            ? '../uploads/' . $file
+        // Handle both new (modules/abc.pdf) and legacy (abc.pdf) formats
+        $url = (strpos($file, '/') !== false) 
+            ? '../uploads/' . $file 
             : '../uploads/modules/' . $file;
         return "<a href='{$url}' target='_blank' class='text-blue-600 hover:underline inline-flex items-center gap-1'><i class='fas fa-download'></i> Download File</a>";
     } elseif (strpos($content, 'link:') === 0) {
@@ -1303,9 +1310,13 @@ function nl2br(str) { return str.replace(/\n/g, '<br>'); }
 function renderContentJS(content) {
     if (!content) return '';
     
-    // File Download
+    // File Download — handles both new (modules/abc.pdf) and legacy (abc.pdf) formats
     if (content.startsWith('file:')) {
-        return `<a href="../uploads/modules/${content.substring(5)}" target="_blank" class="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors font-bold text-sm"><i class="fas fa-download"></i> Download Attached File</a>`;
+        const filePath = content.substring(5);
+        const url = filePath.includes('/') 
+            ? `../uploads/${filePath}`              // New format: "modules/abc.pdf"
+            : `../uploads/modules/${filePath}`;     // Legacy format: "abc.pdf"
+        return `<a href="${url}" target="_blank" class="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors font-bold text-sm"><i class="fas fa-download"></i> Download Attached File</a>`;
     }
     
     // External Link

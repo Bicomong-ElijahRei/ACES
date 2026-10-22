@@ -85,9 +85,15 @@ foreach ($subtopics as $sub) {
         WHERE r.subtopic_id = ?
           AND s.is_deleted = 0
           AND rs.id IS NULL
+          AND r.status IN ('assigned','auto_assigned')
     ");
     $stmt->execute([$subtopic_id]);
     $students = $stmt->fetchAll();
+
+    if (empty($students)) continue;
+
+    // Skip students with invalid email addresses
+    $students = array_filter($students, fn($s) => !empty($s['email']) && strpos($s['email'], '@') !== false);
 
     if (empty($students)) continue;
 
@@ -126,12 +132,17 @@ foreach ($subtopics as $sub) {
         $personalBody = str_replace('[Student]', htmlspecialchars($student['full_name'], ENT_QUOTES, 'UTF-8'), $body);
 
         $result = sendEmail($student['email'], $subject, $personalBody);
-        if (!empty($result['success'])) {
+        
+        // Handle both array and bool return types
+        $isSuccess = is_array($result) ? !empty($result['success']) : ($result === true);
+        
+        if ($isSuccess) {
             $stmt_log = $pdo->prepare("INSERT INTO reminders_sent (subtopic_id, student_id, type) VALUES (?, ?, 'manual_notify')");
             $stmt_log->execute([$subtopic_id, $student['student_id']]);
             $total_sent++;
         } else {
-            $errors[] = $student['email'] . ': ' . ($result['message'] ?? 'unknown error');
+            $errMsg = is_array($result) ? ($result['message'] ?? 'unknown error') : 'sendEmail returned false';
+            $errors[] = $student['email'] . ': ' . $errMsg;
         }
     }
 }

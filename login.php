@@ -17,12 +17,16 @@
 
 require_once __DIR__ . '/config/database.php';
 
-// Secure session cookies (HTTPS only)
-if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
-    ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_secure', 1);
-    ini_set('session.cookie_samesite', 'Strict');
-}
+// Secure session cookies — use session_set_cookie_params for consistency with includes/session.php
+$https_on = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => '/',
+    'domain'   => '',
+    'secure'   => $https_on,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
 
 // CSRF protection
@@ -55,6 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Verify password
     if ($user && password_verify($password, $user['password_hash'])) {
+
+        // Deactivated account check (applies to ALL roles)
+        if (isset($user['is_active']) && $user['is_active'] == 0) {
+            header('Location: index.php?error=deactivated');
+            exit;
+        }
 
         // If student and archived, deny login
         if ($user['role'] === 'student' && $user['is_deleted'] == 1) {

@@ -32,6 +32,7 @@ function sendEmail(string $to, string $subject, string $body): array
         $mail->Username   = $config['username'];
         $mail->Password   = $config['password'];
         $mail->Port       = $config['port'];
+        $mail->Timeout    = 10;   // 10-second timeout (prevents indefinite hang)
 
         if ($config['encryption'] === 'tls') {
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;

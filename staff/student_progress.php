@@ -111,14 +111,15 @@ $sessions = $pdo->query("
     SELECT 
         s.session_id, s.title, s.phase, s.date,
         COUNT(DISTINCT st.subtopic_id) AS subtopic_count,
-        COUNT(DISTINCT r.student_id)   AS student_count,
-        SUM(CASE WHEN a.attendance_status = 'present' AND a.is_deleted = 0 THEN 1 ELSE 0 END) AS present_count,
-        SUM(CASE WHEN a.attendance_status = 'pending' AND a.is_deleted = 0 THEN 1 ELSE 0 END) AS pending_count,
-        SUM(CASE WHEN a.attendance_status = 'absent'  AND a.is_deleted = 0 THEN 1 ELSE 0 END) AS absent_count,
-        COUNT(CASE WHEN a.is_deleted = 0 THEN a.attendance_id END) AS att_total
+        COUNT(DISTINCT CASE WHEN stu.is_deleted = 0 THEN r.student_id END) AS student_count,
+        SUM(CASE WHEN a.attendance_status = 'present' AND a.is_deleted = 0 AND stu.is_deleted = 0 THEN 1 ELSE 0 END) AS present_count,
+        SUM(CASE WHEN a.attendance_status = 'pending' AND a.is_deleted = 0 AND stu.is_deleted = 0 THEN 1 ELSE 0 END) AS pending_count,
+        SUM(CASE WHEN a.attendance_status = 'absent'  AND a.is_deleted = 0 AND stu.is_deleted = 0 THEN 1 ELSE 0 END) AS absent_count,
+        COUNT(CASE WHEN a.is_deleted = 0 AND stu.is_deleted = 0 THEN a.attendance_id END) AS att_total
     FROM sessions s
     LEFT JOIN subtopics st ON st.session_id = s.session_id AND st.is_deleted = 0
     LEFT JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned')
+    LEFT JOIN students stu ON r.student_id = stu.student_id
     LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = st.subtopic_id
     WHERE s.is_deleted = 0
     GROUP BY s.session_id

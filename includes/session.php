@@ -47,7 +47,18 @@ if (isset($_SESSION['user_id'])) {
 
         // Build login URL
         $base = rtrim(aces_env('APP_URL', ''), '/');
-        $login_url = $base ? "$base/login.php?timeout=1" : 'login.php?timeout=1';
+        if ($base) {
+            $login_url = "$base/index.php?timeout=1";
+        } else {
+            // Fallback: compute from current request
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $script = $_SERVER['SCRIPT_NAME'] ?? '/index.php';
+            // Strip the last two path segments (e.g. /staff/dashboard.php → /)
+            $path   = preg_replace('#/(staff|student|includes|cron|api)/[^/]*$#', '', $script);
+            $path   = rtrim($path, '/');
+            $login_url = "$scheme://$host$path/index.php?timeout=1";
+        }
 
         header('Location: ' . $login_url);
         exit;

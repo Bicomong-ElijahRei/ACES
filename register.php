@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please fill in all required fields.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
-    } elseif (!str_ends_with($email, '@kld.edu.ph')) {
+    } elseif (substr($email, -11) !== '@kld.edu.ph') {
         $error = "Registration is restricted to official KLD email addresses (must end in @kld.edu.ph).";
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match.";
@@ -58,6 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // Build full name
         $full_name = trim($first_name . ' ' . ($middle_name ? $middle_name . ' ' : '') . $last_name . ($suffix ? ' ' . $suffix : ''));
+
+        // Convert empty username to NULL (prevents UNIQUE KEY violation on second registration)
+        if ($username === '') {
+            $username = null;
+        }
 
         $pdo->beginTransaction();
         try {
@@ -108,8 +113,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---- EMAIL VERIFICATION ----
             $token = bin2hex(random_bytes(32));
-            $stmt_token = $pdo->prepare("UPDATE users SET verification_token = ? WHERE user_id = ?");
-            $stmt_token->execute([$token, $user_id]);
+            $expires = date('Y-m-d H:i:s', strtotime('+24 hours'));
+            $stmt_token = $pdo->prepare("UPDATE users SET verification_token = ?, verification_expires = ? WHERE user_id = ?");
+            $stmt_token->execute([$token, $expires, $user_id]);     
 
             $pdo->commit();
 

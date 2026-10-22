@@ -174,7 +174,7 @@ if ($action === 'create') {
                             }
                         }
                         if (!empty($att_placeholders)) {
-                            $sql_att = "INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, is_deleted) VALUES " . implode(',', $att_placeholders);
+                            $sql_att = "INSERT IGNORE INTO attendance (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, is_deleted) VALUES " . implode(',', $att_placeholders);
                             $pdo->prepare($sql_att)->execute($att_values);
                         }
                     }
@@ -233,7 +233,6 @@ if ($action === 'create') {
                 if (!$sub_title) continue;
                 
                 $subtopic_id = !empty($sub['subtopic_id']) ? (int)$sub['subtopic_id'] : null;
-                $kept_subtopic_ids[] = $subtopic_id;
                 
                 $sub_desc = trim($sub['description']);
                 $capacity = (int)($sub['capacity'] ?? 0);
@@ -301,6 +300,9 @@ if ($action === 'create') {
                     $subtopic_id = $pdo->lastInsertId();
                 }
 
+                // Track the actual ID (after INSERT/UPDATE so we have the real one)
+                $kept_subtopic_ids[] = $subtopic_id;
+
                 // --- AUTO ASSIGN FOR REQUIRED SUBTOPICS ---
                 if ($is_required || !empty($sub['required_courses']) || !empty($sub['required_sections'])) {
                     $student_query = "SELECT student_id FROM students WHERE is_deleted = 0";
@@ -365,7 +367,7 @@ if ($action === 'create') {
                             }
                         }
                         if (!empty($att_placeholders)) {
-                            $sql_att = "INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, is_deleted) VALUES " . implode(',', $att_placeholders);
+                            $sql_att = "INSERT IGNORE INTO attendance (student_id, session_id, subtopic_id, attendance_date, attendance_status, validated, is_deleted) VALUES " . implode(',', $att_placeholders);
                             $pdo->prepare($sql_att)->execute($att_values);
                         }
                     }
@@ -405,7 +407,7 @@ if ($action === 'create') {
 } elseif ($action === 'even_split') {
     $session_id = (int)$_POST['session_id'];
 
-    $stmt = $pdo->prepare("SELECT subtopic_id FROM subtopics WHERE session_id = ?");
+    $stmt = $pdo->prepare("SELECT subtopic_id FROM subtopics WHERE session_id = ? AND is_deleted = 0");
     $stmt->execute([$session_id]);
     $subtopic_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
     if (empty($subtopic_ids)) {
@@ -603,7 +605,7 @@ $course_sections_json = json_encode($course_sections);
             <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-10">
                 <?php foreach ($upcoming_sessions as $session): ?>
                     <?php
-                    $stmt_sub = $pdo->prepare("SELECT * FROM subtopics WHERE session_id = ? ORDER BY title");
+                    $stmt_sub = $pdo->prepare("SELECT * FROM subtopics WHERE session_id = ? AND is_deleted = 0 ORDER BY title");
                     $stmt_sub->execute([$session['session_id']]);
                     $subtopics = $stmt_sub->fetchAll();
                     
@@ -718,7 +720,7 @@ $course_sections_json = json_encode($course_sections);
             <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-10 opacity-80 hover:opacity-100 transition-opacity">
                 <?php foreach ($past_sessions as $session): ?>
                     <?php
-                    $stmt_sub = $pdo->prepare("SELECT * FROM subtopics WHERE session_id = ? ORDER BY title");
+                    $stmt_sub = $pdo->prepare("SELECT * FROM subtopics WHERE session_id = ? AND is_deleted = 0 ORDER BY title");
                     $stmt_sub->execute([$session['session_id']]);
                     $subtopics = $stmt_sub->fetchAll();
                     $phaseColors = [

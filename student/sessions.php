@@ -99,7 +99,7 @@ foreach ($sessions as &$session) {
     }
 
     // Auto-register required subtopics
-    $stmt_check_reg = $pdo->prepare("SELECT r.registration_id FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE st.session_id = ? AND r.student_id = ?");
+    $stmt_check_reg = $pdo->prepare("SELECT r.registration_id FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE st.session_id = ? AND r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
     $stmt_check_reg->execute([$session['session_id'], $student_id]);
     $already_registered = (bool) $stmt_check_reg->fetch();
 
@@ -125,7 +125,7 @@ foreach ($sessions as &$session) {
         }
     }
 
-    $stmt_reg = $pdo->prepare("SELECT r.subtopic_id, st.title AS subtopic_title FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND r.session_id = ?");
+    $stmt_reg = $pdo->prepare("SELECT r.subtopic_id, st.title AS subtopic_title FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND r.session_id = ? AND r.status IN ('assigned','auto_assigned')");
     $stmt_reg->execute([$student_id, $session['session_id']]);
     $reg_rows = $stmt_reg->fetchAll(PDO::FETCH_ASSOC);
     $session['registered_subtopics']      = array_column($reg_rows, 'subtopic_id');
