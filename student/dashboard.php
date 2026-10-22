@@ -10,18 +10,18 @@ $student = $stmt->fetch();
 $first_name = explode(' ', $student['full_name'] ?? 'Student')[0];
 
 // ---- Attendance Compliance ----
-$stmt_total_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
+$stmt_total_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
 $stmt_total_reg->execute([$_SESSION['student_id']]);
 $total_registered_subtopics = (int)$stmt_total_reg->fetchColumn();
 
-$stmt_attended = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
+$stmt_attended = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned') WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0");
 $stmt_attended->execute([$_SESSION['student_id']]);
 $attended_subtopics = (int)$stmt_attended->fetchColumn();
 
 $attendance_compliance_pct = $total_registered_subtopics > 0 ? round(($attended_subtopics / $total_registered_subtopics) * 100) : 0;
 
 // ---- Module Progress ----
-$stmt_registered = $pdo->prepare("SELECT DISTINCT r.subtopic_id FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 WHERE r.student_id = ?");
+$stmt_registered = $pdo->prepare("SELECT DISTINCT r.subtopic_id FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
 $stmt_registered->execute([$_SESSION['student_id']]);
 $registered_ids = $stmt_registered->fetchAll(PDO::FETCH_COLUMN);
 
@@ -49,15 +49,15 @@ $phase_progress = [];
 $student_id = $_SESSION['student_id'] ?? '';
 
 foreach ($phases as $phase) {
-    $stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE r.student_id = ? AND s.phase = ?");
+    $stmt_sub_total = $pdo->prepare("SELECT COUNT(r.subtopic_id) FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE r.student_id = ? AND s.phase = ? AND r.status IN ('assigned','auto_assigned')");
     $stmt_sub_total->execute([$student_id, $phase]);
     $sub_total = (int)$stmt_sub_total->fetchColumn();
 
-    $stmt_sub_done = $pdo->prepare("SELECT COUNT(a.attendance_id) FROM attendance a JOIN subtopics st ON a.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE a.student_id = ? AND a.attendance_status = 'present' AND s.phase = ?");
+    $stmt_sub_done = $pdo->prepare("SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a JOIN subtopics st ON a.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned') WHERE a.student_id = ? AND a.attendance_status = 'present' AND a.is_deleted = 0 AND s.phase = ?");
     $stmt_sub_done->execute([$student_id, $phase]);
     $sub_done = (int)$stmt_sub_done->fetchColumn();
 
-    $stmt_mod_total = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND m.is_deleted = 0 AND s.phase = ?");
+    $stmt_mod_total = $pdo->prepare("SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id WHERE r.student_id = ? AND m.is_deleted = 0 AND s.phase = ? AND r.status IN ('assigned','auto_assigned')");
     $stmt_mod_total->execute([$student_id, $phase]);
     $mod_total = (int)$stmt_mod_total->fetchColumn();
 

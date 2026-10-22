@@ -14,10 +14,26 @@ try {
         SELECT 
             s.student_id, s.program, s.section,
             u.full_name,
-            (SELECT COUNT(DISTINCT r.subtopic_id) FROM registrations r WHERE r.student_id = s.student_id) AS total_reg,
-            (SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS present_reg,
-            (SELECT COUNT(DISTINCT m.module_id) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS total_mods,
-            (SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND smp.student_id = s.student_id AND smp.completed = 1 AND m.is_deleted = 0) AS done_mods
+            (SELECT COUNT(DISTINCT r.subtopic_id) FROM registrations r 
+                JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+                JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+                WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned')) AS total_reg,
+            (SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a 
+                JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+                JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+                JOIN registrations r ON r.subtopic_id = a.subtopic_id AND r.student_id = a.student_id AND r.status IN ('assigned','auto_assigned')
+                WHERE a.student_id = s.student_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS present_reg,
+            (SELECT COUNT(DISTINCT m.module_id) FROM modules m 
+                JOIN registrations r ON m.subtopic_id = r.subtopic_id AND r.status IN ('assigned','auto_assigned')
+                JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+                JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+                WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS total_mods,
+            (SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp 
+                JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0
+                JOIN registrations r ON m.subtopic_id = r.subtopic_id AND r.status IN ('assigned','auto_assigned')
+                JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+                JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+                WHERE r.student_id = s.student_id AND smp.student_id = s.student_id AND smp.completed = 1) AS done_mods
         FROM students s
         JOIN users u ON u.user_id = s.user_id
         WHERE s.is_deleted = 0
@@ -34,15 +50,15 @@ try {
             (SELECT COUNT(*) FROM modules m 
                 WHERE m.subtopic_id = st.subtopic_id AND m.is_deleted = 0) AS modules_total,
             (SELECT COUNT(*) FROM student_module_progress smp
-                JOIN modules m ON smp.module_id = m.module_id
+                JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0
                 WHERE smp.student_id = ? 
                   AND m.subtopic_id = st.subtopic_id 
                   AND smp.completed = 1) AS modules_completed
         FROM registrations r
         JOIN subtopics st ON st.subtopic_id = r.subtopic_id
         JOIN sessions sess ON sess.session_id = st.session_id
-        LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id
-        WHERE r.student_id = ? AND st.is_deleted = 0 AND sess.is_deleted = 0
+        LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id AND a.is_deleted = 0
+        WHERE r.student_id = ? AND st.is_deleted = 0 AND sess.is_deleted = 0 AND r.status IN ('assigned','auto_assigned')
         ORDER BY sess.date DESC
     ");
 

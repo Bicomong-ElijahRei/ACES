@@ -76,6 +76,9 @@ $stmt = $pdo->prepare("
     JOIN sessions ses  ON a.session_id = ses.session_id
     WHERE a.attendance_id IN ($placeholders)
       AND a.is_deleted = 0
+      AND s.is_deleted = 0
+      AND sub.is_deleted = 0
+      AND ses.is_deleted = 0
     ORDER BY a.attendance_date DESC
 ");
 $stmt->execute($ids);

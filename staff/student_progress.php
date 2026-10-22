@@ -31,13 +31,16 @@ $global_sub_total = (int)$pdo->query("
     SELECT COUNT(DISTINCT r.student_id, r.subtopic_id) 
     FROM registrations r 
     JOIN subtopics s ON r.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN sessions sess ON s.session_id = sess.session_id AND sess.is_deleted = 0
     JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+    WHERE r.status IN ('assigned','auto_assigned')
 ")->fetchColumn();
 
 $global_sub_done = (int)$pdo->query("
     SELECT COUNT(DISTINCT a.student_id, a.subtopic_id) 
     FROM attendance a 
     JOIN subtopics s ON a.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN sessions sess ON s.session_id = sess.session_id AND sess.is_deleted = 0
     JOIN students st ON a.student_id = st.student_id AND st.is_deleted = 0
     WHERE a.attendance_status = 'present' AND a.is_deleted = 0
 ")->fetchColumn();
@@ -46,7 +49,8 @@ $global_mod_total = (int)$pdo->query("
     SELECT COUNT(DISTINCT r.student_id, m.module_id) 
     FROM modules m 
     JOIN subtopics s ON m.subtopic_id = s.subtopic_id AND s.is_deleted = 0
-    JOIN registrations r ON r.subtopic_id = s.subtopic_id
+    JOIN sessions sess ON s.session_id = sess.session_id AND sess.is_deleted = 0
+    JOIN registrations r ON r.subtopic_id = s.subtopic_id AND r.status IN ('assigned','auto_assigned')
     JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
     WHERE m.is_deleted = 0
 ")->fetchColumn();
@@ -55,9 +59,11 @@ $global_mod_done = (int)$pdo->query("
     SELECT COUNT(DISTINCT smp.student_id, smp.module_id) 
     FROM student_module_progress smp
     JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0
-    JOIN registrations r ON r.subtopic_id = m.subtopic_id
+    JOIN subtopics s ON m.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN sessions sess ON s.session_id = sess.session_id AND sess.is_deleted = 0
+    JOIN registrations r ON r.subtopic_id = m.subtopic_id AND r.status IN ('assigned','auto_assigned')
     JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
-    WHERE smp.completed = 1
+    WHERE smp.completed = 1 AND r.student_id = smp.student_id
 ")->fetchColumn();
 
 $total_expected = $global_sub_total + $global_mod_total;
@@ -90,13 +96,13 @@ $sessions = $pdo->query("
         s.session_id, s.title, s.phase, s.date,
         COUNT(DISTINCT st.subtopic_id) AS subtopic_count,
         COUNT(DISTINCT r.student_id)   AS student_count,
-        SUM(CASE WHEN a.attendance_status = 'present' THEN 1 ELSE 0 END) AS present_count,
-        SUM(CASE WHEN a.attendance_status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
-        SUM(CASE WHEN a.attendance_status = 'absent'  THEN 1 ELSE 0 END) AS absent_count,
-        COUNT(a.attendance_id)         AS att_total
+        SUM(CASE WHEN a.attendance_status = 'present' AND a.is_deleted = 0 THEN 1 ELSE 0 END) AS present_count,
+        SUM(CASE WHEN a.attendance_status = 'pending' AND a.is_deleted = 0 THEN 1 ELSE 0 END) AS pending_count,
+        SUM(CASE WHEN a.attendance_status = 'absent'  AND a.is_deleted = 0 THEN 1 ELSE 0 END) AS absent_count,
+        COUNT(CASE WHEN a.is_deleted = 0 THEN a.attendance_id END) AS att_total
     FROM sessions s
     LEFT JOIN subtopics st ON st.session_id = s.session_id AND st.is_deleted = 0
-    LEFT JOIN registrations r ON r.subtopic_id = st.subtopic_id
+    LEFT JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned')
     LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = st.subtopic_id
     WHERE s.is_deleted = 0
     GROUP BY s.session_id
@@ -110,8 +116,9 @@ foreach ($sessions as &$sess) {
         SELECT COUNT(m.module_id) AS total_mods,
                SUM(CASE WHEN smp.completed = 1 THEN 1 ELSE 0 END) AS done_mods
         FROM modules m
-        JOIN subtopics st ON m.subtopic_id = st.subtopic_id
-        LEFT JOIN student_module_progress smp ON smp.module_id = m.module_id
+        JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0
+        LEFT JOIN registrations r ON r.subtopic_id = m.subtopic_id AND r.status IN ('assigned','auto_assigned')
+        LEFT JOIN student_module_progress smp ON smp.module_id = m.module_id AND smp.student_id = r.student_id
         WHERE st.session_id = ? AND m.is_deleted = 0
     ");
     $stmt_mod->execute([$sess['session_id']]);
@@ -121,7 +128,7 @@ foreach ($sessions as &$sess) {
     $done_req  = (int)$sess['present_count'] + (int)$mod_data['done_mods'];
     
     $sess['has_attendance'] = ($total_req > 0);
-    $sess['avg_progress']   = $total_req > 0 ? round(($done_req / $total_req) * 100) : 0;
+    $sess['avg_progress']   = $total_req > 0 ? min(100, round(($done_req / $total_req) * 100)) : 0;
 }
 unset($sess);
 

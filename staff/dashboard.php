@@ -37,6 +37,7 @@ $att_present = (int) $pdo->query("
     SELECT COUNT(DISTINCT a.student_id, a.subtopic_id) 
     FROM attendance a 
     JOIN subtopics s ON a.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN sessions ss ON s.session_id = ss.session_id AND ss.is_deleted = 0
     JOIN students st ON a.student_id = st.student_id AND st.is_deleted = 0
     WHERE a.attendance_status = 'present' AND a.is_deleted = 0
 ")->fetchColumn();
@@ -45,24 +46,31 @@ $att_total = (int) $pdo->query("
     SELECT COUNT(DISTINCT r.student_id, r.subtopic_id) 
     FROM registrations r 
     JOIN subtopics s ON r.subtopic_id = s.subtopic_id AND s.is_deleted = 0
+    JOIN sessions ss ON s.session_id = ss.session_id AND ss.is_deleted = 0
     JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+    WHERE r.status IN ('assigned','auto_assigned')
 ")->fetchColumn();
 
 $overall_att_pct = $att_total > 0 ? min(100, round(($att_present / $att_total) * 100)) : 0;
 
 $total_submissions = (int) $pdo->query("
     SELECT COUNT(*) FROM registrations r
-    JOIN modules m ON m.subtopic_id = r.subtopic_id
-    WHERE r.status IN ('assigned','auto_assigned') AND m.is_deleted = 0
+    JOIN modules m ON m.subtopic_id = r.subtopic_id AND m.is_deleted = 0
+    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    JOIN sessions ss ON sub.session_id = ss.session_id AND ss.is_deleted = 0
+    JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+    WHERE r.status IN ('assigned','auto_assigned')
 ")->fetchColumn();
 
-// We only count completions where the student is actually assigned to the module's subtopic
 $completed_submissions = (int) $pdo->query("
     SELECT COUNT(DISTINCT sp.student_id, sp.module_id)
     FROM student_module_progress sp
-    JOIN modules m ON sp.module_id = m.module_id
+    JOIN modules m ON sp.module_id = m.module_id AND m.is_deleted = 0
+    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    JOIN sessions ss ON sub.session_id = ss.session_id AND ss.is_deleted = 0
     JOIN registrations r ON r.student_id = sp.student_id AND r.subtopic_id = m.subtopic_id
-    WHERE sp.completed = 1 AND m.is_deleted = 0 AND r.status IN ('assigned','auto_assigned')
+    JOIN students st ON r.student_id = st.student_id AND st.is_deleted = 0
+    WHERE sp.completed = 1 AND r.status IN ('assigned','auto_assigned')
 ")->fetchColumn();
 
 // Add min(100, ...) to prevent mathematically impossible percentages in edge cases
@@ -81,10 +89,25 @@ $sessions_for_charts = $pdo->query("
 $at_risk_students_raw = $pdo->query("
     SELECT 
         s.student_id, s.program, s.section, u.full_name,
-        (SELECT COUNT(*) FROM registrations r WHERE r.student_id = s.student_id) AS sub_total,
-        (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present') AS sub_done,
-        (SELECT COUNT(*) FROM modules m JOIN registrations r ON m.subtopic_id = r.subtopic_id WHERE r.student_id = s.student_id AND m.is_deleted = 0) AS mod_total,
-        (SELECT COUNT(*) FROM student_module_progress smp WHERE smp.student_id = s.student_id AND smp.completed = 1) AS mod_done
+        (SELECT COUNT(*) FROM registrations r 
+            JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned')) AS sub_total,
+        (SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a 
+            JOIN subtopics sub ON a.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            WHERE a.student_id = s.student_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS sub_done,
+        (SELECT COUNT(*) FROM registrations r 
+            JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            JOIN modules m ON m.subtopic_id = sub.subtopic_id AND m.is_deleted = 0
+            WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned')) AS mod_total,
+        (SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp 
+            JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0
+            JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+            JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+            JOIN registrations r ON r.subtopic_id = sub.subtopic_id AND r.status IN ('assigned','auto_assigned')
+            WHERE smp.student_id = s.student_id AND smp.completed = 1 AND r.student_id = s.student_id) AS mod_done
     FROM students s
     JOIN users u ON s.user_id = u.user_id
     WHERE s.is_deleted = 0
@@ -135,8 +158,9 @@ $modules_summary = $pdo->query("
         COUNT(DISTINCT r.student_id) AS student_count,
         COUNT(DISTINCT CASE WHEN sp.completed = 1 THEN sp.student_id END) AS completed_count
     FROM modules m
-    LEFT JOIN subtopics st ON st.subtopic_id = m.subtopic_id
-    LEFT JOIN registrations r ON r.subtopic_id = st.subtopic_id
+    LEFT JOIN subtopics st ON st.subtopic_id = m.subtopic_id AND st.is_deleted = 0
+    LEFT JOIN sessions ss ON st.session_id = ss.session_id AND ss.is_deleted = 0
+    LEFT JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned')
     LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = r.student_id
     WHERE m.is_deleted = 0
     GROUP BY m.module_id

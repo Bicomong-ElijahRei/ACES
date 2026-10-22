@@ -21,23 +21,52 @@ $stmt = $pdo->prepare("
     SELECT COUNT(DISTINCT r.student_id)
     FROM registrations r
     JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id
-    WHERE sub.session_id = ? AND sub.is_deleted = 0
+    JOIN sessions sess ON sub.session_id = sess.session_id
+    JOIN students st ON r.student_id = st.student_id
+    WHERE sub.session_id = ? 
+      AND sub.is_deleted = 0 
+      AND sess.is_deleted = 0 
+      AND st.is_deleted = 0
+      AND r.status IN ('assigned','auto_assigned')
 ");
 $stmt->execute([$session_id]);
 $registered = (int)$stmt->fetchColumn();
 
-// Total students (expected attendees)
-$total_students = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE is_deleted = 0")->fetchColumn();
+// Total students eligible for this session's subtopics (based on visibility rules)
+$stmt_elig = $pdo->prepare("
+    SELECT COUNT(DISTINCT s.student_id)
+    FROM students s
+    WHERE s.is_deleted = 0
+      AND (
+        NOT EXISTS (
+            SELECT 1 FROM subtopics sub
+            WHERE sub.session_id = ? AND sub.is_deleted = 0
+              AND (sub.visible_courses IS NOT NULL OR sub.required_courses IS NOT NULL)
+        )
+        OR EXISTS (
+            SELECT 1 FROM subtopics sub
+            WHERE sub.session_id = ? AND sub.is_deleted = 0
+              AND (
+                (sub.visible_courses IS NULL AND sub.required_courses IS NULL)
+                OR JSON_CONTAINS(sub.visible_courses, JSON_QUOTE(s.program))
+                OR JSON_CONTAINS(sub.required_courses, JSON_QUOTE(s.program))
+              )
+        )
+      )
+");
+$stmt_elig->execute([$session_id, $session_id]);
+$total_students = (int)$stmt_elig->fetchColumn();
 $unregistered = max(0, $total_students - $registered);
 
 // ----- Attendance counts (unique students per status) -----
 $stmt = $pdo->prepare("
     SELECT 
-        COUNT(DISTINCT CASE WHEN attendance_status = 'present' THEN student_id END) AS present,
-        COUNT(DISTINCT CASE WHEN attendance_status = 'absent' THEN student_id END) AS absent,
-        COUNT(DISTINCT CASE WHEN attendance_status = 'pending' THEN student_id END) AS pending
-    FROM attendance
-    WHERE session_id = ? AND is_deleted = 0
+        COUNT(DISTINCT CASE WHEN a.attendance_status = 'present' THEN a.student_id END) AS present,
+        COUNT(DISTINCT CASE WHEN a.attendance_status = 'absent' THEN a.student_id END) AS absent,
+        COUNT(DISTINCT CASE WHEN a.attendance_status = 'pending' THEN a.student_id END) AS pending
+    FROM attendance a
+    JOIN students st ON a.student_id = st.student_id AND st.is_deleted = 0
+    WHERE a.session_id = ? AND a.is_deleted = 0
 ");
 $stmt->execute([$session_id]);
 $att = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -54,7 +83,7 @@ $stmt = $pdo->prepare("
         s.title,
         COUNT(DISTINCT r.student_id) AS registered
     FROM subtopics s
-    LEFT JOIN registrations r ON s.subtopic_id = r.subtopic_id
+    LEFT JOIN registrations r ON s.subtopic_id = r.subtopic_id AND r.status IN ('assigned','auto_assigned')
     WHERE s.session_id = ? AND s.is_deleted = 0
     GROUP BY s.subtopic_id, s.title
     ORDER BY s.title
@@ -73,6 +102,7 @@ $stmt = $pdo->prepare("
         COUNT(DISTINCT a.student_id) AS total
     FROM subtopics s
     LEFT JOIN attendance a ON s.subtopic_id = a.subtopic_id AND a.is_deleted = 0
+    LEFT JOIN students st ON a.student_id = st.student_id AND st.is_deleted = 0
     WHERE s.session_id = ? AND s.is_deleted = 0
     GROUP BY s.subtopic_id, s.title
     ORDER BY s.title

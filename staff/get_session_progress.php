@@ -118,7 +118,7 @@ $ph_s = implode(',', array_fill(0, count($student_ids), '?'));
 $stmt = $pdo->prepare("
     SELECT student_id, subtopic_id
     FROM registrations
-    WHERE student_id IN ($ph_s) AND subtopic_id IN ($ph)
+    WHERE student_id IN ($ph_s) AND subtopic_id IN ($ph) AND status IN ('assigned','auto_assigned')
 ");
 $stmt->execute(array_merge($student_ids, $subtopic_ids));
 $reg_map = [];
@@ -130,7 +130,7 @@ while ($row = $stmt->fetch()) {
 $stmt = $pdo->prepare("
     SELECT student_id, subtopic_id, attendance_status
     FROM attendance
-    WHERE student_id IN ($ph_s) AND subtopic_id IN ($ph)
+    WHERE student_id IN ($ph_s) AND subtopic_id IN ($ph) AND is_deleted = 0
 ");
 $stmt->execute(array_merge($student_ids, $subtopic_ids));
 $att_map = [];
@@ -145,6 +145,7 @@ $stmt = $pdo->prepare("
     JOIN modules m ON sp.module_id = m.module_id
     WHERE sp.student_id IN ($ph_s)
       AND m.subtopic_id IN ($ph)
+      AND m.is_deleted = 0
       AND sp.completed = 1
     GROUP BY sp.student_id, m.subtopic_id
 ");
@@ -189,8 +190,10 @@ foreach ($students as $s) {
         ];
     }
 
-    $progress_pct = $attendance_total > 0
-        ? round(($attendance_present / $attendance_total) * 100)
+    $total_req = $attendance_total + $modules_total_all;
+    $done_req  = $attendance_present + $modules_completed;
+    $progress_pct = $total_req > 0
+        ? min(100, round(($done_req / $total_req) * 100))
         : 0;
 
     $output[] = [
