@@ -45,7 +45,8 @@ if ($action === 'mark_complete' && $module_id) {
             $allow = true;
         } elseif ($mod['type'] === 'assessment') {
             $raw = $mod['content'];
-            if (strpos($raw, 'quiz:') !== 0 && strpos($raw, 'link:') !== 0) {
+            // Allow manual completion for ANY assessment EXCEPT a quiz (quizzes are auto-graded)
+            if (strpos($raw, 'quiz:') !== 0) {
                 $allow = true;
             }
         }
@@ -89,15 +90,15 @@ if ($action === 'mark_complete' && $module_id) {
 
                         if ($existing) {
                             if ($existing['auto_generated'] == 1 && $existing['attendance_status'] !== 'present') {
-                                $stmtUpdAtt = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1, auto_generated = 1, recorded_by = ? WHERE attendance_id = ?");
-                                $stmtUpdAtt->execute([$user_id, $existing['attendance_id']]);
+                                $stmtUpdAtt = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1, auto_generated = 1, recorded_by = NULL WHERE attendance_id = ?");
+                                $stmtUpdAtt->execute([$existing['attendance_id']]);
                             }
                         } else {
                             $stmtInsAtt = $pdo->prepare("
                                 INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
-                                VALUES (?, ?, ?, 'present', 1, 1, ?, NOW())
+                                VALUES (?, ?, ?, 'present', 1, 1, NULL, NOW())
                             ");
-                            $stmtInsAtt->execute([$student_id, $sub['session_id'], $subtopic_id, $user_id]);
+                            $stmtInsAtt->execute([$student_id, $sub['session_id'], $subtopic_id]);
                         }
                     }
                 }
@@ -160,16 +161,78 @@ if ($action === 'submit_assessment' && $module_id) {
         // 2. CUSTOM PASSING SCORE LOGIC (Sir Con's Request)
         $is_passed = ($score_percent >= $passing_score) ? 1 : 0;
         
-        $check = $pdo->prepare("SELECT progress_id FROM student_module_progress WHERE student_id = ? AND module_id = ?");
+        $check = $pdo->prepare("SELECT progress_id, completed, score FROM student_module_progress WHERE student_id = ? AND module_id = ?");
         $check->execute([$student_id, $module_id]);
-        if ($check->fetch()) {
-            // Only mark as completed if they passed
-            $upd = $pdo->prepare("UPDATE student_module_progress SET completed = ?, score = ?, completion_date = NOW() WHERE student_id = ? AND module_id = ?");
-            $upd->execute([$is_passed, $score_percent, $student_id, $module_id]);
+        $existing_progress = $check->fetch();
+        
+        if ($existing_progress) {
+            // If already passed, only update if new score is HIGHER. Never un-complete.
+            if ($existing_progress['completed'] == 1 && $is_passed == 0) {
+                // Already passed before, this attempt failed — do NOT downgrade
+                // Keep the existing completed=1 and score
+            } else {
+                // Update only if higher score, or if still trying to pass
+                $best_score = max((float)($existing_progress['score'] ?? 0), (float)$score_percent);
+                $final_completed = ($existing_progress['completed'] == 1 || $is_passed == 1) ? 1 : 0;
+                
+                $upd = $pdo->prepare("UPDATE student_module_progress SET completed = ?, score = ?, completion_date = NOW() WHERE student_id = ? AND module_id = ?");
+                $upd->execute([$final_completed, $best_score, $student_id, $module_id]);
+            }
         } else {
             $ins = $pdo->prepare("INSERT INTO student_module_progress (student_id, module_id, completed, score, completion_date) VALUES (?, ?, ?, ?, NOW())");
             $ins->execute([$student_id, $module_id, $is_passed, $score_percent]);
         }
+
+        // --- NEW: Trigger Auto-Attendance if the Quiz passed and it's a module-based subtopic ---
+        if ($is_passed) {
+            $stmtInfo = $pdo->prepare("SELECT subtopic_id FROM modules WHERE module_id = ?");
+            $stmtInfo->execute([$module_id]);
+            $subtopic_id = $stmtInfo->fetchColumn();
+
+            if ($subtopic_id) {
+                $stmtSub = $pdo->prepare("SELECT attendance_type, session_id FROM subtopics WHERE subtopic_id = ? AND is_deleted = 0");
+                $stmtSub->execute([$subtopic_id]);
+                $sub = $stmtSub->fetch();
+
+                if ($sub && $sub['attendance_type'] === 'module') {
+                    $stmtTotalMods = $pdo->prepare("SELECT COUNT(*) FROM modules WHERE subtopic_id = ? AND is_deleted = 0");
+                    $stmtTotalMods->execute([$subtopic_id]);
+                    $totalModules = (int)$stmtTotalMods->fetchColumn();
+
+                    $stmtCompleted = $pdo->prepare("
+                        SELECT COUNT(*) FROM modules m
+                        JOIN student_module_progress sp ON sp.module_id = m.module_id
+                        WHERE m.subtopic_id = ? AND sp.student_id = ? AND sp.completed = 1 AND m.is_deleted = 0
+                    ");
+                    $stmtCompleted->execute([$subtopic_id, $student_id]);
+                    $completedModules = (int)$stmtCompleted->fetchColumn();
+
+                    if ($completedModules >= $totalModules && $totalModules > 0) {
+                        $stmtReg = $pdo->prepare("SELECT registration_id FROM registrations WHERE student_id = ? AND subtopic_id = ?");
+                        $stmtReg->execute([$student_id, $subtopic_id]);
+                        if ($stmtReg->fetch()) {
+                            $stmtAtt = $pdo->prepare("SELECT attendance_id, attendance_status, auto_generated FROM attendance WHERE student_id = ? AND subtopic_id = ? AND is_deleted = 0");
+                            $stmtAtt->execute([$student_id, $subtopic_id]);
+                            $existing = $stmtAtt->fetch();
+
+                            if ($existing) {
+                                if ($existing['auto_generated'] == 1 && $existing['attendance_status'] !== 'present') {
+                                    $stmtUpdAtt = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1, auto_generated = 1, recorded_by = NULL WHERE attendance_id = ?");
+                                    $stmtUpdAtt->execute([$existing['attendance_id']]);
+                                }
+                            } else {
+                                $stmtInsAtt = $pdo->prepare("
+                                    INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated, auto_generated, recorded_by, attendance_date)
+                                    VALUES (?, ?, ?, 'present', 1, 1, NULL, NOW())
+                                ");
+                                $stmtInsAtt->execute([$student_id, $sub['session_id'], $subtopic_id]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // --- END AUTO-ATTENDANCE ---
         
         // Redirect with pass/fail message
         if ($is_passed) {
@@ -213,7 +276,17 @@ function getPreview($content, $type) {
         return 'Module content';
     } else {
         if (strpos($content, 'link:') === 0) return '[External Assessment]';
-        if (strpos($content, 'quiz:') === 0) return '[Quiz] ' . substr_count($content, '"text"') . ' questions';
+        if (strpos($content, 'quiz:') === 0) {
+            $json = substr($content, 5);
+            $data = json_decode($json, true);
+            $count = 0;
+            if (isset($data['questions']) && is_array($data['questions'])) {
+                $count = count($data['questions']);
+            } elseif (is_array($data)) {
+                $count = count($data);
+            }
+            return '[Quiz] ' . $count . ' questions';
+        }
         return 'Assessment';
     }
 }
@@ -258,14 +331,19 @@ if ($module_id) {
     if ($current_module['type'] == 'module') {
         $content_raw = $current_module['content'];
         if (strpos($content_raw, 'file:') === 0) {
-            $file = substr($content_raw, 5);
-            // Support both legacy flat files and new subfolder uploads
+            $file = basename(substr($content_raw, 5));
+            $file_exists = false;
+            
+            // Check absolute server paths reliably
             if (file_exists(__DIR__ . '/../uploads/' . $file)) {
                 $file_path = "../uploads/$file";
-            } else {
+                $file_exists = true;
+            } elseif (file_exists(__DIR__ . '/../uploads/modules/' . $file)) {
                 $file_path = "../uploads/modules/$file";
+                $file_exists = true;
             }
-            if (file_exists($file_path)) {
+            
+            if ($file_exists) {
                 $ext = pathinfo($file, PATHINFO_EXTENSION);
                 if (strtolower($ext) == 'pdf') {
                     $is_pdf = true;
@@ -299,8 +377,16 @@ if ($module_id) {
         $content_raw = $current_module['content'];
         if (strpos($content_raw, 'link:') === 0) {
             $url = substr($content_raw, 5);
-            $content_html = '<iframe src="' . htmlspecialchars($url) . '" width="100%" height="600px" frameborder="0" class="rounded-lg border border-gray-200"></iframe>';
-                } elseif (strpos($content_raw, 'quiz:') === 0) {
+            // Add a button in case Google Forms blocks the iframe
+            $content_html = '<div class="mb-4"><a href="' . htmlspecialchars($url) . '" target="_blank" class="inline-flex items-center gap-2 bg-purple-700 text-white px-5 py-3 rounded-lg font-semibold hover:bg-purple-800 transition"><i class="fas fa-external-link-alt"></i> Open Assessment in New Tab</a></div>';
+            
+            // Show the iframe
+            $content_html .= '<iframe src="' . htmlspecialchars($url) . '" width="100%" height="500px" frameborder="0" class="rounded-lg border border-gray-200"></iframe>';
+            
+            // THE FIX: This tells the system to show the "Mark as Done" button below the iframe
+            $empty_assessment = true; 
+            
+            } elseif (strpos($content_raw, 'quiz:') === 0) {
             $quiz_json = substr($content_raw, 5);
             $quiz_data = json_decode($quiz_json, true);
             
@@ -493,7 +579,7 @@ if ($module_id) {
             const totalPagesSpan = document.getElementById('totalPages');
             const markBtn = document.getElementById('markCompleteBtn');
             const confirmCheck = document.getElementById('confirmRead');
-            const pdfHint = document.getElementById('pdfHint');
+            const scrollHint = document.getElementById('scrollHint');
             const pageCounter = document.getElementById('pageCounter');
 
             if (markBtn) markBtn.disabled = true;
@@ -587,7 +673,9 @@ if ($module_id) {
 
                     // Enable the confirm checkbox now that they've reached the end
                     if (confirmCheck) confirmCheck.disabled = false;
-                    if (pdfHint) pdfHint.style.display = 'none'; // hide the old hint
+                    if (scrollHint) {
+                        scrollHint.innerHTML = '<i class="fas fa-check-circle mr-1 text-green-600"></i> All pages viewed! Confirm below to complete.';
+                    }
                 }
 
                 function updateCompletion() {
@@ -637,7 +725,10 @@ if ($module_id) {
                 renderPage(1);
 
             } catch (err) {
-                document.getElementById('pdfViewer').innerHTML = '<p class="text-red-500 p-4">Failed to load PDF.</p>';
+                const viewer = document.getElementById('pdfViewer');
+                if (viewer) {
+                    viewer.innerHTML = '<div class="p-8 text-center text-red-500 bg-red-50 border border-red-200 rounded-lg"><i class="fas fa-exclamation-triangle text-3xl mb-2"></i><p class="font-bold">Failed to load PDF document.</p><p class="text-sm mt-1">The file may be missing or corrupted.</p></div>';
+                }
                 console.error(err);
             }
         })();

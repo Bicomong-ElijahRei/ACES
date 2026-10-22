@@ -144,6 +144,21 @@ $stmt = $pdo->prepare("
 $stmt->execute();
 $active_items = $stmt->fetchAll();
 
+// --- NEW: Group items by Deadline Status ---
+$today = date('Y-m-d');
+$upcoming_items = [];
+$past_due_items = [];
+
+foreach ($active_items as $item) {
+    if (empty($item['due_date']) || $item['due_date'] >= $today) {
+        $upcoming_items[] = $item;
+    } else {
+        $past_due_items[] = $item;
+    }
+}
+
+// (Removed subtopic grouping in favor of deadline grouping)
+
 // Fetch deleted items
 $stmt_deleted = $pdo->prepare("
     SELECT m.*, sub.title as subtopic_title
@@ -176,8 +191,15 @@ function renderContent($content) {
         return "<div class='border p-2 bg-gray-100 rounded'>" . nl2br(htmlspecialchars(substr($content, 5))) . "</div>";
     } elseif (strpos($content, 'quiz:') === 0) {
         $json = substr($content, 5);
-        $questions = json_decode($json, true);
-        $count = is_array($questions) ? count($questions) : 0;
+        $decoded = json_decode($json, true);
+        $count = 0;
+        if (is_array($decoded)) {
+            if (isset($decoded['questions']) && is_array($decoded['questions'])) {
+                $count = count($decoded['questions']);
+            } else {
+                $count = count($decoded); 
+            }
+        }
         return "<span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800'><i class='fas fa-question-circle mr-1'></i> Quiz ({$count} questions)</span>";
     } else {
         return nl2br(htmlspecialchars($content));
@@ -298,87 +320,180 @@ function renderContent($content) {
             </div>
         </div>
 
-        <!-- Active Items Grid -->
-        <?php if (count($active_items) > 0): ?>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10" id="activeItemsContainer">
-                <?php foreach ($active_items as $item): ?>
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow active-item-row"
-                         data-id="<?= $item['module_id'] ?>"
-                         data-subtopic="<?= $item['subtopic_id'] ?>"
-                         data-type="<?= $item['type'] ?>"
-                         data-title="<?= htmlspecialchars($item['title']) ?>"
-                         data-due="<?= htmlspecialchars($item['due_date'] ?? '') ?>"
-                         data-created="<?= htmlspecialchars($item['created_at'] ?? '') ?>"
-                         data-subtopic-title="<?= htmlspecialchars($item['subtopic_title']) ?>">
-                        
-                        <!-- Card Header -->
-                        <div class="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-start">
-                            <div>
-                                <div class="flex items-center gap-2 mb-1">
-                                    <?php if ($item['type'] == 'module'): ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 uppercase tracking-wide"><i class="fas fa-book mr-1"></i> Module</span>
-                                    <?php else: ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800 uppercase tracking-wide"><i class="fas fa-clipboard-check mr-1"></i> Assessment</span>
+        <!-- Active Items Sectioned by Deadline Status -->
+        <div id="activeItemsContainer" class="space-y-8 mb-10">
+            
+            <!-- SECTION 1: UPCOMING / ACTIVE -->
+            <div>
+                <div class="flex justify-between items-center mb-3 border-b border-gray-300 pb-2">
+                    <h2 class="text-lg font-bold text-[#0a6e2d] flex items-center gap-2">
+                        <i class="fas fa-calendar-check text-green-600"></i> Upcoming & Active
+                    </h2>
+                    <span class="text-xs font-bold bg-[#dcf3e6] text-[#0a6e2d] px-2.5 py-1 rounded-full border border-green-200">
+                        <?= count($upcoming_items) ?> items
+                    </span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 active-items-grid">
+                    <?php if (count($upcoming_items) > 0): ?>
+                        <?php foreach ($upcoming_items as $item): ?>
+                            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col active-item-row minified-card hover:shadow-md transition-shadow"
+                                 data-id="<?= $item['module_id'] ?>"
+                                 data-subtopic="<?= $item['subtopic_id'] ?>"
+                                 data-type="<?= $item['type'] ?>"
+                                 data-title="<?= htmlspecialchars($item['title']) ?>"
+                                 data-due="<?= htmlspecialchars($item['due_date'] ?? '') ?>"
+                                 data-created="<?= htmlspecialchars($item['created_at'] ?? '') ?>">
+                                
+                                <!-- Minified Card Header -->
+                                <div class="p-3 border-b border-gray-100 bg-gray-50/50 flex justify-between items-start">
+                                    <div class="flex-1 min-w-0 pr-2">
+                                        <div class="flex items-center gap-1.5 mb-1 flex-wrap">
+                                            <?php if ($item['type'] == 'module'): ?>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 uppercase tracking-wide"><i class="fas fa-book mr-1"></i> Module</span>
+                                            <?php else: ?>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 uppercase tracking-wide"><i class="fas fa-clipboard-check mr-1"></i> Assess</span>
+                                            <?php endif; ?>
+                                            <?php if ($item['due_date']): ?>
+                                                <span class="text-[10px] text-gray-500 font-medium"><i class="far fa-clock"></i> <?= date('M d', strtotime($item['due_date'])) ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <h3 class="text-sm font-bold text-gray-900 truncate" title="<?= htmlspecialchars($item['title']) ?>">
+                                            <?= htmlspecialchars($item['title']) ?>
+                                        </h3>
+                                    </div>
+                                    <input type="checkbox" class="row-checkbox-active w-4 h-4 text-[#0a6e2d] border-gray-300 rounded focus:ring-[#0a6e2d] mt-0.5 flex-shrink-0" value="<?= $item['module_id'] ?>">
+                                </div>
+
+                                <!-- Minified Card Body -->
+                                <div class="p-3 flex-1 text-xs text-gray-600 flex flex-col justify-between">
+                                    <div>
+                                        <?php if ($item['description']): ?>
+                                            <p class="mb-2 line-clamp-2" title="<?= htmlspecialchars($item['description']) ?>"><?= htmlspecialchars($item['description']) ?></p>
+                                        <?php endif; ?>
+                                        
+                                        <?php if ($item['content']): ?>
+                                            <div class="mt-2 text-[11px] font-medium text-blue-600 bg-blue-50/50 p-1.5 rounded border border-blue-100 truncate">
+                                                <?= renderContent($item['content']) ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+
+                                <!-- Minified Card Footer (Actions) -->
+                                <div class="p-2 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                                    <div class="flex-1 min-w-0">
+                                        <button class="view-item-btn text-[11px] font-bold text-gray-500 hover:text-[#0a6e2d] transition-colors truncate w-full text-left" data-id="<?= $item['module_id'] ?>" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>" data-type="<?= $item['type'] ?>">
+                                            <i class="fas fa-eye mr-1"></i> View
+                                        </button>
+                                    </div>
+                                    
+                                    <?php if (!isViewer()): ?>
+                                    <div class="flex gap-1 flex-shrink-0">
+                                        <button class="edit-item text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors" data-id="<?= $item['module_id'] ?>" title="Edit Item"><i class="fas fa-edit text-xs"></i></button>
+                                        
+                                        <form method="POST" class="inline">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="action" value="soft_delete">
+                                            <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
+                                            <button type="submit" onclick="return confirm('Archive this item?')" class="text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors" title="Archive"><i class="fas fa-trash-alt text-xs"></i></button>
+                                        </form>
+                                    </div>
                                     <?php endif; ?>
                                 </div>
-                                <h3 class="text-lg font-bold text-gray-900 leading-tight mt-1"><?= htmlspecialchars($item['title']) ?></h3>
-                                <div class="text-xs text-gray-500 mt-1"><i class="fas fa-folder mr-1"></i> <?= htmlspecialchars($item['subtopic_title']) ?></div>
                             </div>
-                            
-                            <div class="flex flex-col gap-1 items-end">
-                                <input type="checkbox" class="row-checkbox-active w-4 h-4 text-[#0a6e2d] border-gray-300 rounded focus:ring-[#0a6e2d] mt-1">
-                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="col-span-full text-center py-6 bg-white rounded-xl border border-gray-200 border-dashed text-gray-500 text-sm">
+                            No upcoming items.
                         </div>
+                    <?php endif; ?>
+                </div>
+            </div>
 
-                        <!-- Card Body -->
-                        <div class="p-4 flex-1">
-                            <?php if ($item['description']): ?>
-                                <p class="text-sm text-gray-600 mb-3 line-clamp-2"><?= nl2br(htmlspecialchars($item['description'])) ?></p>
-                            <?php endif; ?>
+            <!-- SECTION 2: PAST DUE -->
+            <?php if (count($past_due_items) > 0): ?>
+            <div>
+                <div class="flex justify-between items-center mb-3 border-b border-gray-300 pb-2">
+                    <h2 class="text-lg font-bold text-red-700 flex items-center gap-2">
+                        <i class="fas fa-exclamation-triangle text-red-500"></i> Past Due
+                    </h2>
+                    <span class="text-xs font-bold bg-red-100 text-red-700 px-2.5 py-1 rounded-full border border-red-200">
+                        <?= count($past_due_items) ?> items
+                    </span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 active-items-grid">
+                    <?php foreach ($past_due_items as $item): ?>
+                        <div class="bg-white rounded-lg shadow-sm border border-red-200 overflow-hidden flex flex-col active-item-row minified-card hover:shadow-md transition-shadow opacity-90 hover:opacity-100"
+                             data-id="<?= $item['module_id'] ?>"
+                             data-subtopic="<?= $item['subtopic_id'] ?>"
+                             data-type="<?= $item['type'] ?>"
+                             data-title="<?= htmlspecialchars($item['title']) ?>"
+                             data-due="<?= htmlspecialchars($item['due_date'] ?? '') ?>"
+                             data-created="<?= htmlspecialchars($item['created_at'] ?? '') ?>">
                             
-                            <?php if ($item['due_date']): ?>
-                                <div class="text-xs font-medium text-gray-600 bg-gray-100 inline-block px-2 py-1 rounded mb-3"><i class="far fa-calendar-alt mr-1"></i> Due: <?= date('M d, Y', strtotime($item['due_date'])) ?></div>
-                            <?php endif; ?>
-                            
-                            <?php if ($item['content']): ?>
-                                <div class="mt-3 pt-3 border-t border-gray-100 text-sm">
-                                    <?= renderContent($item['content']) ?>
+                            <!-- Minified Card Header -->
+                            <div class="p-3 border-b border-red-100 bg-red-50/50 flex justify-between items-start">
+                                <div class="flex-1 min-w-0 pr-2">
+                                    <div class="flex items-center gap-1.5 mb-1 flex-wrap">
+                                        <?php if ($item['type'] == 'module'): ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-200 text-red-800 uppercase tracking-wide"><i class="fas fa-book mr-1"></i> Module</span>
+                                        <?php else: ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-200 text-red-800 uppercase tracking-wide"><i class="fas fa-clipboard-check mr-1"></i> Assess</span>
+                                        <?php endif; ?>
+                                        <span class="text-[10px] text-red-600 font-bold"><i class="far fa-clock"></i> <?= date('M d', strtotime($item['due_date'])) ?></span>
+                                    </div>
+                                    <h3 class="text-sm font-bold text-gray-900 truncate" title="<?= htmlspecialchars($item['title']) ?>">
+                                        <?= htmlspecialchars($item['title']) ?>
+                                    </h3>
                                 </div>
-                            <?php endif; ?>
-                        </div>
+                                <input type="checkbox" class="row-checkbox-active w-4 h-4 text-[#0a6e2d] border-gray-300 rounded focus:ring-[#0a6e2d] mt-0.5 flex-shrink-0" value="<?= $item['module_id'] ?>">
+                            </div>
 
-                        <!-- Card Footer (Actions) -->
-                        <div class="p-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
-                            <div>
-                                <?php if ($item['type'] == 'module'): ?>
-                                    <button class="view-module-status text-gray-500 hover:text-[#0a6e2d] text-sm font-medium transition-colors" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>"><i class="fas fa-eye mr-1"></i> View Status</button>
-                                <?php else: ?>
-                                    <button class="view-results text-gray-500 hover:text-[#0a6e2d] text-sm font-medium transition-colors" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>"><i class="fas fa-chart-bar mr-1"></i> View Results</button>
+                            <!-- Minified Card Body -->
+                            <div class="p-3 flex-1 text-xs text-gray-600 flex flex-col justify-between">
+                                <div>
+                                    <?php if ($item['description']): ?>
+                                        <p class="mb-2 line-clamp-2" title="<?= htmlspecialchars($item['description']) ?>"><?= htmlspecialchars($item['description']) ?></p>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($item['content']): ?>
+                                        <div class="mt-2 text-[11px] font-medium text-blue-600 bg-blue-50/50 p-1.5 rounded border border-blue-100 truncate">
+                                            <?= renderContent($item['content']) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <!-- Minified Card Footer (Actions) -->
+                            <div class="p-2 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                                <div class="flex-1 min-w-0">
+                                    <button class="view-item-btn text-[11px] font-bold text-gray-500 hover:text-[#0a6e2d] transition-colors truncate w-full text-left" data-id="<?= $item['module_id'] ?>" data-module-id="<?= $item['module_id'] ?>" data-module-title="<?= htmlspecialchars($item['title']) ?>" data-type="<?= $item['type'] ?>">
+                                        <i class="fas fa-eye mr-1"></i> View
+                                    </button>
+                                </div>
+                                
+                                <?php if (!isViewer()): ?>
+                                <div class="flex gap-1 flex-shrink-0">
+                                    <button class="edit-item text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors" data-id="<?= $item['module_id'] ?>" title="Edit Item"><i class="fas fa-edit text-xs"></i></button>
+                                    
+                                    <form method="POST" class="inline">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="soft_delete">
+                                        <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
+                                        <button type="submit" onclick="return confirm('Archive this item?')" class="text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors" title="Archive"><i class="fas fa-trash-alt text-xs"></i></button>
+                                    </form>
+                                </div>
                                 <?php endif; ?>
                             </div>
-                            
-                            <?php if (!isViewer()): ?>
-                            <div class="flex gap-1">
-                                <button class="edit-item text-gray-400 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-colors" data-id="<?= $item['module_id'] ?>" title="Edit"><i class="fas fa-edit"></i></button>
-                                <form method="POST" class="inline">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="action" value="soft_delete">
-                                    <input type="hidden" name="id" value="<?= $item['module_id'] ?>">
-                                    <button type="submit" onclick="return confirm('Archive this item?')" class="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors" title="Archive"><i class="fas fa-trash-alt"></i></button>
-                                </form>
-                            </div>
-                            <?php endif; ?>
                         </div>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
             </div>
-        <?php else: ?>
-            <div class="text-center py-16 bg-white rounded-xl border border-gray-200 border-dashed mb-10">
-                <i class="fas fa-book-open text-5xl text-gray-300 mb-4"></i>
-                <h3 class="text-lg font-medium text-gray-900">No active modules or assessments</h3>
-                <p class="text-sm text-gray-500 mt-1">Click "Create New" to add your first item.</p>
-            </div>
-        <?php endif; ?>
+            <?php endif; ?>
+
+        </div>
 
         <!-- Archives Section -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -401,7 +516,7 @@ function renderContent($content) {
                             <i class="fas fa-trash-alt"></i> Delete
                         </button>
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap items-center">
                         <select id="filterArchSubtopic" class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                             <option value="">All Subtopics</option>
                             <?php foreach ($subtopics as $sub): ?>
@@ -413,6 +528,10 @@ function renderContent($content) {
                             <option value="module">Module</option>
                             <option value="assessment">Assessment</option>
                         </select>
+                        <div class="relative w-full md:w-48">
+                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="searchArchInput" placeholder="Search archives..." class="w-full pl-9 pr-4 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                        </div>
                     </div>
                 </div>
 
@@ -468,17 +587,18 @@ function renderContent($content) {
     </main>
 </div>
 
-<!-- ==================== RESULTS MODAL ==================== -->
-<div class="modal fade" id="resultsModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+
+
+<!-- ==================== VIEW / EDIT MODAL ==================== -->
+<div class="modal fade" id="viewItemModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
             <div class="modal-header bg-[#0a6e2d] text-white p-4 border-0">
-                <h5 class="modal-title text-lg font-bold">Status / Results</h5>
+                <h5 class="text-lg font-bold" id="viewItemModalTitle"><i class="fas fa-eye mr-2"></i>View Item</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-6 bg-white" id="resultsModalBody">Loading...</div>
-            <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
-                <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Close</button>
+            <div class="modal-body p-6 bg-gray-50" id="viewItemModalBody">
+                <!-- AJAX populated -->
             </div>
         </div>
     </div>
@@ -710,6 +830,7 @@ function renderContent($content) {
 <script>
 // CSRF token for JS-generated forms
 const CSRF_TOKEN = '<?= csrf_token() ?>';
+const isViewerRole = <?= isViewer() ? 'true' : 'false' ?>;
 
 // ============================================================
 // ERROR / SUCCESS HELPERS
@@ -862,19 +983,77 @@ document.getElementById('createModal').addEventListener('show.bs.modal', () => {
     }
 });
 
-// ---------- Edit Item ----------
+// ============================================================
+// MODAL VIEW & INLINE EDIT (WITH TABS)
+// ============================================================
 let isLoading = false;
-document.querySelectorAll('.edit-item').forEach(btn => {
-    btn.addEventListener('click', async function() {
-        if (isLoading) return; isLoading = true;
-        const id = this.dataset.id;
-        try {
-            const r = await fetch(`get_module.php?id=${id}`); const data = await r.json();
-            document.getElementById('editModalBody').innerHTML = buildEditModalHtml(data);
+
+function initViewMode(modal, data, type, id, viewHtml, modalTitle, modalBody) {
+    modalBody.innerHTML = viewHtml;
+    
+    // Tab Loading Logic
+    const resultsTabBtn = document.getElementById('results-tab');
+    if (resultsTabBtn) {
+        resultsTabBtn.addEventListener('shown.bs.tab', function() {
+            const container = document.getElementById('modal-results-container');
+            if (container.dataset.loaded === 'true') return;
+            
+            container.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-[#0a6e2d]"></i><p class="mt-2 text-sm text-gray-500">Fetching student data...</p></div>';
+            
+            const endpoint = type === 'module' ? 'get_module_status.php' : 'get_assessment_results.php';
+            
+            fetch(`${endpoint}?module_id=${id}`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success && d.results.length) {
+                        let h = '<div class="overflow-x-auto border border-gray-200 rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Course</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Section</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>';
+                        if (type === 'assessment') h += '<th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Score</th>';
+                        h += '<th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Date</th></tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
+                        
+                        d.results.forEach(r => {
+                            const statusBadge = r.completed ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800"><i class="fas fa-check mr-1"></i> Done</span>' : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800"><i class="fas fa-times mr-1"></i> Missing</span>';
+                            h += `<tr><td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(r.full_name)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.program)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.section)}</td><td class="px-4 py-3 text-center">${statusBadge}</td>`;
+                            if (type === 'assessment') h += `<td class="px-4 py-3 text-center text-sm font-bold text-blue-600">${r.score !== null ? r.score+'%' : 'N/A'}</td>`;
+                            h += `<td class="px-4 py-3 text-center text-xs text-gray-500">${r.completion_date || '-'}</td></tr>`;
+                        });
+                        
+                        h += '</tbody></table></div>';
+                        container.innerHTML = h;
+                        container.dataset.loaded = 'true';
+                    } else {
+                        container.innerHTML = `<div class="bg-blue-50 text-blue-700 p-4 rounded-lg text-sm text-center"><i class="fas fa-info-circle mr-1"></i> No students have ${type === 'module' ? 'viewed' : 'taken'} this yet.</div>`;
+                    }
+                })
+                .catch(() => {
+                    container.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-lg text-sm">Error loading student data. Please try again.</div>';
+                });
+        });
+    }
+
+    // Edit Switch Logic
+    const btnEdit = document.getElementById('btnSwitchToEdit');
+    if (btnEdit) {
+        btnEdit.addEventListener('click', () => {
+            modalTitle.innerHTML = `<i class="fas fa-edit mr-2"></i>Edit Item`;
+            modalBody.innerHTML = buildEditModalHtml(data);
+            
             const editForm = document.getElementById('editForm');
-            if (!editForm) return;
-            if (data.type === 'assessment' && data.content?.startsWith('quiz:')) setupQuizBuilder(editForm);
-                        editForm.addEventListener('submit', function(e) {
+            if (data.type === 'assessment' && data.content?.startsWith('quiz:')) {
+                setupQuizBuilder(editForm);
+            }
+            
+            const cancelBtn = editForm.querySelector('button[type="button"]');
+            if (cancelBtn) {
+                cancelBtn.removeAttribute('data-bs-dismiss'); // Important: Stop it from closing the modal
+                cancelBtn.innerText = 'Cancel';
+                cancelBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    modalTitle.innerHTML = `<i class="fas fa-eye mr-2"></i>View Details`;
+                    initViewMode(modal, data, type, id, viewHtml, modalTitle, modalBody);
+                });
+            }
+
+            editForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 if (data.type === 'assessment' && data.content?.startsWith('quiz:')) {
                     const qs = [];
@@ -888,21 +1067,130 @@ document.querySelectorAll('.edit-item').forEach(btn => {
                         });
                     });
                     if (!qs.length) { alert('Add at least one question.'); return; }
-                    
                     const passingScore = document.getElementById('edit_passing_score')?.value || 50;
-                    const quizPayload = {
-                        passing_score: parseInt(passingScore),
-                        questions: qs
-                    };
-                    
-                    document.getElementById('edit_quiz_data').value = 'quiz:' + JSON.stringify(quizPayload);
+                    document.getElementById('edit_quiz_data').value = 'quiz:' + JSON.stringify({ passing_score: parseInt(passingScore), questions: qs });
                 }
+                
+                const submitBtn = editForm.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving...';
+
                 fetch('modules.php', { method: 'POST', body: new FormData(this) })
-                    .then(() => { bootstrap.Modal.getInstance(document.getElementById('editModal')).hide(); location.reload(); })
-                    .catch(err => alert(err));
+                    .then(() => { location.reload(); })
+                    .catch(err => {
+                        alert(err);
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = 'Update Item';
+                    });
             });
-            new bootstrap.Modal(document.getElementById('editModal')).show();
-        } catch(err) { console.error(err); alert('Error loading item.'); } finally { isLoading = false; }
+        });
+    }
+}
+
+function openItemModal(id, type, title) {
+    if (isLoading) return; isLoading = true;
+    
+    const modalEl = document.getElementById('viewItemModal');
+    const modalTitle = document.getElementById('viewItemModalTitle');
+    const modalBody = document.getElementById('viewItemModalBody');
+    
+    modalTitle.innerHTML = `<i class="fas fa-eye mr-2"></i>View Details`;
+    modalBody.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-3xl text-[#0a6e2d]"></i><p class="mt-2 text-gray-500">Loading details...</p></div>';
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    fetch(`get_module.php?id=${id}`)
+        .then(r => r.json())
+        .then(data => {
+            // Build View Mode HTML with Tabs
+            let viewHtml = `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                
+                <!-- Tabs Navigation -->
+                <div class="bg-gray-50 border-b border-gray-200 px-4 pt-3">
+                    <ul class="nav nav-tabs border-0" id="viewModalTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active border-0 border-bottom border-2 border-transparent rounded-t-lg font-bold text-sm py-2 px-4 text-[#0a6e2d] border-[#0a6e2d]" id="details-tab" data-bs-toggle="tab" data-bs-target="#details-pane" type="button" role="tab">
+                                <i class="fas fa-info-circle mr-1"></i> Details
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link border-0 border-bottom border-2 border-transparent rounded-t-lg font-bold text-sm py-2 px-4 text-gray-500 hover:text-gray-700" id="results-tab" data-bs-toggle="tab" data-bs-target="#results-pane" type="button" role="tab">
+                                <i class="fas fa-chart-bar mr-1"></i> ${type === 'module' ? 'Status' : 'Results'}
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Tabs Content -->
+                <div class="tab-content p-5" id="viewModalTabsContent">
+                    
+                    <!-- TAB 1: DETAILS -->
+                    <div class="tab-pane fade show active" id="details-pane" role="tabpanel">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <div class="flex items-center gap-2 mb-2">
+                                    ${type === 'module' ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 uppercase"><i class="fas fa-book mr-1"></i> Module</span>' : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800 uppercase"><i class="fas fa-clipboard-check mr-1"></i> Assessment</span>'}
+                                </div>
+                                <h4 class="text-xl font-bold text-gray-900">${escapeHtml(data.title)}</h4>
+                            </div>
+                            <div class="flex gap-2">
+                                ${(!isViewerRole) ? `<button id="btnSwitchToEdit" class="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors border border-blue-200"><i class="fas fa-edit mr-1"></i> Edit</button>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
+                            <div><span class="text-gray-500 font-medium">Subtopic:</span> <span class="text-gray-900 font-bold">${escapeHtml(data.subtopic_title || '')}</span></div>
+                            <div><span class="text-gray-500 font-medium">Due Date:</span> <span class="text-gray-900 font-bold">${data.due_date ? new Date(data.due_date).toLocaleDateString() : 'N/A'}</span></div>
+                        </div>
+                        
+                        ${data.description ? `<div class="mb-4"><h6 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Description</h6><p class="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-100">${nl2br(escapeHtml(data.description))}</p></div>` : ''}
+                        
+                        ${data.content ? `<div class="mb-4"><h6 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Content</h6><div class="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-100">${renderContentJS(data.content)}</div></div>` : ''}
+                    </div>
+
+                    <!-- TAB 2: RESULTS / STATUS -->
+                    <div class="tab-pane fade" id="results-pane" role="tabpanel">
+                        <div id="modal-results-container">
+                            <div class="text-center py-6 text-gray-500">
+                                <i class="fas fa-arrow-up text-gray-300 text-2xl mb-2"></i>
+                                <p class="text-sm">Click the <strong>${type === 'module' ? 'Status' : 'Results'}</strong> tab to load student data.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 px-5 py-3 border-t border-gray-200 flex justify-end">
+                    <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold transition-colors" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>`;
+            
+            initViewMode(modal, data, type, id, viewHtml, modalTitle, modalBody);
+        })
+        .catch(err => {
+            console.error(err);
+            modalBody.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error loading details. Please try again.</div>';
+        })
+        .finally(() => { isLoading = false; });
+}
+
+// Bind View Buttons
+document.querySelectorAll('.view-item-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openItemModal(this.dataset.id, this.dataset.type, this.dataset.moduleTitle);
+    });
+});
+
+document.querySelectorAll('.edit-item').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openItemModal(this.dataset.id, 'module', 'Edit Item'); 
+        setTimeout(() => {
+            const btnSwitch = document.getElementById('btnSwitchToEdit');
+            if (btnSwitch) btnSwitch.click();
+        }, 400); 
     });
 });
 
@@ -1003,12 +1291,93 @@ function buildEditModalHtml(data) {
               </div>`;
     }
     h += `<div class="mt-6 flex justify-end gap-3">
-            <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium text-sm px-6 py-2.5 rounded-lg transition-colors">Cancel</button>
             <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium text-sm px-8 py-2.5 rounded-lg transition-colors shadow-sm">Update Item</button>
           </div></form>`;
     return h;
 }
+
 function escapeHtml(s) { return s ? s.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]) : ''; }
+function nl2br(str) { return str.replace(/\n/g, '<br>'); }
+
+function renderContentJS(content) {
+    if (!content) return '';
+    
+    // File Download
+    if (content.startsWith('file:')) {
+        return `<a href="../uploads/modules/${content.substring(5)}" target="_blank" class="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors font-bold text-sm"><i class="fas fa-download"></i> Download Attached File</a>`;
+    }
+    
+    // External Link
+    if (content.startsWith('link:')) {
+        return `<a href="${content.substring(5)}" target="_blank" class="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors font-bold text-sm"><i class="fas fa-external-link-alt"></i> Open External Link</a>`;
+    }
+    
+    // Text Content
+    if (content.startsWith('text:')) {
+        return `<div class="prose prose-sm max-w-none text-gray-700 leading-relaxed">${nl2br(escapeHtml(content.substring(5)))}</div>`;
+    }
+    
+    // Quiz / Assessment Content
+    if (content.startsWith('quiz:')) {
+        try {
+            let parsed = JSON.parse(content.substring(5));
+            let qs = parsed.questions || parsed;
+            let passing = parsed.passing_score || 50;
+            
+            let html = `<div class="space-y-4">`;
+            
+            // Quiz Header
+            html += `<div class="flex items-center justify-between bg-blue-50 border border-blue-200 p-3 rounded-lg mb-4">
+                        <div class="flex items-center gap-2 font-bold text-blue-800">
+                            <i class="fas fa-clipboard-check text-lg"></i> Assessment Content
+                        </div>
+                        <span class="text-xs font-bold bg-white text-blue-700 px-3 py-1 rounded-full border border-blue-200 shadow-sm">Passing Score: ${passing}%</span>
+                     </div>`;
+            
+            // Loop through all questions
+            qs.forEach((q, index) => {
+                html += `<div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                    <div class="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
+                        <div class="font-bold text-gray-800 text-sm">${index + 1}. ${escapeHtml(q.text)}</div>
+                        <span class="text-xs font-bold text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-200 whitespace-nowrap ml-2">${q.points} pt(s)</span>
+                    </div>
+                    <div class="text-[11px] text-gray-500 mb-3 uppercase font-bold tracking-wider">Type: ${(q.type || '').replace('_', ' ')}</div>`;
+                
+                if (q.type === 'multiple_choice' && q.options) {
+                    html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">`;
+                    q.options.forEach(opt => {
+                        const isCorrect = opt.trim().toLowerCase() === (q.correct || '').trim().toLowerCase();
+                        html += `<div class="flex items-center gap-2 text-sm p-2 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-200 text-green-800 font-bold' : 'bg-gray-50 border-gray-100 text-gray-600'}">
+                            <i class="fas ${isCorrect ? 'fa-check-circle text-green-500' : 'fa-circle text-gray-300'}"></i>
+                            <span>${escapeHtml(opt)}</span>
+                            ${isCorrect ? '<span class="text-[10px] bg-green-200 text-green-800 px-1.5 py-0.5 rounded ml-auto">Correct</span>' : ''}
+                        </div>`;
+                    });
+                    html += `</div>`;
+                } else if (q.type === 'true_false') {
+                    html += `<div class="flex items-center gap-2 text-sm p-2 bg-green-50 border border-green-200 text-green-800 font-bold rounded-lg mb-2">
+                        <i class="fas fa-check-circle text-green-500"></i>
+                        <span>Correct Answer: ${escapeHtml(q.correct)}</span>
+                    </div>`;
+                } else {
+                    html += `<div class="text-sm p-2 bg-green-50 border border-green-200 text-green-800 rounded-lg mb-2">
+                        <span class="font-bold">Correct Answer:</span> <span class="font-mono bg-white px-2 py-0.5 rounded border border-green-300">${escapeHtml(q.correct)}</span>
+                    </div>`;
+                }
+                html += `</div>`;
+            });
+            
+            html += `</div>`;
+            return html;
+        } catch(e) { 
+            return '<div class="bg-red-50 text-red-700 p-4 rounded-lg text-sm border border-red-200">Error parsing quiz data. The content format may be outdated.</div>'; 
+        }
+    }
+    
+    // Fallback for older unformatted content
+    return nl2br(escapeHtml(content));
+}
 
 function setupQuizBuilder(form) {
     const container = document.getElementById('edit_questions_container');
@@ -1033,89 +1402,53 @@ function setupQuizBuilder(form) {
     });
 }
 
-// ---------- View Status / Results ----------
-document.querySelectorAll('.view-module-status').forEach(btn => {
-    btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        document.querySelector('#resultsModal .modal-title').innerText = `Module Status: ${this.dataset.moduleTitle}`;
-        const body = document.getElementById('resultsModalBody'); body.innerHTML = 'Loading...';
-        new bootstrap.Modal(document.getElementById('resultsModal')).show();
-        fetch(`get_module_status.php?module_id=${this.dataset.moduleId}`).then(r => r.json()).then(d => {
-            if (d.success && d.results.length) {
-                let h = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Course</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Section</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Date</th></tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
-                d.results.forEach(r => {
-                    const statusBadge = r.completed ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800"><i class="fas fa-check mr-1"></i> Done</span>' : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800"><i class="fas fa-times mr-1"></i> Missing</span>';
-                    h += `<tr><td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(r.full_name)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.program)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.section)}</td><td class="px-4 py-3 text-center">${statusBadge}</td><td class="px-4 py-3 text-center text-xs text-gray-500">${r.completion_date || '-'}</td></tr>`;
-                });
-                h += '</tbody></table></div>'; body.innerHTML = h;
-            } else body.innerHTML = '<div class="bg-blue-50 text-blue-700 p-4 rounded-lg text-sm">No students registered for this module yet.</div>';
-        }).catch(() => body.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-lg text-sm">Error loading data.</div>');
-    });
-});
-document.querySelectorAll('.view-results').forEach(btn => {
-    btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        document.querySelector('#resultsModal .modal-title').innerText = `Assessment Results: ${this.dataset.moduleTitle}`;
-        const body = document.getElementById('resultsModalBody'); body.innerHTML = 'Loading...';
-        new bootstrap.Modal(document.getElementById('resultsModal')).show();
-        fetch(`get_assessment_results.php?module_id=${this.dataset.moduleId}`).then(r => r.json()).then(d => {
-            if (d.success && d.results.length) {
-                let h = '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Course</th><th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Section</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Score</th><th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Date</th></tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
-                d.results.forEach(r => {
-                    const statusBadge = r.completed ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800"><i class="fas fa-check mr-1"></i> Done</span>' : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800"><i class="fas fa-times mr-1"></i> Missing</span>';
-                    h += `<tr><td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(r.full_name)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.program)}</td><td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(r.section)}</td><td class="px-4 py-3 text-center">${statusBadge}</td><td class="px-4 py-3 text-center text-sm font-bold text-blue-600">${r.score !== null ? r.score+'%' : 'N/A'}</td><td class="px-4 py-3 text-center text-xs text-gray-500">${r.completion_date || '-'}</td></tr>`;
-                });
-                h += '</tbody></table></div>'; body.innerHTML = h;
-            } else body.innerHTML = '<div class="bg-blue-50 text-blue-700 p-4 rounded-lg text-sm">No students have taken this assessment yet.</div>';
-        }).catch(() => body.innerHTML = '<div class="bg-red-50 text-red-700 p-4 rounded-lg text-sm">Error loading data.</div>');
-    });
-});
-
 // ============================================================
-// SORTING
+// SORTING (Updated for Sectioned Layout)
 // ============================================================
 function sortItems() {
     const sortBy = document.getElementById('sortBy')?.value || 'due-asc';
-    const container = document.getElementById('activeItemsContainer');
-    if (!container) return;
+    
+    // Get all the grid containers (one per subtopic section)
+    const grids = document.querySelectorAll('.active-items-grid');
 
-    const cards = Array.from(container.querySelectorAll('.active-item-row'));
+    grids.forEach(grid => {
+        const cards = Array.from(grid.querySelectorAll('.active-item-row'));
 
-    cards.sort((a, b) => {
-        const getA = (k) => (a.dataset[k] || '').toString();
-        const getB = (k) => (b.dataset[k] || '').toString();
+        cards.sort((a, b) => {
+            const getA = (k) => (a.dataset[k] || '').toString();
+            const getB = (k) => (b.dataset[k] || '').toString();
 
-        switch (sortBy) {
-            case 'due-asc': {
-                const da = getA('due') || '9999-12-31';
-                const db = getB('due') || '9999-12-31';
-                return da.localeCompare(db);
+            switch (sortBy) {
+                case 'due-asc': {
+                    const da = getA('due') || '9999-12-31';
+                    const db = getB('due') || '9999-12-31';
+                    return da.localeCompare(db);
+                }
+                case 'due-desc': {
+                    const da = getA('due') || '0000-01-01';
+                    const db = getB('due') || '0000-01-01';
+                    return db.localeCompare(da);
+                }
+                case 'title-asc':
+                    return getA('title').toLowerCase().localeCompare(getB('title').toLowerCase());
+                case 'title-desc':
+                    return getB('title').toLowerCase().localeCompare(getA('title').toLowerCase());
+                case 'type-module':
+                    return getA('type') === 'module' ? -1 : (getB('type') === 'module' ? 1 : getA('title').localeCompare(getB('title')));
+                case 'type-assessment':
+                    return getA('type') === 'assessment' ? -1 : (getB('type') === 'assessment' ? 1 : getA('title').localeCompare(getB('title')));
+                case 'created-desc':
+                    return (getB('created') || '').localeCompare(getA('created') || '');
+                case 'created-asc':
+                    return (getA('created') || '').localeCompare(getB('created') || '');
+                default:
+                    return 0;
             }
-            case 'due-desc': {
-                const da = getA('due') || '0000-01-01';
-                const db = getB('due') || '0000-01-01';
-                return db.localeCompare(da);
-            }
-            case 'title-asc':
-                return getA('title').toLowerCase().localeCompare(getB('title').toLowerCase());
-            case 'title-desc':
-                return getB('title').toLowerCase().localeCompare(getA('title').toLowerCase());
-            case 'type-module':
-                return getA('type') === 'module' ? -1 : (getB('type') === 'module' ? 1 : getA('title').localeCompare(getB('title')));
-            case 'type-assessment':
-                return getA('type') === 'assessment' ? -1 : (getB('type') === 'assessment' ? 1 : getA('title').localeCompare(getB('title')));
-            case 'subtopic':
-                return getA('subtopic-title').toLowerCase().localeCompare(getB('subtopic-title').toLowerCase());
-            case 'created-desc':
-                return (getB('created') || '').localeCompare(getA('created') || '');
-            case 'created-asc':
-                return (getA('created') || '').localeCompare(getB('created') || '');
-            default:
-                return 0;
-        }
+        });
+
+        // Re-append sorted cards back to their specific grid
+        cards.forEach(card => grid.appendChild(card));
     });
-
-    cards.forEach(card => container.appendChild(card));
 }
 
 document.getElementById('sortBy')?.addEventListener('change', sortItems);
