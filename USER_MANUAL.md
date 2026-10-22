@@ -6,7 +6,7 @@
 
 **Audience:** Students, ACES staff, and administrators
 
-**Version:** 1.1 — October 2026
+**Version:** 1.2 — October 2026
 
 ---
 
@@ -50,18 +50,18 @@ This manual explains how to use every feature, organized by user role. Students 
    |-------|-------|
    | **Student ID** | e.g. `2023-2-009999` — as shown on your school ID |
    | **Full Name** | First name, middle name, last name |
-   | **Email** | Use an active email — you'll need it for verification |
+   | **Email** | Use an active email — you'll need it for verification. Must end in `@kld.edu.ph`. |
    | **Program** | BS Information Systems or BS Psychology |
    | **Section** | Your block section (e.g. `412`) |
    | **Mobile / Telephone** | Optional but recommended |
-   | **Username** | Choose something memorable |
+   | **Username** | Optional. If left blank, you must use your Student ID to log in. |
    | **Password** | Minimum 6 characters — mix of letters and numbers |
 
 3. **Terms & Data Privacy:** At the bottom of the form, check the box to agree to the Terms and Conditions and Data Privacy Policy. You can click the links to read them in a new tab.
 4. Click **Create Account**.
 5. Check your email inbox for a verification message from ACES.
 6. Click the verification link inside the email (valid for 24 hours).
-7. You'll be redirected to the login page. Log in with your email/username and password.
+7. You'll be redirected to the login page. Log in with your email/Student ID and password.
 
 **Didn't receive the email?**
 - Check your spam folder.
@@ -72,7 +72,7 @@ This manual explains how to use every feature, organized by user role. Students 
 ### 2.2 Logging In
 
 1. Go to the login page.
-2. Enter your **email** or **username** (students) / **email** (staff).
+2. Enter your **Student Number** or **Email** (students) / **Email** (staff).
 3. Enter your **password**. *(Tip: You can click the **eye icon** inside the password box to show/hide your password.)*
 4. Optional: Check **Remember me** to stay logged in for up to 30 days.
 5. Click **Log In**.
@@ -80,6 +80,8 @@ This manual explains how to use every feature, organized by user role. Students 
 You'll be redirected to your dashboard based on your role:
 - Students → `student/dashboard.php`
 - Staff → `staff/dashboard.php`
+
+> **Deactivated Accounts:** If your account has been temporarily disabled by the ACES Super Admin, you will see a specific error message stating your account is deactivated. You must contact the ACES Unit to have your access restored.
 
 ### 2.3 Forgot Password
 
@@ -100,7 +102,7 @@ You'll be redirected to your dashboard based on your role:
 
 Click your name or the **Logout** button in the top-right corner or sidebar.
 
-> **Note:** If **Remember me** is enabled and you log out, the saved session is cleared from both your browser and the server.
+> **Note:** If **Remember me** is enabled and you log out, the saved session is cleared from both your browser and the server securely.
 
 ---
 
@@ -142,7 +144,7 @@ The dashboard is your home page after login. It shows:
 2. Browse the list of subtopics. Each shows:
    - Title and description
    - Deadline
-   - Available slots (e.g. "3 of 10 slots left")
+   - **Available slots specific to your section** (e.g. "3 of 10 slots left for BSIS-401") 
    - Proctor and location
 
 3. Click **Register** next to your chosen subtopic.
@@ -156,15 +158,15 @@ A warning appears: *"You are already registered for [Sub A]. Do you want to repl
 - Click **OK** to swap
 - Click **Cancel** to keep your original choice
 
-> **Note:** Once you swap, your previous attendance record for that session is deleted. Only the new subtopic matters.
+> **Note:** Once you swap, your previous attendance record and any module progress for that session are deleted. Only the new subtopic matters.
 
 **If a subtopic is full:**
 
-The **Register** button will be disabled. Choose a different subtopic.
+The **Register** button will be disabled. The system checks the capacity allocated specifically for *your section*. If your section's slots are full, you cannot register even if other sections have space.
 
-**If a subtopic requires your section/program:**
+**If a subtopic is restricted:**
 
-Some subtopics are restricted to certain sections (e.g. Section 412) or programs (e.g. BS Psychology). Only eligible students see them.
+Some subtopics are restricted to specific **Programs** and **Sections**. If a subtopic has both restrictions, you must match **both** your course AND your section to see and register for it.
 
 ### 3.4 Completing Modules
 
@@ -191,12 +193,15 @@ Modules are learning materials attached to subtopics. They can be:
 3. Click **Submit**.
 4. Your score is shown and saved automatically.
 
+> **Quiz Retake Protection:** If you pass a quiz and decide to retake it to get a higher score, the system will **not** downgrade your grade if you score lower on the second attempt. Your highest passing score is permanently kept.
+
 **To complete a link module:**
 
 1. Click **Open Link** to visit the external site.
 2. Return to the module and click **Mark as Complete**.
 
-> **Auto-attendance:** For some subtopics, completing all modules automatically marks you as **present** in attendance. You don't need to do anything else.
+> **Auto-attendance:** For subtopics marked as **Module-based**, completing all required modules will automatically mark you as **Present**. 
+> *Note: This only happens if your attendance status is still 'Pending'. If a staff member has already manually marked you 'Present' or 'Absent', the system respects that manual entry.*
 
 ### 3.5 Viewing Your Progress
 
@@ -263,14 +268,16 @@ When creating or editing a session, you can add subtopics:
 1. Click **Add Subtopic**.
 2. Fill in:
    - **Title** (e.g. "Basic Resume Template")
-   - **Capacity** (Max students)
+   - **Capacity** (Max students globally)
    - **Deadline** (Registration cutoff)
    - **Date / Start Time / End Time**
    - **Proctor / Location** (May differ from session)
-   - **Attendance Type** (Physical or Module-based)
+   - **Attendance Type** (Physical, Online, or Module-based)
    - **Visibility Rules** (Restrict to specific Courses or Sections)
    - **Required Rules** (Auto-register specific Courses or Sections)
 3. Click **Create Session** to save all subtopics at once.
+
+> **Even Split Tool:** The system provides an "Even Split" button that automatically distributes the total number of eligible students evenly across all subtopics, ensuring fairness. This takes into account the visibility and required rules you set.
 
 ### 4.4 Creating Modules and Assessments *(Lead / Admin)*
 
@@ -297,7 +304,7 @@ When creating or editing a session, you can add subtopics:
 
 **Bulk actions:** Select multiple students via checkboxes, use the dropdown to select **Present** or **Absent**, and click **Apply Status**.
 
-**Auto-generated records:** If a student completed all modules, they may already be marked present automatically.
+**Auto-generated records:** If a student completed all modules, they may already be marked present automatically. The system displays an "Auto" badge next to these records so you know the system verified them. You can override these if needed.
 
 ### 4.6 Viewing Student Progress
 
@@ -403,6 +410,9 @@ A: Refresh the page. If it still shows incomplete, submit a ticket to the ACES U
 **Q: How do I know if I was marked present?**
 A: Go to Progress — each session shows Present, Absent, or Pending.
 
+**Q: I failed a quiz and want to try again. Will it reset my score?**
+A: Yes, but only if you haven't passed it yet. If you already have a passing score, retaking it will not lower your grade.
+
 ### For Staff
 
 **Q: How do I reset a student's password?**
@@ -431,6 +441,7 @@ A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by 
 |---------|-----|
 | "Invalid CSRF token" | Refresh the page and try again. If persistent, log out and log back in. |
 | Session logs me out unexpectedly | Your idle timeout (default 1 hour) was exceeded. Log back in. |
+| "Your account has been deactivated" | Your access has been revoked by the Super Admin. Contact the ACES Unit. |
 | Remember-me doesn't work | Your browser may be blocking third-party cookies. Check browser settings. |
 | Upload fails with "file type not allowed" | Check the allowed extensions list in Section 4.4. |
 | Upload fails with "file too large" | Files must be under 10 MB. Compress or split. |
@@ -458,6 +469,7 @@ A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by 
 |---------|------|--------|---------|
 | 1.0 | October 2026 | ACES Research Team | Initial user manual |
 | 1.1 | October 2026 | ACES Research Team | Updated for new UI (Tailwind), Data Privacy checklist, mobile menu, and password toggles |
+| 1.2 | October 2026 | ACES Research Team | Added Quiz Retake Protection, per-section capacity display, AND logic for visibility, deactivated account troubleshooting, and auto-attendance clarification |
 
 ---
 

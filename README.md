@@ -5,14 +5,15 @@ A centralized, web-based platform for the Alumni Career, Enhancement, and Servic
 ## 📌 What It Does
 Replaces manual "bingo cards" and fragmented Google Forms with:
 - **Preregistration** — Students pick subtopics within deadlines.
-- **Automated Session Distribution** — Even-split capacity management.
+- **Automated Session Distribution** — Even-split capacity management that respects course and section limits.
 - **Digital Attendance Verification** — Staff-anchored to physical signatures.
-- **Module-Based Compliance** — Auto-marks attendance when all modules are complete.
+- **Module-Based Compliance** — Auto-marks attendance when all modules are complete (only if the record is still `pending`).
 - **Real-Time Progress Dashboards** — Per-student and per-session views.
 - **Role-Based Access Control** — Student / Staff / Super Admin.
 - **Audit Logging** — Every administrative action is tracked.
 - **Export Reports** — CSV + PDF for clearance processing.
 - **Institutional Policies** — Built-in Terms and Data Privacy page.
+- **Support Tickets** — Students can submit and track concerns.
 
 ## 🛠️ Tech Stack
 
@@ -52,5 +53,7 @@ mysql -u root aces_db -e "source database/aces_db.sql"
 
 ## ⚠️ Important Note for Maintainers
 - **Default Passwords:** All default test accounts use the password `password`. Change these immediately upon deployment.
-- **Tailwind CSS:** The system uses a **locally compiled** Tailwind CSS file. Do not delete `assets/css/tailwind.css` or the `tailwindcss.exe` compiler. 
+- **Database Dump:** The SQL file in `database/aces_db.sql` is **up-to-date** as of the latest audit. It includes the `tickets` and `ticket_messages` tables, the `UNIQUE` constraint on `attendance`, and the fixed `subtopic_section_capacity` schema.
+- **Tailwind CSS:** The system uses a **locally compiled** Tailwind CSS file. Do not delete `assets/css/tailwind.css` or the `tailwindcss.exe` compiler.
 - **Policies:** The Terms and Data Privacy page (`public/policies.php`) contains placeholder text. KLD IT must replace this with the official institutional policies before public launch.
+- **Security:** Ensure `APP_ENV=production` and `APP_DEBUG=false` in your `.env` file before going live.

@@ -158,7 +158,7 @@ Log in with the cPanel username and password from your hosting provider.
 
 > **File size limit:** Most cPanel hosts limit phpMyAdmin imports to 128 MB. The ACES dump is ~120 KB, so it will import fine. If you ever have a larger dump, zip it first (`.sql.gz`) — phpMyAdmin accepts compressed files.
 
-> **Strict-mode warning:** If the import fails with `ERROR 1525 (HY000): Incorrect DATE value: '0000-00-00'`, run this in phpMyAdmin's SQL tab **before** importing:
+> **Strict-mode warning:** The database dump in the repository has been regenerated and **no longer contains invalid `0000-00-00` dates**. If you are importing an older, un-regenerated dump from a past backup and it fails with `ERROR 1525 (HY000): Incorrect DATE value: '0000-00-00'`, run this in phpMyAdmin's SQL tab **before** importing:
 
 ```sql
 SET SESSION sql_mode = '';
@@ -327,7 +327,7 @@ mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS aces_db CHARACTER SET utf8mb4
 mysql -u root -p aces_db < database/aces_db.sql
 ```
 
-> **Strict-mode warning:** On MySQL 8.0+ / MariaDB 10.6+ the default `sql_mode` includes `STRICT_TRANS_TABLES`, which rejects the placeholder date `'0000-00-00'` present in one test row. If the import fails with `ERROR 1525 (HY000)`, run `SET SESSION sql_mode = '';` before the import, or edit the invalid date in the dump.
+> **Strict-mode note:** The current dump has been regenerated and no longer contains the invalid `0000-00-00` dates from older versions. However, if you are restoring from an old backup and hit `ERROR 1525 (HY000)`, run `SET SESSION sql_mode = '';` before the import.
 
 ### 3. Configure Environment
 
@@ -366,7 +366,7 @@ npx tailwindcss -i ./assets/css/tailwind.src.css -o ./assets/css/tailwind.css --
 
 ### 6. Verify Database Migrations (optional — safety check)
 
-The included `database/aces_db.sql` already contains every table and column the system needs, so this step is normally unnecessary.
+The included `database/aces_db.sql` already contains every table and column the system needs, including the recently added `UNIQUE` constraint on the `attendance` table. If you are running an older version of the database, run these checks:
 
 ```sql
 -- Password reset support
@@ -395,7 +395,12 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     email VARCHAR(100) NULL,
     attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Duplicate attendance prevention (Critical for the audit fixes)
+ALTER TABLE attendance ADD UNIQUE KEY IF NOT EXISTS unique_attendance (student_id, session_id, subtopic_id);
 ```
+
+> **Note:** The `courses` and `sections` tables are required and are included in the current dump.
 
 ### 7. Configure Apache
 
@@ -480,7 +485,7 @@ VALUES (
 - [ ] Verification email arrives
 - [ ] Password reset flow works
 - [ ] Staff can create sessions and subtopics
-- [ ] Students can select subtopics
+- [ ] Students can select subtopics (and see per-section capacity)
 - [ ] File uploads work and are validated
 - [ ] CSV export opens in Excel without encoding issues
 - [ ] PDF export produces clean tables
@@ -501,6 +506,7 @@ VALUES (
 ### Data
 - [ ] Test data (`TEST:` sessions, sample students) removed or hidden
 - [ ] Database backup strategy in place
+- [ ] `attendance` table has `UNIQUE KEY unique_attendance (student_id, session_id, subtopic_id)`
 
 ---
 
@@ -545,6 +551,8 @@ When handing this system over to the ACES Unit's IT staff, provide:
 | Cannot modify header info | No whitespace before `<?php` in any file |
 | Remember-me cookie not persisting | Ensure HTTPS is enabled (cookie is `Secure` when `APP_ENV=production`) |
 | CSS styles missing | Run `.\tailwindcss.exe -i .\assets\css\tailwind.src.css -o .\assets\css\tailwind.css --minify` |
+| **"Account deactivated" on login** | Account `is_active` set to 0 by Super Admin. Reactivate via Manage Staff page. |
+| **Duplicate attendance records** | Missing UNIQUE constraint. Run `ALTER TABLE attendance ADD UNIQUE KEY unique_attendance (student_id, session_id, subtopic_id);` |
 
 ---
 

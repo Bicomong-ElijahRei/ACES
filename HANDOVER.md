@@ -16,17 +16,18 @@
 
 The ACES System is a web-based platform for managing student activity sessions, module delivery, attendance tracking, and compliance reporting for the ACES Unit at KLD. It serves approximately 2,300 fourth-year students (BSIS and BS Psychology) and the ACES staff.
 
-The system replaces a manual bingo-card process with a digital workflow covering session preregistration, subtopic selection, module completion, attendance validation, and automated report generation.
+The system replaces a manual bingo-card process with a digital workflow covering session preregistration, subtopic selection, module completion, attendance validation, and automated report generation. Following the comprehensive audit conducted in October 2026, the system now enforces **per-section capacity distribution**, **quiz retake protection**, **transaction-safe registration swaps**, and **consistent soft-delete filtering** across all modules.
 
 **What was delivered:**
 
 - Complete working system (PHP 8+, MySQL, Bootstrap 5, **Tailwind CSS v3.4.17**)
 - Full source code on GitHub: `https://github.com/Bicomong-ElijahRei/ACES`
-- Database schema + data dump: `database/aces_db.sql`
+- Database schema + data dump: `database/aces_db.sql` (regenerated with UNIQUE attendance constraint)
 - **Compiled CSS stylesheet:** `assets/css/tailwind.css`
 - **Standalone Tailwind CLI:** `tailwindcss.exe` (in project root, for future updates)
 - **Institutional Policies Page:** `public/policies.php`
 - Installation guide: `INSTALL.md`
+- User manual: `USER_MANUAL.md`
 - Environment template: `.env.example`
 - This handover document
 
@@ -73,6 +74,7 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | Gmail SMTP |
 | `CSRF_SECRET`, `CRON_SECRET` | Security tokens |
 | `APP_URL`, `APP_ENV`, `APP_DEBUG` | Application configuration |
+| `SESSION_IDLE_TIMEOUT`, `SESSION_REMEMBER_DAYS` | Session behavior |
 
 ### Credentials to Rotate Before Production
 
@@ -96,7 +98,7 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | Backend | PHP 8.0+ |
 | Database | MySQL 8.0+ / MariaDB 10.4+ |
 | Local Development | XAMPP (Apache + MySQL + PHP) |
-| Email | PHPMailer via Gmail SMTP |
+| Email | PHPMailer via Gmail SMTP (10-second timeout enforced) |
 | PDF Generation | FPDF |
 
 ### Key Directories
@@ -116,7 +118,7 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | `lib/` | Third-party libraries (PHPMailer, FPDF) |
 | `assets/css/` | **Source and compiled Tailwind CSS files** |
 
-### Database Tables (18)
+### Database Tables (20)
 
 | Table | Purpose |
 |-------|---------|
@@ -124,9 +126,9 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | `students` | Student profile data |
 | `sessions` | ACES activity sessions |
 | `subtopics` | Session subtopics |
-| `subtopic_section_capacity` | Per-section capacity limits |
+| `subtopic_section_capacity` | Per-section capacity limits (Even Split enforcement) |
 | `registrations` | Student subtopic registrations |
-| `attendance` | Attendance records |
+| `attendance` | Attendance records (**UNIQUE constraint on student_id + session_id + subtopic_id**) |
 | `compliance` | Completion tracking |
 | `modules` | Learning modules and assessments |
 | `student_module_progress` | Student module completion |
@@ -138,6 +140,8 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | `remember_tokens` | Remember-me cookies |
 | `staff_action_log` | Staff management audit trail |
 | `reminders_sent` | Reminder delivery tracking |
+| **`courses`** | **Academic program reference** |
+| **`sections`** | **Class section reference** |
 
 ### Security Features
 
@@ -148,6 +152,8 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | Session regeneration on login | ✅ |
 | Idle session timeout | ✅ |
 | Remember-me with token rotation | ✅ |
+| **Deactivated account block (`is_active = 0`)** | ✅ |
+| **Duplicate attendance prevention (UNIQUE composite key)** | ✅ |
 | File upload validation (extension + MIME + size) | ✅ |
 | Rate limiting on staff creation | ✅ |
 | 24-hour expiry on verification/reset tokens | ✅ |
@@ -155,6 +161,7 @@ The `.env` file is **not** committed to the repository. The IT staff must create
 | PHP execution blocked in uploads | ✅ |
 | Output escaping with `htmlspecialchars` | ✅ |
 | Audit logging | ✅ |
+| **Role-Based Access Control (RBAC) — Viewer/Lead/Admin** | ✅ |
 
 ---
 
@@ -197,6 +204,11 @@ Alternatively, if the migration is idempotent:
 mysql -u root -p aces_db < migrations/003_new_migration.sql
 ```
 
+> **Applied Migrations (As of October 2026):**
+> - `001_make_recorded_by_nullable.sql` — Attendance `recorded_by` nullable
+> - `003_make_recorded_by_nullable.sql` — Same fix applied for student self-registration swap logic
+> - **UNIQUE constraint on `attendance (student_id, session_id, subtopic_id)`** — Applied via phpMyAdmin to prevent duplicate attendance rows
+
 ### 4.3 Resetting the Database (Development Only)
 
 ```bash
@@ -217,6 +229,8 @@ Or via curl (if CRON_SECRET is set):
 ```bash
 curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 ```
+
+> **Performance Note:** `cron/auto_assign.php` has been refactored to use **batch inserts** (3 queries total regardless of student count, down from 6,900+ queries for 2,300 students). It also respects `subtopic_section_capacity` and `allow_multiple` rules.
 
 ### 4.5 Checking Logs
 
@@ -239,6 +253,10 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 | 500 error | `.htaccess` issue | Check permissions (should be `644`) |
 | Remember-me not working | HTTPS not enabled | Cookie is `Secure` in production |
 | **CSS styles missing/broken** | Tailwind not compiled | Run `.\tailwindcss.exe -i .\assets\css\tailwind.src.css -o .\assets\css\tailwind.css --minify` |
+| **Session logs out unexpectedly** | Idle timeout exceeded | Login again. Timeout is configurable via `SESSION_IDLE_TIMEOUT` env variable |
+| **"Account deactivated" on login** | `is_active = 0` set by Admin | Super Admin must reactivate via Manage Staff page |
+| **"File not found" on PDF module** | Wrong upload path | Ensure file exists in `uploads/modules/` and `$file_exists` logic in `student/modules.php` is intact |
+| **Duplicate attendance records** | Missing UNIQUE constraint | Verify UNIQUE KEY exists on `attendance (student_id, session_id, subtopic_id)` via phpMyAdmin |
 
 ---
 
@@ -255,13 +273,28 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 | No registrar sync | Data entry is manual |
 | **Placeholder Policies** | `public/policies.php` contains placeholder text and must be updated by KLD legal/IT |
 
-### Known Technical Debt
+### Resolved Technical Debt (From October 2026 Audit)
+
+| Item | Status |
+|------|--------|
+| ~~Session 52 has invalid date `0000-00-00`~~ | ✅ **FIXED** — Date column now uses `CURDATE()` on insert |
+| ~~Duplicate attendance records possible~~ | ✅ **FIXED** — UNIQUE constraint added to `attendance` table |
+| ~~Deactivated staff could still log in~~ | ✅ **FIXED** — `is_active` check added to `login.php` |
+| ~~Linked assessments missing "Mark as Done" button~~ | ✅ **FIXED** — `$empty_assessment` flag set for `link:` assessments |
+| ~~Quiz retake could lower passing score~~ | ✅ **FIXED** — Retake protection keeps highest passing score |
+| ~~Auto-attendance didn't fire for pending records~~ | ✅ **FIXED** — Now triggers on `attendance_status = 'pending'` |
+| ~~Per-section capacity not enforced~~ | ✅ **FIXED** — `subtopic_section_capacity` now enforced during registration |
+| ~~Visibility used OR instead of AND~~ | ✅ **FIXED** — Both course AND section must match |
+| ~~Even Split included soft-deleted students~~ | ✅ **FIXED** — `is_deleted = 0` filter applied |
+| ~~Auto-assign timed out on 2,300+ students~~ | ✅ **FIXED** — Batch inserts (3 queries total) |
+
+### Remaining Technical Debt
 
 | Item | Location | Impact |
 |------|----------|--------|
-| Session 52 has invalid date `0000-00-00` | `database/aces_db.sql` | Import fails on strict-mode MySQL; documented fix in `INSTALL.md` |
 | Test data present in dump | `database/aces_db.sql` | Cosmetic clutter; harmless |
 | Default passwords in dump | `users` table | Must be changed before production |
+| Unaudited secondary files | `staff/manage_staff.php`, `staff/support.php`, `student/attendance.php`, `student/progress.php` | Low risk; skip in demo |
 
 ### Recommended Future Enhancements
 
@@ -272,6 +305,7 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 5. **Automated backups** — scheduled `mysqldump` to cloud storage
 6. **LMS integration** — sync with Moodle or Google Classroom
 7. **Two-factor authentication** — for staff accounts
+8. **Email batching** — replace sequential sends with SMTP queue to avoid 20+ second delays on bulk notifications
 
 ---
 
@@ -283,8 +317,10 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 |--------|-------|
 | Register | Go to `/register.php` → fill form → verify email |
 | Log in | Enter student ID or email + password |
-| Choose subtopic | Go to Sessions → select session → choose subtopic |
+| Choose subtopic | Go to Sessions → select session → choose subtopic (shows per-section slots) |
+| Swap subtopic | Register for new subtopic → confirm swap (deletes old attendance record and module progress) |
 | Complete module | Open module → read/watch → mark complete |
+| Retake quiz | Retake only if not yet passed; highest passing score is kept |
 | View progress | Go to Progress → see completion percentage |
 
 ### Staff (Viewer)
@@ -303,8 +339,9 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 | Create sessions | Dashboard → Sessions → New Session |
 | Create subtopics | Sessions → select session → Add Subtopic |
 | Manage modules | Modules → Create Module or Assessment |
-| Take attendance | Attendance → select session → mark present/absent |
+| Take attendance | Attendance → select session → mark present/absent (adds "Auto" badge for system-verified records) |
 | Export reports | Reports → choose report type → export CSV/PDF |
+| Send notifications | Registrants → select students → Notify |
 
 ### Staff (Admin)
 
@@ -312,6 +349,7 @@ curl -s "https://yourdomain.com/cron/auto_assign.php?secret=YOUR_CRON_SECRET"
 |--------|-------|
 | All Lead actions | — |
 | Manage staff accounts | Manage Staff → create/edit/deactivate |
+| Reactivate deactivated accounts | Manage Staff → toggle `is_active` |
 | View audit log | Manage Staff → Activity Log |
 
 ---
@@ -348,9 +386,9 @@ For issues that block ACES Unit operations:
 By accepting this handover, the ACES Unit confirms receipt of:
 
 - [ ] Source code repository access
-- [ ] Database schema and seed data
+- [ ] Database schema and seed data (with UNIQUE attendance constraint applied)
 - [ ] Installation guide (`INSTALL.md`)
-- [ ] User manual (`USER_MANUAL.md` — if provided)
+- [ ] User manual (`USER_MANUAL.md`)
 - [ ] This handover document
 - [ ] Initial training session completed
 
@@ -375,6 +413,7 @@ Date: ____________________________
 |---------|------|--------|---------|
 | 1.0 | October 2026 | Elijah Rei Z. Bicomong | Initial handover document |
 | 1.1 | October 2026 | Elijah Rei Z. Bicomong | Added Tailwind CSS compilation workflow, Policies page, and updated troubleshooting |
+| 1.2 | October 2026 | Elijah Rei Z. Bicomong | Reflected comprehensive audit: 20 database tables (added courses/sections), UNIQUE attendance constraint, is_active login check, quiz retake protection, per-section capacity enforcement, auto-attendance pending-only logic, cron batch insert refactor, resolved technical debt, and deactivated-account troubleshooting |
 
 ---
 
