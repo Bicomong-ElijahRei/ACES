@@ -148,6 +148,19 @@ if ($action === 'create') {
                     $stmt_s->execute($s_params);
                     $students_to_assign = $stmt_s->fetchAll(PDO::FETCH_COLUMN);
                     
+                    // --- NEW: CAPACITY CHECK ---
+                    if (!empty($students_to_assign) && $capacity > 0) {
+                        // Count how many are already registered (e.g., if updating an existing subtopic)
+                        $stmt_reg_count = $pdo->prepare("SELECT COUNT(*) FROM registrations WHERE subtopic_id = ? AND status IN ('assigned', 'auto_assigned')");
+                        $stmt_reg_count->execute([$new_subtopic_id]);
+                        $current_regs = (int)$stmt_reg_count->fetchColumn();
+                        
+                        // Calculate how many slots are left and slice the student array
+                        $remaining_slots = max(0, $capacity - $current_regs);
+                        $students_to_assign = array_slice($students_to_assign, 0, $remaining_slots);
+                    }
+                    // ----------------------------
+
                     if (!empty($students_to_assign)) {
                         // 1. Batch Insert Registrations (1 query instead of 2300)
                         $reg_placeholders = [];
@@ -341,6 +354,19 @@ if ($action === 'create') {
                     $stmt_s->execute($s_params);
                     $students_to_assign = $stmt_s->fetchAll(PDO::FETCH_COLUMN);
                     
+                    // --- NEW: CAPACITY CHECK ---
+                    if (!empty($students_to_assign) && $capacity > 0) {
+                        // Count how many are already registered
+                        $stmt_reg_count = $pdo->prepare("SELECT COUNT(*) FROM registrations WHERE subtopic_id = ? AND status IN ('assigned', 'auto_assigned')");
+                        $stmt_reg_count->execute([$subtopic_id]);
+                        $current_regs = (int)$stmt_reg_count->fetchColumn();
+                        
+                        // Calculate how many slots are left and slice the student array
+                        $remaining_slots = max(0, $capacity - $current_regs);
+                        $students_to_assign = array_slice($students_to_assign, 0, $remaining_slots);
+                    }
+                    // ----------------------------
+
                     if (!empty($students_to_assign)) {
                         // 1. Batch Insert Registrations
                         $reg_placeholders = [];

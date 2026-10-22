@@ -8,13 +8,6 @@
  *   - Add Event (holiday / school_event)
  *   - Click day -> detail modal with links
  *   - Sessions, Subtopics, Modules, Holidays, School Events
- *
- * Design principles applied:
- *   1. Simplicity — remove visual noise from cells
- *   2. Color-coding — one color per event type, used everywhere
- *   3. Progressive disclosure — compact cell -> detailed modal
- *   4. Responsive — adapts to smaller screens
- *   5. Accessibility — semantic color + text labels
  * ============================================================
  */
 
@@ -113,7 +106,7 @@ $stmt = $pdo->prepare("
     SELECT st.subtopic_id, st.title AS subtopic_title, st.description,
            st.subtopic_date, st.subtopic_start_time, st.subtopic_end_time,
            st.subtopic_location, st.subtopic_proctor,
-           s.title AS session_title, s.date AS session_date,
+           s.session_id AS parent_session_id, s.title AS session_title, s.date AS session_date,
            COALESCE(st.subtopic_date, s.date) AS effective_date
     FROM subtopics st
     JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0
@@ -131,6 +124,7 @@ while ($row = $stmt->fetch()) {
         'proctor'     => $row['subtopic_proctor'],
         'session'     => $row['session_title'],
         'id'          => $row['subtopic_id'],
+        'session_id'  => $row['parent_session_id'], // <-- ADD THIS
     ];
 }
 
@@ -180,7 +174,7 @@ while ($row = $stmt->fetch()) {
     ];
 }
 
-$events_json = json_encode($events);
+$events_json = json_encode($events, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
@@ -249,7 +243,7 @@ $events_json = json_encode($events);
         .calendar-grid td {
             border: 1px solid var(--neutral-200);
             vertical-align: top;
-            height: 110px;
+            height: 130px;
             padding: 8px;
             background: #fff;
             transition: background 0.15s;
@@ -271,7 +265,7 @@ $events_json = json_encode($events);
         }
         .day-num {
             font-weight: 700;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             color: var(--neutral-800);
             display: inline-flex;
             align-items: center;
@@ -286,18 +280,18 @@ $events_json = json_encode($events);
         .event-pill {
             display: flex;
             align-items: center;
-            gap: 5px;
-            font-size: 0.68rem;
-            padding: 3px 7px;
-            border-radius: 5px;
-            margin-bottom: 3px;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 5px 8px;
+            border-radius: 6px;
+            margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            font-weight: 500;
             transition: transform 0.1s;
         }
-        .event-pill:hover { transform: translateX(1px); }
+        .event-pill:hover { transform: translateX(2px); }
 
         .event-pill.session      { background: var(--event-session-bg);  color: #1e40af; }
         .event-pill.subtopic     { background: var(--event-subtopic-bg); color: #065f46; }
@@ -305,20 +299,18 @@ $events_json = json_encode($events);
         .event-pill.holiday      { background: var(--event-holiday-bg);  color: #991b1b; }
         .event-pill.school_event { background: var(--event-event-bg);    color: #92400e; }
 
-        .event-pill .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
+        .event-pill i {
+            font-size: 0.85rem;
             flex-shrink: 0;
         }
-        .event-pill.session .dot      { background: var(--event-session); }
-        .event-pill.subtopic .dot     { background: var(--event-subtopic); }
-        .event-pill.module .dot       { background: var(--event-module); }
-        .event-pill.holiday .dot      { background: var(--event-holiday); }
-        .event-pill.school_event .dot { background: var(--event-event); }
+        .event-pill.session i      { color: var(--event-session); }
+        .event-pill.subtopic i     { color: var(--event-subtopic); }
+        .event-pill.module i       { color: var(--event-module); }
+        .event-pill.holiday i      { color: var(--event-holiday); }
+        .event-pill.school_event i { color: var(--event-event); }
 
         .more-count {
-            font-size: 0.65rem;
+            font-size: 0.7rem;
             color: var(--neutral-400);
             padding-left: 4px;
             font-weight: 600;
@@ -338,11 +330,6 @@ $events_json = json_encode($events);
             border-radius: 9999px;
             background: var(--neutral-50);
             border: 1px solid var(--neutral-200);
-        }
-        .legend-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
         }
 
         /* ============================================================
@@ -371,7 +358,20 @@ $events_json = json_encode($events);
             border-left: 4px solid var(--neutral-200);
             box-shadow: 0 1px 4px rgba(0,0,0,0.04);
             transition: all 0.15s;
+            display: block;
         }
+        
+        /* Make clickable cards look interactive */
+        a.modal-event {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+        }
+        a.modal-event:hover { 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); 
+            transform: translateY(-1px);
+        }
+        
         .modal-event:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
         .modal-event.session      { border-left-color: var(--event-session); }
@@ -414,17 +414,6 @@ $events_json = json_encode($events);
             gap: 6px;
             margin-top: 3px;
         }
-        .modal-event-link {
-            font-size: 0.78rem;
-            color: var(--primary);
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            margin-top: 10px;
-        }
-        .modal-event-link:hover { color: var(--primary-dark); text-decoration: underline; }
 
         /* ============================================================
            NAVIGATION BUTTONS
@@ -455,9 +444,10 @@ $events_json = json_encode($events);
            RESPONSIVE
            ============================================================ */
         @media (max-width: 768px) {
-            .calendar-grid td { height: 80px; padding: 4px; }
+            .calendar-grid td { height: 100px; padding: 4px; }
             .day-num { width: 22px; height: 22px; font-size: 0.7rem; }
-            .event-pill { font-size: 0.6rem; padding: 2px 5px; }
+            .event-pill { font-size: 0.65rem; padding: 3px 5px; }
+            .event-pill i { font-size: 0.7rem; }
             .month-title { font-size: 1rem; }
         }
     </style>
@@ -494,11 +484,11 @@ $events_json = json_encode($events);
         <!-- Legend + Actions Bar -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5 flex flex-wrap items-center justify-between gap-3">
             <div class="flex flex-wrap gap-2">
-                <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span> Sessions</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#10b981"></span> Subtopics</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span> Modules</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> Holidays</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span> Events</span>
+                <span class="legend-item"><i class="fas fa-calendar-check text-blue-500"></i> Sessions</span>
+                <span class="legend-item"><i class="fas fa-book text-green-500"></i> Subtopics</span>
+                <span class="legend-item"><i class="fas fa-file-alt text-purple-500"></i> Modules</span>
+                <span class="legend-item"><i class="fas fa-star text-red-500"></i> Holidays</span>
+                <span class="legend-item"><i class="fas fa-school text-amber-500"></i> Events</span>
             </div>
             <?php if (!isViewer()): ?>
             <button class="bg-[#0a6e2d] hover:bg-green-800 text-white text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition"
@@ -534,6 +524,15 @@ $events_json = json_encode($events);
                     $weekday     = $start_weekday;
                     $today_str   = date('Y-m-d');
 
+                    // Icon mapping for the calendar cells
+                    $cell_icons = [
+                        'session'      => 'fa-calendar-check',
+                        'subtopic'     => 'fa-book',
+                        'module'       => 'fa-file-alt',
+                        'holiday'      => 'fa-star',
+                        'school_event' => 'fa-school'
+                    ];
+
                     echo '<tr>';
                     for ($i = 0; $i < $weekday; $i++) {
                         echo '<td class="is-empty"></td>';
@@ -554,8 +553,9 @@ $events_json = json_encode($events);
                         <td class="<?= $is_today ?>" data-date="<?= $date_str ?>">
                             <div class="day-num"><?= $day_counter ?></div>
                             <?php foreach (array_slice($day_events, 0, 3) as $ev): ?>
+                                <?php $icon = $cell_icons[$ev['type']] ?? 'fa-circle'; ?>
                                 <div class="event-pill <?= $ev['type'] ?>" title="<?= htmlspecialchars($ev['title']) ?>">
-                                    <span class="dot"></span>
+                                    <i class="fas <?= $icon ?>"></i>
                                     <span class="truncate"><?= htmlspecialchars($ev['title']) ?></span>
                                 </div>
                             <?php endforeach; ?>
@@ -701,19 +701,26 @@ $(document).ready(function() {
 
         body.innerHTML = events.map(ev => {
             const meta = EVENT_META[ev.type] || { icon: 'fa-circle', label: ev.type };
-            const link = getEventLink(ev);
+            const url = getEventUrl(ev);
             const details = getEventDetails(ev);
-            return `
-                <div class="modal-event ${ev.type}">
-                    <div class="modal-event-title">
-                        <span class="modal-event-icon ${ev.type}">
-                            <i class="fas ${meta.icon}"></i>
-                        </span>
-                        ${escapeHtml(ev.title)}
-                    </div>
-                    ${details}
-                    ${link}
-                </div>`;
+            
+            // Build the content inside the card
+            let cardContent = `
+                <div class="modal-event-title">
+                    <span class="modal-event-icon ${ev.type}">
+                        <i class="fas ${meta.icon}"></i>
+                    </span>
+                    ${escapeHtml(ev.title)}
+                </div>
+                ${details}
+            `;
+
+            // If it has a URL, wrap the whole card in an anchor tag
+            if (url) {
+                return `<a href="${url}" class="modal-event ${ev.type}">${cardContent}</a>`;
+            } else {
+                return `<div class="modal-event ${ev.type}">${cardContent}</div>`;
+            }
         }).join('');
 
         new bootstrap.Modal(document.getElementById('dayModal')).show();
@@ -739,17 +746,18 @@ $(document).ready(function() {
         return html;
     }
 
-    function getEventLink(ev) {
+    // Return ONLY the URL string
+    function getEventUrl(ev) {
         if (ev.type === 'session') {
-            return `<a href="subtopics.php?view_session=${ev.id}" class="modal-event-link"><i class="fas fa-external-link-alt"></i> View Session</a>`;
+            return `subtopics.php?view_session=${ev.id}`;
         }
         if (ev.type === 'subtopic') {
-            return `<a href="subtopics.php" class="modal-event-link"><i class="fas fa-external-link-alt"></i> Manage Subtopics</a>`;
+            return `subtopics.php?view_session=${ev.session_id}`; // Open parent session modal
         }
         if (ev.type === 'module') {
-            return `<a href="modules.php?view_module=${ev.id}" class="modal-event-link"><i class="fas fa-external-link-alt"></i> View Module</a>`;
+            return `modules.php?view_module=${ev.id}`;
         }
-        return '';
+        return ''; // Holidays and School Events don't have detail pages
     }
 
     function escapeHtml(str) {

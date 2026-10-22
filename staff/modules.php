@@ -102,6 +102,8 @@ if ($action === 'create') {
 
     if (isset($_POST['quiz_data']) && !empty($_POST['quiz_data'])) {
         $content = $_POST['quiz_data'];
+    } elseif (isset($_POST['assessment_type']) && $_POST['assessment_type'] === 'link') {
+        $content = 'link:' . trim($_POST['assessment_link']);
     } else {
         $content = trim($_POST['content'] ?? '');
     }
@@ -1546,6 +1548,21 @@ document.addEventListener('DOMContentLoaded', () => {
         url.searchParams.set('sort', sortSelect.value);
         history.replaceState({}, '', url);
     });
+
+    // ==================== DEEP-LINK HANDLER ====================
+    // If arriving from calendar with ?view_module=X, auto-open the view modal
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewModuleId = urlParams.get('view_module');
+
+    if (viewModuleId) {
+        const btn = document.querySelector(`.view-item-btn[data-id="${viewModuleId}"]`);
+        if (btn) {
+            // Small delay to ensure the DOM and listeners are fully ready
+            setTimeout(() => {
+                btn.click();
+            }, 150);
+        }
+    }
 });
 </script>
 </body>

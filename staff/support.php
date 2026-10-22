@@ -2,7 +2,35 @@
 require_once '../config/env.php';
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php'; // Added for secure POST requests
 redirectIfNotStaff();
+
+$success_msg = '';
+$error_msg = '';
+
+// Handle Permanent Deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_tickets') {
+    csrf_verify(); // Prevent CSRF attacks
+
+    if (!empty($_POST['ticket_ids']) && is_array($_POST['ticket_ids'])) {
+        $ids = array_map('intval', $_POST['ticket_ids']);
+        $inQuery = implode(',', array_fill(0, count($ids), '?'));
+
+        try {
+            $pdo->beginTransaction();
+            // Delete tickets. (Ticket messages will be deleted automatically due to ON DELETE CASCADE)
+            $stmtDel = $pdo->prepare("DELETE FROM tickets WHERE ticket_id IN ($inQuery)");
+            $stmtDel->execute($ids);
+            $pdo->commit();
+            $success_msg = count($ids) . " ticket(s) permanently deleted.";
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error_msg = "Failed to delete tickets: " . $e->getMessage();
+        }
+    } else {
+        $error_msg = "No tickets were selected for deletion.";
+    }
+}
 
 // Fetch All Tickets
 $stmt = $pdo->prepare("
@@ -40,6 +68,18 @@ foreach ($all_tickets as $t) {
         <?php include '../includes/header.php'; ?>
         <main class="flex-1 p-6 overflow-y-auto">
             <h1 class="text-2xl font-bold text-gray-800 mb-6">Student Support Tickets</h1>
+
+            <!-- Alerts -->
+            <?php if ($success_msg): ?>
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <span class="block sm:inline"><?= htmlspecialchars($success_msg) ?></span>
+                </div>
+            <?php endif; ?>
+            <?php if ($error_msg): ?>
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <span class="block sm:inline"><?= htmlspecialchars($error_msg) ?></span>
+                </div>
+            <?php endif; ?>
             
             <!-- ACTIVE TICKETS -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
@@ -95,23 +135,40 @@ foreach ($all_tickets as $t) {
                 </div>
                 
                 <div id="archiveContent" class="hidden">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
-                                <th class="p-4 font-bold border-b">Ticket ID</th>
-                                <th class="p-4 font-bold border-b">Student</th>
-                                <th class="p-4 font-bold border-b">Subject</th>
-                                <th class="p-4 font-bold border-b">Status</th>
-                                <th class="p-4 font-bold border-b">Date</th>
-                                <th class="p-4 font-bold border-b text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100 text-sm text-gray-700">
-                            <?php if (empty($archived_tickets)): ?>
-                                <tr><td colspan="6" class="p-6 text-center text-gray-500">No archived tickets.</td></tr>
-                            <?php else: ?>
+                    <?php if (!empty($archived_tickets)): ?>
+                    <!-- Form for Multi-Select Deletion -->
+                    <form id="bulkDeleteForm" method="POST" action="">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="delete_tickets">
+                        
+                        <!-- Action Bar -->
+                        <div class="bg-gray-100 px-6 py-3 border-b border-gray-200 flex justify-between items-center">
+                            <span class="text-xs text-gray-500 font-semibold"><i class="fas fa-info-circle mr-1"></i> Select tickets to permanently delete.</span>
+                            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-2">
+                                <i class="fas fa-trash-alt"></i> Delete Selected
+                            </button>
+                        </div>
+
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                                    <th class="p-4 border-b w-10 text-center">
+                                        <input type="checkbox" id="selectAllArchive" class="rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4">
+                                    </th>
+                                    <th class="p-4 font-bold border-b">Ticket ID</th>
+                                    <th class="p-4 font-bold border-b">Student</th>
+                                    <th class="p-4 font-bold border-b">Subject</th>
+                                    <th class="p-4 font-bold border-b">Status</th>
+                                    <th class="p-4 font-bold border-b">Date</th>
+                                    <th class="p-4 font-bold border-b text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 text-sm text-gray-700">
                                 <?php foreach ($archived_tickets as $t): ?>
                                     <tr class="hover:bg-gray-50 opacity-75">
+                                        <td class="p-4 text-center">
+                                            <input type="checkbox" name="ticket_ids[]" value="<?= $t['ticket_id'] ?>" class="ticket-checkbox rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4">
+                                        </td>
                                         <td class="p-4 font-mono text-xs">#<?= $t['ticket_id'] ?></td>
                                         <td class="p-4 font-bold"><?= htmlspecialchars($t['student_name']) ?></td>
                                         <td class="p-4"><?= htmlspecialchars($t['subject']) ?></td>
@@ -126,17 +183,56 @@ foreach ($all_tickets as $t) {
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
+                    </form>
+                    <?php else: ?>
+                        <div class="p-6 text-center text-gray-500">No archived tickets.</div>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <script>
+                // Toggle Archive Accordion
                 document.getElementById('archiveToggle').addEventListener('click', function() {
                     document.getElementById('archiveContent').classList.toggle('hidden');
                     this.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
                 });
+
+                // Select All Checkbox Logic
+                const selectAllCheckbox = document.getElementById('selectAllArchive');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.addEventListener('change', function() {
+                        const checkboxes = document.querySelectorAll('.ticket-checkbox');
+                        checkboxes.forEach(cb => cb.checked = this.checked);
+                    });
+
+                    // Update Select All if individual checkboxes are clicked
+                    document.querySelectorAll('.ticket-checkbox').forEach(cb => {
+                        cb.addEventListener('change', function() {
+                            const total = document.querySelectorAll('.ticket-checkbox').length;
+                            const checked = document.querySelectorAll('.ticket-checkbox:checked').length;
+                            selectAllCheckbox.checked = total === checked;
+                        });
+                    });
+                }
+
+                // Delete Confirmation
+                const bulkForm = document.getElementById('bulkDeleteForm');
+                if (bulkForm) {
+                    bulkForm.addEventListener('submit', function(e) {
+                        const checked = document.querySelectorAll('.ticket-checkbox:checked').length;
+                        if (checked === 0) {
+                            e.preventDefault();
+                            alert('Please select at least one ticket to delete.');
+                            return;
+                        }
+                        
+                        if (!confirm('⚠️ WARNING: Are you sure you want to permanently delete the ' + checked + ' selected ticket(s)?\n\nThis action CANNOT be undone. All messages within these tickets will also be deleted forever.')) {
+                            e.preventDefault();
+                        }
+                    });
+                }
             </script>
         </main>
     </div>
