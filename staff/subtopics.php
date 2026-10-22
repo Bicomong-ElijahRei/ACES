@@ -470,7 +470,7 @@ if ($action === 'create') {
             foreach ($sections as $row) {
                 $section_key = $row['program'] . '-' . $row['section']; // Unique key combining program + section
                 $cnt = (int)$row['cnt'];
-                $per_subtopic = ceil($cnt / $num_subtopics);
+                $per_subtopic = max(1, ceil($cnt / $num_subtopics)); // Ensure at least 1 slot
                 $total_cap += $per_subtopic;
                 
                 $stmt_cap = $pdo->prepare("

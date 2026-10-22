@@ -308,6 +308,7 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                     if ($total_subs === 0) continue;
                 ?>
                     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-pointer clickable-card flex flex-col h-full group session-card"
+                         data-session-id="<?= $session['session_id'] ?>"
                          data-session-date="<?= $session['date'] ?>"
                          onclick='openSessionModal(<?= htmlspecialchars(json_encode([
                              'id' => $session['session_id'], 'title' => $session['title'], 'phase' => $session['phase'],
@@ -552,6 +553,19 @@ function openSessionModal(data) {
 
 document.addEventListener('DOMContentLoaded', () => {
     renderCalendar();
+    
+    // Deep-Link Handler for Calendar
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewSessionId = urlParams.get('session_id');
+    if (viewSessionId) {
+        const card = document.querySelector(`.session-card[data-session-id="${viewSessionId}"]`);
+        if (card) {
+            setTimeout(() => { 
+                if (card) card.click(); 
+            }, 500);
+        }
+    }
+
     const sessTabs = document.querySelectorAll('.history-tab-sess');
     const sessContents = document.querySelectorAll('.history-content-sess');
     sessTabs.forEach(tab => {
