@@ -470,12 +470,12 @@ if ($module_id) {
             .prose { max-width: 100%; }
         </style>
     </head>
-    <body class="h-full bg-gray-100">
-    <div class="flex h-full">
+        <body class="h-full bg-gray-100 overflow-hidden">
+    <div class="h-screen flex flex-col md:flex-row overflow-hidden">
         <?php include '../includes/student_sidebar.php'; ?>
-        <div class="flex-1 flex flex-col overflow-auto">
-            <?php include '../includes/header.php'; ?>
-            <div class="flex-1 p-4 md:p-8">
+        <div class="flex-1 flex flex-col overflow-hidden w-full">
+            <?php include '../includes/student_header.php'; ?> <!-- FIXED HEADER INCLUDE -->
+            <div class="flex-1 p-4 md:p-8 overflow-y-auto">
 
                 <nav class="mb-6 flex items-center justify-between text-sm">
                     <a href="modules.php" class="inline-flex items-center gap-2 text-green-700 hover:text-green-900 font-semibold">
@@ -814,12 +814,12 @@ if ($module_id) {
         .progress-ring { transition: stroke-dashoffset 0.5s ease-out; }
     </style>
 </head>
-<body class="h-full bg-gray-100">
-<div class="flex h-full">
+<body class="h-full bg-gray-100 overflow-hidden">
+<div class="h-screen flex flex-col md:flex-row overflow-hidden">
     <?php include '../includes/student_sidebar.php'; ?>
-    <div class="flex-1 flex flex-col overflow-auto">
-        <?php include '../includes/header.php'; ?>
-        <div class="flex-1 p-4 md:p-8">
+    <div class="flex-1 flex flex-col overflow-hidden w-full">
+        <?php include '../includes/student_header.php'; ?> <!-- FIXED HEADER INCLUDE -->
+        <div class="flex-1 p-4 md:p-8 overflow-y-auto">
 
             <div class="bg-white rounded-2xl shadow-sm p-6 md:p-8 mb-8">
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">

@@ -113,6 +113,7 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard | ACES</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/tailwind.css">
@@ -122,7 +123,8 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
         .clickable-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
     </style>
 </head>
-<body class="h-full bg-[#dcf3e6] font-sans overflow-hidden">
+<!-- APPLIED THE NEW BACKGROUND COLOR HERE: bg-[#f3f4f6] -->
+<body class="h-full bg-[#f3f4f6] font-sans overflow-hidden">
 <div class="h-screen flex flex-col md:flex-row overflow-hidden">
     <?php include '../includes/student_sidebar.php'; ?>
     <div class="flex-1 flex flex-col overflow-hidden w-full">
@@ -132,7 +134,7 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
             
             <div class="mb-8">
                 <h2 class="text-3xl font-extrabold text-[#0a6e2d]">Welcome back, <?= htmlspecialchars($first_name) ?>! 👋</h2>
-                <p class="text-gray-600 mt-1">Here is your at-a-glance summary.</p>
+                <p class="text-gray-500 mt-1">Here is your at-a-glance summary.</p>
             </div>
 
             <!-- TIER 1: THE HERO METRICS (Overall Progress & Up Next) -->
@@ -190,7 +192,7 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
                                                 <i class="fas <?= $icon ?> text-xs"></i>
                                             </div>
                                             <div class="flex-1 min-w-0">
-                                                <p class="text-sm font-bold text-gray-800 truncate"><?= htmlspecialchars($ev['title']) ?></p>
+                                                <p class="text-sm font-bold text-gray-800 truncate group-hover:text-[#0a6e2d] transition-colors"><?= htmlspecialchars($ev['title']) ?></p>
                                                 <div class="flex items-center gap-2 mt-1 text-xs font-semibold text-gray-500">
                                                     <i class="far fa-calendar-alt"></i> <?= $ev['time'] ?>
                                                 </div>

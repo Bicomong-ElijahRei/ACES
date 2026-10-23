@@ -63,6 +63,9 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
                 throw new Exception("Student number {$new_student_id} already exists.");
             }
 
+            // DISABLE FK CHECKS so we can update the primary key across all tables
+            $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+
             $stmt = $pdo->prepare("UPDATE students SET student_id = ? WHERE student_id = ?");
             $stmt->execute([$new_student_id, $original_student_id]);
 
@@ -71,7 +74,18 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
                 $stmt = $pdo->prepare("UPDATE {$tbl} SET student_id = ? WHERE student_id = ?");
                 $stmt->execute([$new_student_id, $original_student_id]);
             }
+
+            // RE-ENABLE FK CHECKS
+            $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+            
             $student_id_to_update = $new_student_id;
+        }
+
+        // NEW: Check if the email is already used by ANOTHER student
+        $check_email = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != (SELECT user_id FROM students WHERE student_id = ?)");
+        $check_email->execute([$email, $student_id_to_update]);
+        if ($check_email->fetch()) {
+            throw new Exception("The email address {$email} is already in use by another account.");
         }
 
         $stmt = $pdo->prepare("UPDATE users SET email = ?, full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
@@ -671,7 +685,8 @@ function parseStudentName($full_name, $middle_name) {
             }
         });
 
-        $('.edit-student').on('click', function() {
+        // FIX: Use event delegation on the table so it works even after DataTables search/pagination
+        $('#studentsTable').on('click', '.edit-student', function() {
             $('#edit_student_id').val($(this).data('student-id'));
             $('#edit_new_student_id').val($(this).data('student-id'));
             $('#edit_last').val($(this).data('last'));

@@ -5,9 +5,9 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStudent();
 
-// Fetch student details
+// Fetch student details (Added last_id_change)
 $stmt = $pdo->prepare("
-    SELECT u.full_name, u.email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile 
+    SELECT u.full_name, u.email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change 
     FROM users u 
     JOIN students s ON u.user_id = s.user_id 
     WHERE s.student_id = ?
@@ -25,66 +25,115 @@ $error = '';
 
 // Handle Profile Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_profile') {
-    csrf_verify(); // BUG FIX: Added missing CSRF verification
+    csrf_verify();
     $full_name = trim($_POST['full_name']);
     $email = trim($_POST['email']);
     $mobile = trim($_POST['mobile']);
     $telephone = trim($_POST['telephone']);
+    $new_student_id = trim($_POST['student_id']);
 
-    if (!$full_name || !$email) {
-        $error = "Full Name and Email are required.";
+    if (!$full_name || !$email || !$new_student_id) {
+        $error = "Full Name, Email, and Student ID are required.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
     } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
         $error = "Email must be an official KLD email (must end in @kld.edu.ph).";
+    } elseif (!preg_match('/^[a-zA-Z0-9\-]+$/', $new_student_id)) {
+        $error = "Student ID can only contain letters, numbers, and dashes.";
     } else {
-        // Check for duplicates
+        // Check for email duplicates
         $stmt_dup = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != (SELECT user_id FROM students WHERE student_id = ?)");
         $stmt_dup->execute([$email, $_SESSION['student_id']]);
         
         if ($stmt_dup->fetch()) {
             $error = "That email address is already in use by another account.";
-        } elseif ($email !== $student['email']) {
-            // EMAIL CHANGE DETECTED - Trigger PIN
-            $pin = sprintf("%06d", mt_rand(1, 999999));
-            $expiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-
-            $stmt_pin = $pdo->prepare("UPDATE users SET pending_email = ?, email_change_pin = ?, email_pin_expiry = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
-            $stmt_pin->execute([$email, $pin, $expiry, $_SESSION['student_id']]);
-
-            require_once __DIR__ . '/../includes/send_email.php';
-            $subject = "ACES - Verify Your New Email Address";
-            $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
-            sendEmail($email, $subject, $body);
-
-            $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
-            header("Location: ../verify_email_change.php");
-            exit;
         } else {
-            // Email NOT changed - Update other fields directly
-            try {
-                $pdo->beginTransaction();
-                $stmt_upd_u = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
-                $stmt_upd_u->execute([$full_name, $_SESSION['student_id']]);
-                
-                $stmt_upd_s = $pdo->prepare("UPDATE students SET mobile = ?, telephone = ? WHERE student_id = ?");
-                $stmt_upd_s->execute([$mobile, $telephone, $_SESSION['student_id']]);
-                
-                $pdo->commit();
-                $success = "Profile updated successfully.";
-                
-                $student['full_name'] = $full_name;
-                $student['mobile'] = $mobile;
-                $student['telephone'] = $telephone;
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                $error = "Update failed: " . $e->getMessage();
+            // --- 24-HOUR COOLDOWN CHECK ---
+            $id_changed = ($new_student_id !== $student['student_id']);
+            if ($id_changed && !empty($student['last_id_change'])) {
+                $last_change = strtotime($student['last_id_change']);
+                if (time() - $last_change < 86400) { // 86400 seconds = 24 hours
+                    $hours_left = ceil((86400 - (time() - $last_change)) / 3600);
+                    $error = "You can only change your Student ID once every 24 hours. Please wait {$hours_left} hour(s) or contact the ACES Unit.";
+                    $id_changed = false; // Prevent the update logic from running
+                }
+            }
+
+            if (!$error) {
+                try {
+                    $pdo->beginTransaction();
+
+                    // 1. Handle Email Change (PIN Logic)
+                    if ($email !== $student['email']) {
+                        $pin = sprintf("%06d", mt_rand(1, 999999));
+                        $expiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+                        $stmt_pin = $pdo->prepare("UPDATE users SET pending_email = ?, email_change_pin = ?, email_pin_expiry = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
+                        $stmt_pin->execute([$email, $pin, $expiry, $_SESSION['student_id']]);
+                        
+                        require_once __DIR__ . '/../includes/send_email.php';
+                        $subject = "ACES - Verify Your New Email Address";
+                        $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
+                        sendEmail($email, $subject, $body);
+                        $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
+                        header("Location: ../verify_email_change.php");
+                        exit;
+                    }
+
+                    // 2. Handle Student ID Change (Dangerous FK Updates)
+                    if ($id_changed) {
+                        // Check if new ID is already taken by someone else
+                        $check_id = $pdo->prepare("SELECT student_id FROM students WHERE student_id = ?");
+                        $check_id->execute([$new_student_id]);
+                        if ($check_id->fetch()) {
+                            throw new Exception("Student ID {$new_student_id} is already registered to another student.");
+                        }
+
+                        // Disable FK checks to update the Primary Key across all tables safely
+                        $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+
+                        $stmt_upd_s = $pdo->prepare("UPDATE students SET student_id = ?, mobile = ?, telephone = ?, last_id_change = NOW() WHERE student_id = ?");
+                        $stmt_upd_s->execute([$new_student_id, $mobile, $telephone, $_SESSION['student_id']]);
+
+                        // Update child tables
+                        $tables = ['attendance','registrations','student_module_progress','compliance','reminders_sent'];
+                        foreach ($tables as $tbl) {
+                            $stmt_tbl = $pdo->prepare("UPDATE {$tbl} SET student_id = ? WHERE student_id = ?");
+                            $stmt_tbl->execute([$new_student_id, $_SESSION['student_id']]);
+                        }
+
+                        $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+                        
+                        // Update the session so they don't get logged out immediately
+                        $_SESSION['student_id'] = $new_student_id;
+                        $student['student_id'] = $new_student_id;
+                        $student['last_id_change'] = date('Y-m-d H:i:s');
+                    } else {
+                        // Normal update (ID not changed)
+                        $stmt_upd_s = $pdo->prepare("UPDATE students SET mobile = ?, telephone = ? WHERE student_id = ?");
+                        $stmt_upd_s->execute([$mobile, $telephone, $_SESSION['student_id']]);
+                    }
+
+                    // Update users table (Full Name only, email handled above)
+                    $stmt_upd_u = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
+                    $stmt_upd_u->execute([$full_name, $_SESSION['student_id']]);
+                    
+                    $pdo->commit();
+                    $success = "Profile updated successfully.";
+                    
+                    $student['full_name'] = $full_name;
+                    $student['mobile'] = $mobile;
+                    $student['telephone'] = $telephone;
+                } catch (Exception $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1"); // Ensure checks are re-enabled even if it fails
+                    $error = "Update failed: " . $e->getMessage();
+                }
             }
         }
     }
 }
 
-// Handle Password Change
+// Handle Password Change (Unchanged)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
     csrf_verify();
     $current = $_POST['current_password'];
@@ -125,13 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         html, body { height: 100%; margin: 0; padding: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* Password Strength Meter */
         .strength-meter { height: 4px; border-radius: 2px; transition: all 0.3s; }
-        .strength-weak { background-color: #ef4444; width: 25%; }
-        .strength-fair { background-color: #f59e0b; width: 50%; }
-        .strength-good { background-color: #3b82f6; width: 75%; }
-        .strength-strong { background-color: #10b981; width: 100%; }
     </style>
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
@@ -175,18 +218,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <p class="text-xs text-gray-500">Update your contact details. Academic details are locked.</p>
                     </div>
                 </div>
-                <form method="POST">
+                <form method="POST" id="profileForm">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="update_profile">
                     <div class="p-6 space-y-6">
                         
-                        <!-- Read-only Academic Info -->
+                        <!-- Student ID (Now Editable) -->
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                             <div class="md:text-right pt-2">
-                                <label class="block text-sm font-bold text-gray-700">Student ID</label>
+                                <label class="block text-sm font-bold text-gray-700">Student ID <span class="text-red-500">*</span></label>
+                                <?php if (!empty($student['last_id_change'])): ?>
+                                    <p class="text-xs text-amber-600 mt-1">You can only change this once every 24 hours.</p>
+                                <?php endif; ?>
                             </div>
                             <div class="md:col-span-2">
-                                <input type="text" value="<?= htmlspecialchars($student['student_id']) ?>" class="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-100 text-gray-500 cursor-not-allowed font-mono text-sm" readonly>
+                                <input type="text" name="student_id" id="student_id_input" value="<?= htmlspecialchars($student['student_id']) ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow font-mono text-sm" required pattern="[a-zA-Z0-9\-]+" title="Only letters, numbers, and dashes are allowed.">
+                                <p class="text-xs text-gray-500 mt-1">Be very careful. You can only change this once every 24 hours.</p>
                             </div>
                         </div>
 
@@ -333,6 +380,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // --- NEW: Warn before Student ID change ---
+    const originalId = "<?= $student['student_id'] ?>";
+    document.getElementById('profileForm').addEventListener('submit', function(e) {
+        const newId = document.getElementById('student_id_input').value;
+        if (newId !== originalId) {
+            if (!confirm("⚠️ WARNING!\n\nYou are about to change your Student ID from:\n" + originalId + "\n\nTo:\n" + newId + "\n\nThis will immediately change your login credentials and update your records across the system. You can only do this once every 24 hours.\n\nAre you absolutely sure?")) {
+                e.preventDefault();
+                return false;
+            }
+        }
+    });
+
     // --- Password Visibility Toggles ---
     document.querySelectorAll('.toggle-password').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -371,19 +430,16 @@ document.addEventListener('DOMContentLoaded', function() {
         if (val.length >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val)) score = 3;
         if (val.length >= 10 && /[A-Z]/.test(val) && /[0-9]/.test(val) && /[^A-Za-z0-9]/.test(val)) score = 4;
 
-        // Reset bars
         strengthBars.forEach(bar => {
             bar.className = 'flex-1 rounded-full bg-gray-200';
         });
 
-        // Update bars based on score
         const colors = ['bg-red-500', 'bg-amber-500', 'bg-blue-500', 'bg-green-500'];
         for (let i = 0; i < score; i++) {
             strengthBars[i].classList.remove('bg-gray-200');
             strengthBars[i].classList.add(colors[i]);
         }
 
-        // Update text
         const texts = ['Enter a password', 'Weak', 'Fair', 'Good', 'Strong'];
         strengthText.textContent = texts[score];
     });

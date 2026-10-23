@@ -203,6 +203,7 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sessions | ACES Student</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">

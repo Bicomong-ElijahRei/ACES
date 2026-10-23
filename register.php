@@ -53,6 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Password must be at least 6 characters.";
     } elseif (!preg_match('/^[0-9\-]+$/', $mobile)) {
         $error = "Please enter a valid mobile number (numbers only).";
+    } elseif (!preg_match('/^[a-zA-Z0-9\-]+$/', $student_id)) {
+        $error = "Student Number can only contain letters, numbers, and dashes.";
     } elseif (!$terms) {
         $error = "You must agree to the Terms and Conditions.";
     } else {
@@ -243,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Student Number <span class="text-red-500">*</span></label>
-                        <input type="text" name="student_id" value="<?= htmlspecialchars($_POST['student_id'] ?? '') ?>" placeholder="2023-2-000677" required class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <input type="text" name="student_id" id="student_id_input" value="<?= htmlspecialchars($_POST['student_id'] ?? '') ?>" placeholder="2023-2-000677" required pattern="[a-zA-Z0-9\-]+" title="Only letters, numbers, and dashes are allowed." class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
@@ -317,12 +319,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         document.querySelector('form').addEventListener('submit', function(e) {
             let password = document.querySelector('input[name="password"]').value;
             let confirm = document.querySelector('input[name="confirm_password"]').value;
+            let studentId = document.getElementById('student_id_input').value;
             
             if (password !== confirm) {
                 alert('Passwords do not match.');
                 e.preventDefault(); // Stop submission
                 return false;
             } else {
+                // NEW: Confirm the Student ID to prevent typos
+                if (!confirm("Please double-check your Student Number:\n\n" + studentId + "\n\nIs this exactly correct?")) {
+                    e.preventDefault();
+                    return false;
+                }
+
                 // Passwords match! Disable the button so they can't double-click
                 const btn = this.querySelector('button[type="submit"]');
                 if (btn) {
