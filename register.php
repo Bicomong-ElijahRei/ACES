@@ -289,12 +289,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="password" id="password_input" required minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number, one uppercase and lowercase letter, and be at least 8 characters long." class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
-                        <p class="text-xs text-gray-500 mt-1">Must be at least 8 characters and include uppercase, lowercase, and numbers.</p>
+                        <!-- I removed the 'pattern' attribute so the browser doesn't use its ugly default popup -->
+                        <input type="password" name="password" id="password_input" required minlength="8" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        
+                        <!-- THE PASSWORD STRENGTH METER BARS -->
+                        <div class="mt-2 flex gap-1 h-1.5">
+                            <div class="flex-1 rounded-full bg-gray-200 transition-colors" id="strength-1"></div>
+                            <div class="flex-1 rounded-full bg-gray-200 transition-colors" id="strength-2"></div>
+                            <div class="flex-1 rounded-full bg-gray-200 transition-colors" id="strength-3"></div>
+                            <div class="flex-1 rounded-full bg-gray-200 transition-colors" id="strength-4"></div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-1" id="strength-text">Min. 8 chars, 1 upper, 1 lower, 1 number.</p>
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Confirm Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="confirm_password" id="confirm_password_input" required minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number, one uppercase and lowercase letter, and be at least 8 characters long." class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <input type="password" name="confirm_password" id="confirm_password_input" required minlength="8" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
@@ -347,6 +356,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     btn.classList.add('opacity-75', 'cursor-not-allowed');
                     // Remove the hover effects so it looks properly disabled
                     btn.classList.remove('hover:-translate-y-0.5', 'hover:shadow-lg', 'hover:bg-[#00a86f]');
+                }
+            }
+        });
+                // --- NEW: PASSWORD STRENGTH METER LOGIC ---
+        const passwordInput = document.getElementById('password_input');
+        const submitBtn = document.querySelector('button[type="submit"]');
+        const strengthBars = [
+            document.getElementById('strength-1'),
+            document.getElementById('strength-2'),
+            document.getElementById('strength-3'),
+            document.getElementById('strength-4')
+        ];
+        const strengthText = document.getElementById('strength-text');
+
+        // Initially disable the submit button until password is strong enough
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        passwordInput.addEventListener('input', function() {
+            const val = this.value;
+            let score = 0;
+
+            // 4 Criteria for a "Strong" password
+            if (val.length >= 8) score++;
+            if (/[A-Z]/.test(val)) score++;
+            if (/[a-z]/.test(val)) score++;
+            if (/[0-9]/.test(val)) score++;
+
+            // Reset bars
+            strengthBars.forEach(bar => bar.className = 'flex-1 rounded-full bg-gray-200 transition-colors');
+
+            let colorClass = '';
+            let text = '';
+            let canSubmit = false;
+
+            if (val.length === 0) {
+                text = 'Min. 8 chars, 1 upper, 1 lower, 1 number.';
+                strengthText.className = 'text-[11px] text-gray-500 mt-1';
+            } else if (score <= 1) {
+                colorClass = 'bg-red-500';
+                text = 'Weak - Too short or missing criteria';
+                strengthText.className = 'text-[11px] text-red-500 mt-1 font-bold';
+            } else if (score === 2 || score === 3) {
+                colorClass = 'bg-amber-500';
+                text = 'Normal - Keep going!';
+                strengthText.className = 'text-[11px] text-amber-500 mt-1 font-bold';
+            } else if (score === 4) {
+                colorClass = 'bg-green-500';
+                text = 'Strong - Good to go!';
+                strengthText.className = 'text-[11px] text-green-600 mt-1 font-bold';
+                canSubmit = true; // All criteria met
+            }
+
+            // Fill the bars based on the score
+            for (let i = 0; i < score; i++) {
+                strengthBars[i].classList.remove('bg-gray-200');
+                strengthBars[i].classList.add(colorClass);
+            }
+
+            strengthText.textContent = text;
+
+            // Enable or disable the Register button
+            if (submitBtn) {
+                submitBtn.disabled = !canSubmit;
+                if (!canSubmit) {
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
             }
         });
