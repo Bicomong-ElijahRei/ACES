@@ -49,8 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Registration is restricted to official KLD email addresses (must end in @kld.edu.ph).";
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match.";
-    } elseif (strlen($password) < 6) {
-        $error = "Password must be at least 6 characters.";
+    } elseif (strlen($password) < 8) {
+        $error = "Password must be at least 8 characters long.";
+    } elseif (!preg_match('/[A-Z]/', $password)) {
+        $error = "Password must contain at least one uppercase letter (A-Z).";
+    } elseif (!preg_match('/[a-z]/', $password)) {
+        $error = "Password must contain at least one lowercase letter (a-z).";
+    } elseif (!preg_match('/[0-9]/', $password)) {
+        $error = "Password must contain at least one number (0-9).";
     } elseif (!preg_match('/^[0-9\-]+$/', $mobile)) {
         $error = "Please enter a valid mobile number (numbers only).";
     } elseif (!preg_match('/^[a-zA-Z0-9\-]+$/', $student_id)) {
@@ -283,11 +289,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="password" required minlength="6" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <input type="password" name="password" id="password_input" required minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number, one uppercase and lowercase letter, and be at least 8 characters long." class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <p class="text-xs text-gray-500 mt-1">Must be at least 8 characters and include uppercase, lowercase, and numbers.</p>
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Confirm Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="confirm_password" required minlength="6" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        <input type="password" name="confirm_password" id="confirm_password_input" required minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number, one uppercase and lowercase letter, and be at least 8 characters long." class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
                     </div>
                 </div>
             </div>
