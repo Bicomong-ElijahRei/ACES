@@ -90,8 +90,12 @@ $current = basename($_SERVER['PHP_SELF']);
             <i class="fas fa-sign-out-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Logout</span>
         </a>
         <div class="flex gap-4 text-lg opacity-80 sidebar-text px-3">
-            <i class="fa-brands fa-facebook cursor-pointer hover:text-white"></i>
-            <i class="fa-brands fa-google cursor-pointer hover:text-white"></i>
+            <a href="https://www.facebook.com/KLDOfficial2021" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors" title="KLD Official Facebook Page">
+                <i class="fa-brands fa-facebook"></i>
+            </a>
+            <a href="https://www.kld.edu.ph/" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors" title="KLD Official Website">
+                <i class="fa-brands fa-google"></i>
+            </a>
         </div>
     </div>
 </aside>

@@ -253,9 +253,12 @@ function parseStudentName($full_name, $middle_name) {
 
     <?php include '../includes/staff_sidebar.php'; ?>
 
-    <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
+    <div class="flex-1 flex flex-col overflow-hidden w-full">
+        <?php include '../includes/header.php'; ?> <!-- THIS CONTAINS THE HAMBURGER ICON -->
         
-        <!-- Header -->
+        <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
+            
+            <!-- Page Header -->
         <div class="flex justify-between items-center mb-6">
             <div>
                 <h1 class="text-3xl font-bold text-[#0a6e2d]">Student Information</h1>

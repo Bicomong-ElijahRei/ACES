@@ -6,6 +6,7 @@ require_once '../includes/csrf.php';
 redirectIfNotStudent();
 
 $student_id = $_SESSION['student_id'];
+$error = '';
 
 // Create Ticket
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create') {
@@ -42,17 +43,27 @@ $tickets = $stmt->fetchAll();
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- ADDED VIEWPORT TAG -->
     <title>Support | ACES Student</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
+<body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row overflow-hidden"> <!-- ADDED overflow-hidden -->
     <?php include '../includes/student_sidebar.php'; ?>
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden w-full"> <!-- ADDED w-full -->
         <?php include '../includes/student_header.php'; ?>
-        <main class="flex-1 p-6 overflow-y-auto">
+        <main class="flex-1 p-4 md:p-6 overflow-y-auto no-scrollbar"> <!-- CHANGED PADDING TO BE RESPONSIVE -->
+            
             <h1 class="text-2xl font-bold text-gray-800 mb-6">My Support Tickets</h1>
             
+            <!-- Display Error Alert -->
+            <?php if ($error): ?>
+                <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
+                    <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?>
+                    <button type="button" class="ml-auto text-red-700 hover:text-red-900" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            <?php endif; ?>
+
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- Create Ticket Form -->
                 <div class="md:col-span-1 bg-white p-6 rounded-xl shadow-sm h-fit">
@@ -62,11 +73,11 @@ $tickets = $stmt->fetchAll();
                         <input type="hidden" name="action" value="create">
                         <div class="mb-3">
                             <label class="block text-sm font-medium mb-1">Subject</label>
-                            <input type="text" name="subject" required class="w-full border rounded-lg p-2 text-sm" placeholder="e.g. Cannot access module">
+                            <input type="text" name="subject" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="e.g. Cannot access module">
                         </div>
                         <div class="mb-3">
                             <label class="block text-sm font-medium mb-1">Category</label>
-                            <select name="category" class="w-full border rounded-lg p-2 text-sm">
+                            <select name="category" class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 <option value="bug">Bug / System Error</option>
                                 <option value="attendance">Attendance Issue</option>
                                 <option value="module">Module Issue</option>
@@ -75,9 +86,9 @@ $tickets = $stmt->fetchAll();
                         </div>
                         <div class="mb-4">
                             <label class="block text-sm font-medium mb-1">Reason / Message</label>
-                            <textarea name="message" rows="4" required class="w-full border rounded-lg p-2 text-sm" placeholder="Explain your issue..."></textarea>
+                            <textarea name="message" rows="4" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="Explain your issue..."></textarea>
                         </div>
-                        <button type="submit" class="w-full bg-[#0a6e2d] text-white font-bold py-2 rounded-lg">Submit Ticket</button>
+                        <button type="submit" class="w-full bg-[#0a6e2d] hover:bg-[#054018] text-white font-bold py-2 rounded-lg transition-colors">Submit Ticket</button>
                     </form>
                 </div>
 
@@ -88,12 +99,12 @@ $tickets = $stmt->fetchAll();
                     <?php else: ?>
                         <?php foreach ($tickets as $t): ?>
                             <a href="ticket.php?id=<?= $t['ticket_id'] ?>" class="block bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-[#0a6e2d] transition">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <h3 class="font-bold text-gray-800"><?= htmlspecialchars($t['subject']) ?></h3>
+                                <div class="flex justify-between items-start gap-4">
+                                    <div class="min-w-0">
+                                        <h3 class="font-bold text-gray-800 truncate"><?= htmlspecialchars($t['subject']) ?></h3>
                                         <p class="text-xs text-gray-500 mt-1">Opened on <?= date('M d, Y', strtotime($t['created_at'])) ?> • Category: <?= ucfirst($t['category']) ?></p>
                                     </div>
-                                    <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase 
+                                    <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase whitespace-nowrap
                                         <?= $t['status'] === 'open' ? 'bg-amber-100 text-amber-800' : ($t['status'] === 'resolved' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') ?>">
                                         <?= str_replace('_', ' ', $t['status']) ?>
                                     </span>
