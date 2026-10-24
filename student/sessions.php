@@ -136,7 +136,8 @@ $all_dates = array_unique($all_dates);
 
 // --- PAST SESSIONS HISTORY ---
 $stmt_past_subs = $pdo->prepare("
-    SELECT st.subtopic_id, st.title AS subtopic_title, st.visible_courses, st.visible_for,
+    SELECT st.subtopic_id, st.title AS subtopic_title, st.description, 
+           st.subtopic_proctor, st.subtopic_location, st.visible_courses, st.visible_for,
            s.title AS session_title, COALESCE(st.subtopic_date, s.date) AS actual_date, s.phase
     FROM subtopics st JOIN sessions s ON st.session_id = s.session_id
     WHERE st.is_deleted = 0 AND s.is_deleted = 0 AND COALESCE(st.subtopic_date, s.date) < ?
@@ -361,7 +362,16 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                 <?php if (empty($past_missed)): ?><div class="p-6 text-center text-gray-400">No missed subtopics. Great job!</div>
                 <?php else: ?><ul class="divide-y divide-gray-100">
                     <?php foreach ($past_missed as $sub): ?>
-                        <li class="p-4 flex justify-between items-center hover:bg-red-50 transition">
+                    <li class="p-4 flex justify-between items-center hover:bg-red-50 transition cursor-pointer" onclick='openHistoryModal(<?= htmlspecialchars(json_encode([
+                        "title" => $sub['subtopic_title'], 
+                        "session" => $sub['session_title'], 
+                        "date" => date('M d, Y', strtotime($sub['actual_date'])), 
+                        "status" => "Missed / Absent", 
+                        "statusClass" => "bg-red-100 text-red-700 border-red-200",
+                        "desc" => $sub['description'] ?? '', 
+                        "proctor" => $sub['subtopic_proctor'] ?? 'TBA', 
+                        "location" => $sub['subtopic_location'] ?? 'TBA'
+                    ]), ENT_QUOTES, 'UTF-8') ?>)'>
                             <div><p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p><p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['actual_date'])) ?></p></div>
                             <span class="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-md border border-red-200">Missed / Absent</span>
                         </li>
@@ -372,7 +382,16 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                 <?php if (empty($past_not_reg)): ?><div class="p-6 text-center text-gray-400">You registered for all past available subtopics.</div>
                 <?php else: ?><ul class="divide-y divide-gray-100">
                     <?php foreach ($past_not_reg as $sub): ?>
-                        <li class="p-4 flex justify-between items-center hover:bg-gray-50 transition">
+                        <li class="p-4 flex justify-between items-center hover:bg-gray-50 transition cursor-pointer" onclick='openHistoryModal(<?= htmlspecialchars(json_encode([
+                            "title" => $sub['subtopic_title'], 
+                            "session" => $sub['session_title'], 
+                            "date" => date('M d, Y', strtotime($sub['actual_date'])), 
+                            "status" => "Unregistered", 
+                            "statusClass" => "bg-gray-100 text-gray-600 border-gray-300",
+                            "desc" => $sub['description'] ?? '', 
+                            "proctor" => $sub['subtopic_proctor'] ?? 'TBA', 
+                            "location" => $sub['subtopic_location'] ?? 'TBA'
+                        ]), ENT_QUOTES, 'UTF-8') ?>)'>
                             <div><p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p><p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['actual_date'])) ?></p></div>
                             <span class="bg-gray-100 text-gray-600 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-300">Unregistered</span>
                         </li>
@@ -383,7 +402,16 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                 <?php if (empty($past_completed)): ?><div class="p-6 text-center text-gray-400">No completed past subtopics yet.</div>
                 <?php else: ?><ul class="divide-y divide-gray-100">
                     <?php foreach ($past_completed as $sub): ?>
-                        <li class="p-4 flex justify-between items-center hover:bg-green-50 transition">
+                        <li class="p-4 flex justify-between items-center hover:bg-green-50 transition cursor-pointer" onclick='openHistoryModal(<?= htmlspecialchars(json_encode([
+                            "title" => $sub['subtopic_title'], 
+                            "session" => $sub['session_title'], 
+                            "date" => date('M d, Y', strtotime($sub['actual_date'])), 
+                            "status" => "Present", 
+                            "statusClass" => "bg-green-100 text-green-700 border-green-200",
+                            "desc" => $sub['description'] ?? '', 
+                            "proctor" => $sub['subtopic_proctor'] ?? 'TBA', 
+                            "location" => $sub['subtopic_location'] ?? 'TBA'
+                        ]), ENT_QUOTES, 'UTF-8') ?>)'>
                             <div><p class="font-bold text-sm text-gray-800"><?= htmlspecialchars($sub['subtopic_title']) ?></p><p class="text-xs text-gray-500"><?= htmlspecialchars($sub['session_title']) ?> · <?= date('M d, Y', strtotime($sub['actual_date'])) ?></p></div>
                             <span class="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md border border-green-200">Present</span>
                         </li>
@@ -578,6 +606,65 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+function openHistoryModal(data) {
+    document.getElementById('historyModalTitle').textContent = data.title;
+    document.getElementById('historyModalSession').textContent = data.session;
+    document.getElementById('historyModalDate').textContent = data.date;
+    
+    // Set status badge
+    const statusBadge = document.getElementById('historyModalStatus');
+    statusBadge.textContent = data.status;
+    statusBadge.className = `px-2.5 py-1 rounded-md text-xs font-bold border ${data.statusClass}`;
+    
+    // Set proctor and location
+    document.getElementById('historyModalMeta').textContent = `${data.proctor} • ${data.location}`;
+    
+    // Set description (hide if empty)
+    const descContainer = document.getElementById('historyModalDescContainer');
+    if (data.desc && data.desc.trim() !== '') {
+        document.getElementById('historyModalDesc').textContent = data.desc;
+        descContainer.style.display = 'block';
+    } else {
+        descContainer.style.display = 'none';
+    }
+    
+    new bootstrap.Modal(document.getElementById('historyModal')).show();
+}
 </script>
+<!-- PAST HISTORY DETAILS MODAL -->
+<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-xl rounded-2xl overflow-hidden">
+            <div class="bg-gray-800 text-white p-5 relative">
+                <button type="button" class="btn-close btn-close-white absolute top-4 right-4" data-bs-dismiss="modal"></button>
+                <h5 class="font-bold text-xl pr-8" id="historyModalTitle">Details</h5>
+                <p class="text-gray-300 text-sm mt-1" id="historyModalSession"></p>
+            </div>
+            <div class="modal-body p-6 bg-gray-50">
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-gray-200 pb-3">
+                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Date</span>
+                        <span class="text-sm font-semibold text-gray-800" id="historyModalDate"></span>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-gray-200 pb-3">
+                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Status</span>
+                        <span id="historyModalStatus" class="px-2.5 py-1 rounded-md text-xs font-bold border"></span>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-gray-200 pb-3">
+                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Proctor & Location</span>
+                        <span class="text-sm font-semibold text-gray-800 text-right" id="historyModalMeta"></span>
+                    </div>
+                    <div id="historyModalDescContainer">
+                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">Description</span>
+                        <p class="text-sm text-gray-700 italic" id="historyModalDesc"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-white border-t border-gray-200 p-4">
+                <button type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg transition" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>
