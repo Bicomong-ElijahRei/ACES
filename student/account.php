@@ -7,13 +7,17 @@ redirectIfNotStudent();
 
 // Fetch student details (Added last_id_change)
 $stmt = $pdo->prepare("
-    SELECT u.full_name, u.email, u.pending_email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change 
+    SELECT u.full_name, u.email, u.pending_email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change, s.last_section_change 
     FROM users u 
     JOIN students s ON u.user_id = s.user_id 
     WHERE s.student_id = ?
 ");
 $stmt->execute([$_SESSION['student_id']]);
 $student = $stmt->fetch();
+
+// Fetch dynamic courses and ALL sections for JS filtering
+$courses_list = $pdo->query("SELECT * FROM courses ORDER BY name")->fetchAll();
+$sections_list = $pdo->query("SELECT * FROM sections ORDER BY name")->fetchAll();
 
 if (!$student) {
     header('Location: ../login.php');
@@ -76,6 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $mobile = trim($_POST['mobile']);
     $telephone = trim($_POST['telephone']);
     $new_student_id = trim($_POST['student_id']);
+    $new_program = trim($_POST['program']);
+    $new_section = trim($_POST['section']);
 
     if (!$full_name || !$email || !$new_student_id) {
         $error = "Full Name, Email, and Student ID are required.";
@@ -93,6 +99,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($stmt_dup->fetch()) {
             $error = "That email address is already in use by another account.";
         } else {
+            // --- ACADEMIC (PROGRAM/SECTION) COOLDOWN CHECK ---
+            $academic_changed = ($new_program !== $student['program'] || $new_section !== $student['section']);
+            if ($academic_changed && !empty($student['last_section_change'])) {
+                $last_acad_change = strtotime($student['last_section_change']);
+                if (time() - $last_acad_change < 86400) {
+                    $hours_left_acad = ceil((86400 - (time() - $last_acad_change)) / 3600);
+                    $error = "You can only change your Program or Section once every 24 hours. Please wait {$hours_left_acad} hour(s).";
+                    $academic_changed = false; // Prevent update
+                }
+            }
+
             // --- 24-HOUR COOLDOWN CHECK ---
             $id_changed = ($new_student_id !== $student['student_id']);
             if ($id_changed && !empty($student['last_id_change'])) {
@@ -168,6 +185,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         // Normal update (ID not changed)
                         $stmt_upd_s = $pdo->prepare("UPDATE students SET mobile = ?, telephone = ? WHERE student_id = ?");
                         $stmt_upd_s->execute([$mobile, $telephone, $_SESSION['student_id']]);
+                    }
+
+                    // Handle Program & Section Change
+                    if ($academic_changed) {
+                        $stmt_upd_acad = $pdo->prepare("UPDATE students SET program = ?, section = ?, last_section_change = NOW() WHERE student_id = ?");
+                        $stmt_upd_acad->execute([$new_program, $new_section, $_SESSION['student_id']]);
+                        $student['program'] = $new_program;
+                        $student['section'] = $new_section;
+                        $student['last_section_change'] = date('Y-m-d H:i:s');
                     }
 
                     // Update users table (Full Name only, email handled above)
@@ -323,19 +349,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                             <div class="md:text-right pt-2">
-                                <label class="block text-sm font-bold text-gray-700">Program</label>
+                                <label class="block text-sm font-bold text-gray-700">Program <span class="text-red-500">*</span></label>
+                                <?php if (!empty($student['last_section_change'])): ?>
+                                    <p class="text-xs text-amber-600 mt-1">You can only change this once every 24 hours.</p>
+                                <?php endif; ?>
                             </div>
                             <div class="md:col-span-2">
-                                <input type="text" value="<?= htmlspecialchars($student['program']) ?>" class="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-100 text-gray-500 cursor-not-allowed text-sm" readonly>
+                                <select name="program" id="program_input" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow text-sm bg-white" required>
+                                    <?php foreach ($courses_list as $course): ?>
+                                        <option value="<?= htmlspecialchars($course['name']) ?>" <?= $student['program'] == $course['name'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($course['name']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                             <div class="md:text-right pt-2">
-                                <label class="block text-sm font-bold text-gray-700">Section</label>
+                                <label class="block text-sm font-bold text-gray-700">Section <span class="text-red-500">*</span></label>
                             </div>
                             <div class="md:col-span-2">
-                                <input type="text" value="<?= htmlspecialchars($student['section']) ?>" class="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-100 text-gray-500 cursor-not-allowed text-sm" readonly>
+                                <select name="section" id="section_input" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow text-sm bg-white" required>
+                                    <!-- Options populated via JS -->
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Make sure this is correct. You can only change it once every 24 hours.</p>
                             </div>
                         </div>
 
@@ -480,12 +518,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- NEW: Warn before Student ID change ---
+    // --- LINK PROGRAM AND SECTION DROPDOWNS ---
+    const coursesData = <?= json_encode($courses_list) ?>;
+    const sectionsData = <?= json_encode($sections_list) ?>;
+    const programSelect = document.getElementById('program_input');
+    const sectionSelect = document.getElementById('section_input');
+    const originalSection = "<?= $student['section'] ?>";
+    const originalProgram = "<?= $student['program'] ?>";
+
+    function populateSections(programName, selectedSection = '') {
+        sectionSelect.innerHTML = '';
+        const courseObj = coursesData.find(c => c.name === programName);
+        if (!courseObj) return;
+
+        const filteredSections = sectionsData.filter(s => s.course_id == courseObj.id);
+        filteredSections.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.name;
+            opt.textContent = s.name;
+            if (s.name === selectedSection) opt.selected = true;
+            sectionSelect.appendChild(opt);
+        });
+    }
+
+    // Initialize on page load
+    populateSections(programSelect.value, originalSection);
+
+    // Update sections when program changes
+    programSelect.addEventListener('change', function() {
+        populateSections(this.value);
+    });
+
+    // --- Warn before Student ID or Academic change ---
     const originalId = "<?= $student['student_id'] ?>";
+    
     document.getElementById('profileForm').addEventListener('submit', function(e) {
         const newId = document.getElementById('student_id_input').value;
+        const newProgram = programSelect.value;
+        const newSection = sectionSelect.value;
+        
         if (newId !== originalId) {
-            if (!confirm("⚠️ WARNING!\n\nYou are about to change your Student ID from:\n" + originalId + "\n\nTo:\n" + newId + "\n\nThis will immediately change your login credentials and update your records across the system. You can only do this once every 24 hours.\n\nAre you absolutely sure?")) {
+            if (!confirm("⚠️ WARNING!\n\nYou are about to change your Student ID from:\n" + originalId + "\n\nTo:\n" + newId + "\n\nYou can only do this once every 24 hours.\n\nAre you absolutely sure?")) {
+                e.preventDefault();
+                return false;
+            }
+        }
+
+        if (newProgram !== originalProgram || newSection !== originalSection) {
+            if (!confirm("⚠️ WARNING!\n\nYou are about to change your Academic Details:\n\nFrom: " + originalProgram + " - " + originalSection + "\nTo: " + newProgram + " - " + newSection + "\n\nYou can only do this once every 24 hours. Are you absolutely sure?")) {
                 e.preventDefault();
                 return false;
             }

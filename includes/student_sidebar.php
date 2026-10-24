@@ -86,7 +86,7 @@ $current = basename($_SERVER['PHP_SELF']);
             <i class="fas fa-headset mr-2 w-5 text-center"></i><span class="sidebar-text">Support</span>
         </a>
 
-        <a href="../logout.php" class="block text-white font-bold hover:text-red-300 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2">
+        <a href="../logout.php" onclick="return confirm('Are you sure you want to log out?');" class="block text-white font-bold hover:text-red-300 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2">
             <i class="fas fa-sign-out-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Logout</span>
         </a>
         <div class="flex gap-4 text-lg opacity-80 sidebar-text px-3">
