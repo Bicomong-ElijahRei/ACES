@@ -7,7 +7,7 @@ redirectIfNotStudent();
 
 // Fetch student details (Added last_id_change)
 $stmt = $pdo->prepare("
-    SELECT u.full_name, u.email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change 
+    SELECT u.full_name, u.email, u.pending_email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change 
     FROM users u 
     JOIN students s ON u.user_id = s.user_id 
     WHERE s.student_id = ?
@@ -20,13 +20,58 @@ if (!$student) {
     exit;
 }
 
+// --- Parse Name into separate fields ---
+$full_name_raw = $student['full_name'] ?? '';
+$middle_name = $student['middle_name'] ?? '';
+$suffix = $student['suffix'] ?? '';
+
+$parts = explode(' ', trim($full_name_raw));
+if (!empty($middle_name)) {
+    $middle_parts = explode(' ', trim($middle_name));
+    foreach ($middle_parts as $mp) {
+        $key = array_search($mp, $parts);
+        if ($key !== false) unset($parts[$key]);
+    }
+    $parts = array_values($parts);
+}
+if (!empty($suffix) && ($key = array_search($suffix, $parts)) !== false) {
+    unset($parts[$key]);
+    $parts = array_values($parts);
+}
+$last_name = '';
+$first_name = '';
+if (count($parts) >= 2) {
+    $last_name = array_pop($parts);
+    $first_name = implode(' ', $parts);
+} elseif (count($parts) == 1) {
+    $last_name = $parts[0];
+}
+// ----------------------------------------
+
 $success = '';
 $error = '';
+
+// Handle Canceling the Email Change
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancel_email_change') {
+    csrf_verify();
+    $stmt_cancel = $pdo->prepare("UPDATE users SET pending_email = NULL, email_change_pin = NULL, email_pin_expiry = NULL WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
+    $stmt_cancel->execute([$_SESSION['student_id']]);
+    $success = "Pending email change request has been canceled.";
+    // Refresh the local student data
+    $student['pending_email'] = null;
+}
 
 // Handle Profile Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_profile') {
     csrf_verify();
-    $full_name = trim($_POST['full_name']);
+    
+    // Combine separate name fields into full_name
+    $first_name  = trim($_POST['first_name']);
+    $middle_name = trim($_POST['middle_name']);
+    $last_name   = trim($_POST['last_name']);
+    $suffix      = trim($_POST['suffix']);
+    $full_name   = trim($first_name . ' ' . ($middle_name ? $middle_name . ' ' : '') . $last_name . ($suffix ? ' ' . $suffix : ''));
+
     $email = trim($_POST['email']);
     $mobile = trim($_POST['mobile']);
     $telephone = trim($_POST['telephone']);
@@ -65,6 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                     // 1. Handle Email Change (PIN Logic)
                     if ($email !== $student['email']) {
+                        
+                        // Check if there is ALREADY a pending request for this EXACT email
+                        if (!empty($student['pending_email']) && strtolower($email) === strtolower($student['pending_email'])) {
+                            $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN was already sent to this email address. Please check your inbox.'];
+                            header("Location: ../verify_email_change.php");
+                            exit;
+                        }
+
                         $pin = sprintf("%06d", mt_rand(1, 999999));
                         $expiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                         $stmt_pin = $pdo->prepare("UPDATE users SET pending_email = ?, email_change_pin = ?, email_pin_expiry = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
@@ -74,6 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         $subject = "ACES - Verify Your New Email Address";
                         $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
                         sendEmail($email, $subject, $body);
+                        
+                        // CRITICAL FIX: Save the PIN to the database BEFORE redirecting!
+                        $pdo->commit(); 
+
                         $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
                         header("Location: ../verify_email_change.php");
                         exit;
@@ -116,11 +173,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     // Update users table (Full Name only, email handled above)
                     $stmt_upd_u = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
                     $stmt_upd_u->execute([$full_name, $_SESSION['student_id']]);
+
+                    // Update students table (Middle Name and Suffix)
+                    $stmt_upd_name = $pdo->prepare("UPDATE students SET middle_name = ?, suffix = ? WHERE student_id = ?");
+                    $stmt_upd_name->execute([$middle_name ?: null, $suffix ?: null, $_SESSION['student_id']]);
                     
                     $pdo->commit();
                     $success = "Profile updated successfully.";
                     
                     $student['full_name'] = $full_name;
+                    $student['middle_name'] = $middle_name;
+                    $student['suffix'] = $suffix;
                     $student['mobile'] = $mobile;
                     $student['telephone'] = $telephone;
                 } catch (Exception $e) {
@@ -205,6 +268,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             </div>
         <?php endif; ?>
 
+        <!-- PENDING EMAIL WARNING -->
+        <?php if (!empty($student['pending_email'])): ?>
+            <div class="bg-amber-50 border-l-4 border-amber-500 text-amber-800 p-4 rounded-r-lg shadow-sm mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-exclamation-triangle text-amber-500 text-xl"></i>
+                    <div>
+                        <p class="font-bold">Unverified Email Change Request</p>
+                        <p class="text-sm">You requested to change your email to <strong><?= htmlspecialchars($student['pending_email']) ?></strong>. Please check your inbox for the 6-digit PIN.</p>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <a href="../verify_email_change.php" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition">Enter PIN</a>
+                    <form method="POST" class="inline">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="cancel_email_change">
+                        <button type="submit" class="bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition" onclick="return confirm('Cancel your email change request?');">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <div class="max-w-4xl mx-auto space-y-8">
             
             <!-- Section 1: Profile Information -->
@@ -258,12 +342,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <div class="border-t border-gray-100 my-2"></div>
 
                         <!-- Editable Info -->
+                        <!-- Name Fields Grid -->
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                             <div class="md:text-right pt-2">
                                 <label class="block text-sm font-bold text-gray-700">Full Name <span class="text-red-500">*</span></label>
                             </div>
-                            <div class="md:col-span-2">
-                                <input type="text" name="full_name" value="<?= htmlspecialchars($student['full_name']) ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow text-sm" required>
+                            <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div class="md:col-span-1">
+                                    <label class="block text-[11px] font-semibold text-gray-500 mb-1">First Name</label>
+                                    <input type="text" name="first_name" value="<?= htmlspecialchars($first_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                </div>
+                                <div class="md:col-span-1">
+                                    <label class="block text-[11px] font-semibold text-gray-500 mb-1">Middle Name</label>
+                                    <input type="text" name="middle_name" value="<?= htmlspecialchars($student['middle_name'] ?? '') ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                </div>
+                                <div class="md:col-span-1">
+                                    <label class="block text-[11px] font-semibold text-gray-500 mb-1">Last Name</label>
+                                    <input type="text" name="last_name" value="<?= htmlspecialchars($last_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                </div>
+                                <div class="md:col-span-1">
+                                    <label class="block text-[11px] font-semibold text-gray-500 mb-1">Suffix</label>
+                                    <input type="text" name="suffix" value="<?= htmlspecialchars($student['suffix'] ?? '') ?>" placeholder="e.g. Jr." class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                </div>
                             </div>
                         </div>
 

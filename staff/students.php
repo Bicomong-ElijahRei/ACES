@@ -664,6 +664,15 @@ function parseStudentName($full_name, $middle_name) {
         
         $('#searchInput').on('keyup', function() { table.search($(this).val()).draw(); });
 
+        // --- NEW: Auto-search when arriving from a link (e.g., from a Support Ticket) ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchParam = urlParams.get('search');
+        if (searchParam) {
+            $('#searchInput').val(searchParam);       // Fill the search box
+            table.search(searchParam).draw();         // Filter the table instantly
+        }
+        // ---------------------------------------------------------------------------------
+
         $('#selectAllCheckbox').on('change', function() {
             var isChecked = $(this).prop('checked');
             $('.row-checkbox:visible').prop('checked', isChecked);

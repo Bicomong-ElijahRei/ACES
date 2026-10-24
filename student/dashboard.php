@@ -132,9 +132,18 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
         
         <main class="flex-1 p-6 overflow-y-auto no-scrollbar w-full">
             
-            <div class="mb-8">
-                <h2 class="text-3xl font-extrabold text-[#0a6e2d]">Welcome back, <?= htmlspecialchars($first_name) ?>! 👋</h2>
-                <p class="text-gray-500 mt-1">Here is your at-a-glance summary.</p>
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-[#0a6e2d]">Welcome back, <?= htmlspecialchars($first_name) ?>! 👋</h2>
+                    <p class="text-gray-500 mt-1">Here is your at-a-glance summary.</p>
+                </div>
+                
+                <!-- Subtle Support Prompt -->
+                <div class="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm shrink-0">
+                    <i class="fas fa-question-circle text-gray-400 text-sm"></i>
+                    <span class="text-xs text-gray-500 font-medium">Need help?</span>
+                    <a href="support.php" class="text-xs font-bold text-[#0a6e2d] hover:underline">Contact Support &rarr;</a>
+                </div>
             </div>
 
             <!-- TIER 1: THE HERO METRICS (Overall Progress & Up Next) -->

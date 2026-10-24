@@ -96,7 +96,12 @@ $messages = $stmt_msgs->fetchAll();
                         <span class="text-sm text-gray-500">Category: <?= ucfirst($ticket['category']) ?></span>
                     </div>
                     <h1 class="text-2xl font-bold text-gray-800"><?= htmlspecialchars($ticket['subject']) ?></h1>
-                    <p class="text-sm text-gray-500 mt-1">Reported by: <strong><?= htmlspecialchars($ticket['student_name']) ?></strong> (<?= htmlspecialchars($ticket['program']) ?> - <?= htmlspecialchars($ticket['section']) ?>) on <?= date('M d, Y g:i A', strtotime($ticket['created_at'])) ?></p>
+                    <p class="text-sm text-gray-500 mt-1">Reported by: 
+                        <a href="students.php?search=<?= urlencode($ticket['student_id']) ?>" class="text-[#0a6e2d] font-bold hover:underline" title="View Student Profile">
+                            <?= htmlspecialchars($ticket['student_name']) ?>
+                        </a> 
+                        (<?= htmlspecialchars($ticket['program']) ?> - <?= htmlspecialchars($ticket['section']) ?>) on <?= date('M d, Y g:i A', strtotime($ticket['created_at'])) ?>
+                    </p>
                 </div>
                 <div class="flex flex-col items-start md:items-end gap-2 w-full md:w-auto">
                     <a href="support.php" class="text-sm text-[#0a6e2d] font-bold hover:underline mb-2"><i class="fas fa-arrow-left mr-1"></i> Back to List</a>

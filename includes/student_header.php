@@ -9,7 +9,7 @@
         </button>
         
         <!-- Added inline style to force the height just in case Tailwind fails -->
-        <img src="../assets/images/kld_logo.png" alt="KLD" class="bg-white rounded-full p-0.5" style="height: 32px; width: 32px; object-fit: contain;" onerror="this.style.display='none'">
+        <img src="../assets/images/aces_logo.png" alt="KLD" class="bg-white rounded-full p-0.5" style="height: 32px; width: 32px; object-fit: contain;" onerror="this.style.display='none'">
         
         <span class="text-xl font-bold tracking-wide hidden sm:inline">ACES Student</span>
     </div>
