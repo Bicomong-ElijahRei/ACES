@@ -57,19 +57,20 @@ $messages = $stmt_msgs->fetchAll();
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ticket #<?= $ticket_id ?> | ACES Student</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
+<body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row overflow-hidden">
     <?php include '../includes/student_sidebar.php'; ?>
     
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden w-full min-w-0">
         <?php include '../includes/student_header.php'; ?>
-        <main class="flex-1 p-6 overflow-y-auto">
+        <main class="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-full">
             
             <!-- Header -->
-            <div class="bg-white rounded-xl shadow-sm p-6 mb-6 flex justify-between items-center">
+            <div class="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <div class="flex items-center gap-3 mb-2">
                         <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider <?= $ticket['status'] === 'open' ? 'bg-amber-100 text-amber-800' : ($ticket['status'] === 'resolved' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') ?>">
@@ -94,7 +95,7 @@ $messages = $stmt_msgs->fetchAll();
                         $is_me = ($msg['sender_id'] == $user_id);
                         $bubble_class = $is_me ? 'bg-[#0a6e2d] text-white ml-auto' : 'bg-gray-100 text-gray-800 mr-auto';
                     ?>
-                        <div class="max-w-[70%] <?= $bubble_class ?> p-4 rounded-xl shadow-sm">
+                        <div class="max-w-[90%] md:max-w-[75%] break-words <?= $bubble_class ?> p-4 rounded-xl shadow-sm">
                             <div class="flex justify-between items-baseline gap-4 mb-1">
                                 <span class="text-xs font-bold opacity-75"><?= htmlspecialchars($msg['full_name']) ?> (<?= ucfirst($msg['role']) ?>)</span>
                                 <span class="text-[10px] opacity-75"><?= date('M d, g:i A', strtotime($msg['created_at'])) ?></span>
@@ -110,18 +111,20 @@ $messages = $stmt_msgs->fetchAll();
 
             <!-- Reply Box -->
             <?php if ($ticket['status'] === 'open' || $ticket['status'] === 'in_progress'): ?>
-            <form method="POST" enctype="multipart/form-data" class="bg-white rounded-xl shadow-sm p-4 flex gap-3 items-end">
+            <!-- CHANGED TO GRID: Guarantees the button stays small on PC -->
+            <form method="POST" enctype="multipart/form-data" class="bg-white rounded-xl shadow-sm p-4 w-full grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 md:items-end">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="reply">
                 
-                <div class="flex-1">
+                <div class="w-full min-w-0">
                     <textarea name="message" rows="2" class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="Type your reply here..." required></textarea>
                     <div class="mt-2 text-xs text-gray-500">
                         <input type="file" name="chat_image" accept="image/*" class="text-xs">
                     </div>
                 </div>
                 
-                <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-3 rounded-lg font-bold text-sm h-[46px] mb-[22px]">
+                <!-- Button is now its own grid column, it will NEVER stretch past its content -->
+                <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-8 py-3 rounded-lg font-bold text-sm h-[46px] w-full md:w-auto">
                     <i class="fas fa-paper-plane mr-1"></i> Send
                 </button>
             </form>

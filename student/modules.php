@@ -844,10 +844,15 @@ if ($module_id) {
             </div>
 
             <?php if (empty($all_modules)): ?>
-                <div class="text-center py-20 bg-white rounded-2xl shadow-sm">
-                    <i class="fas fa-book-open text-6xl text-gray-200 mb-4"></i>
-                    <h3 class="text-lg font-semibold text-gray-700">No Modules Yet</h3>
-                    <p class="text-gray-500 mt-1">You are not enrolled in any modules. Register for a session to get started.</p>
+                <div class="text-center py-20 bg-white rounded-2xl shadow-sm border border-gray-200">
+                    <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-50 mb-4">
+                        <i class="fas fa-book-open text-4xl text-gray-300"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800">No Modules Yet</h3>
+                    <p class="text-gray-500 mt-2 max-w-md mx-auto">You are not enrolled in any modules. Please register for a subtopic that includes modules first to start learning.</p>
+                    <a href="sessions.php" class="inline-flex items-center gap-2 bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-3 rounded-lg font-bold text-sm transition-colors shadow-sm mt-6">
+                        <i class="fas fa-calendar-plus"></i> Go to Sessions
+                    </a>
                 </div>
             <?php else: ?>
                 <?php foreach ($modules_by_subtopic as $subtopic_title => $modules): ?>

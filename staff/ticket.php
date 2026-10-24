@@ -74,16 +74,17 @@ $messages = $stmt_msgs->fetchAll();
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ticket #<?= $ticket_id ?> | ACES Staff</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
+<body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row overflow-hidden">
     <?php include '../includes/staff_sidebar.php'; ?>
     
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden w-full">
         <?php include '../includes/header.php'; ?>
-        <main class="flex-1 p-6 overflow-y-auto">
+        <main class="flex-1 p-4 md:p-6 overflow-y-auto">
             
             <!-- Header -->
             <div class="bg-white rounded-xl shadow-sm p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -97,13 +98,13 @@ $messages = $stmt_msgs->fetchAll();
                     <h1 class="text-2xl font-bold text-gray-800"><?= htmlspecialchars($ticket['subject']) ?></h1>
                     <p class="text-sm text-gray-500 mt-1">Reported by: <strong><?= htmlspecialchars($ticket['student_name']) ?></strong> (<?= htmlspecialchars($ticket['program']) ?> - <?= htmlspecialchars($ticket['section']) ?>) on <?= date('M d, Y g:i A', strtotime($ticket['created_at'])) ?></p>
                 </div>
-                <div class="flex flex-col items-end gap-2">
+                <div class="flex flex-col items-start md:items-end gap-2 w-full md:w-auto">
                     <a href="support.php" class="text-sm text-[#0a6e2d] font-bold hover:underline mb-2"><i class="fas fa-arrow-left mr-1"></i> Back to List</a>
                     
-                    <form method="POST">
+                    <form method="POST" class="w-full md:w-auto">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="change_status">
-                        <select name="status" onchange="this.form.submit()" class="border border-gray-300 rounded-lg p-2 text-sm font-semibold bg-white shadow-sm">
+                        <select name="status" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded-lg p-2 text-sm font-semibold bg-white shadow-sm">
                             <option value="open" <?= $ticket['status']=='open'?'selected':'' ?>>Mark as Open</option>
                             <option value="in_progress" <?= $ticket['status']=='in_progress'?'selected':'' ?>>Mark as In Progress</option>
                             <option value="resolved" <?= $ticket['status']=='resolved'?'selected':'' ?>>Mark as Resolved</option>
@@ -122,7 +123,7 @@ $messages = $stmt_msgs->fetchAll();
                         $is_me = ($msg['sender_id'] == $user_id);
                         $bubble_class = $is_me ? 'bg-[#0a6e2d] text-white ml-auto' : 'bg-gray-100 text-gray-800 mr-auto';
                     ?>
-                        <div class="max-w-[70%] <?= $bubble_class ?> p-4 rounded-xl shadow-sm">
+                        <div class="max-w-[90%] md:max-w-[75%] break-words <?= $bubble_class ?> p-4 rounded-xl shadow-sm">
                             <div class="flex justify-between items-baseline gap-4 mb-1">
                                 <span class="text-xs font-bold opacity-75"><?= htmlspecialchars($msg['full_name']) ?> (<?= ucfirst($msg['role']) ?>)</span>
                                 <span class="text-[10px] opacity-75"><?= date('M d, g:i A', strtotime($msg['created_at'])) ?></span>
@@ -138,18 +139,20 @@ $messages = $stmt_msgs->fetchAll();
 
             <!-- Reply Box -->
             <?php if ($ticket['status'] === 'open' || $ticket['status'] === 'in_progress'): ?>
-            <form method="POST" enctype="multipart/form-data" class="bg-white rounded-xl shadow-sm p-4 flex gap-3 items-end">
+            <!-- CHANGED TO GRID: Guarantees the button stays small on PC -->
+            <form method="POST" enctype="multipart/form-data" class="bg-white rounded-xl shadow-sm p-4 w-full grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 md:items-end">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="reply">
                 
-                <div class="flex-1">
+                <div class="w-full min-w-0">
                     <textarea name="message" rows="2" class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" placeholder="Type your reply here..." required></textarea>
                     <div class="mt-2 text-xs text-gray-500">
                         <input type="file" name="chat_image" accept="image/*" class="text-xs">
                     </div>
                 </div>
                 
-                <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-3 rounded-lg font-bold text-sm h-[46px] mb-[22px]">
+                <!-- Button is now its own grid column, it will NEVER stretch past its content -->
+                <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-8 py-3 rounded-lg font-bold text-sm h-[46px] w-full md:w-auto">
                     <i class="fas fa-paper-plane mr-1"></i> Send
                 </button>
             </form>
