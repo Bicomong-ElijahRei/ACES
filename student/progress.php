@@ -188,21 +188,23 @@ foreach ($all_subs as $sub) {
 
     // Check if the session date is in the past
     $today = date('Y-m-d');
-    $sub_date = $sub['date'];
+    // FIX: Use effective_date to account for subtopic date overrides
+    $sub_date = $sub['effective_date']; 
     $is_past = ($sub_date < $today);
 
     if ($is_registered) {
         if ($att_status === 'present') {
             $history_completed[] = $sub;
         } elseif ($att_status === 'absent' || $is_past) {
-            // FIX: If it's marked absent OR the date has passed, it's missed.
             $history_missed[] = $sub;
         } else {
-            // Only pending if the date is in the future
             $history_pending[] = $sub; 
         }
     } else {
-        $history_not_registered[] = $sub;
+        // FIX: Only count it as "Not Registered" if the event has already passed
+        if ($is_past) {
+            $history_not_registered[] = $sub;
+        }
     }
 }
 // ---------------------------------------------
