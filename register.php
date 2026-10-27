@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 error_log("Verification email failed for {$email}: " . $e->getMessage());
             }
 
-            header('Location: index.php?registered=1');
+            header('Location: index.php?registered=1&verify=1');
             exit;
 
         } catch (Exception $e) {
@@ -289,8 +289,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Password <span class="text-red-500">*</span></label>
-                        <!-- I removed the 'pattern' attribute so the browser doesn't use its ugly default popup -->
-                        <input type="password" name="password" id="password_input" required minlength="8" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        
+                        <!-- WRAPPER FOR PASSWORD TOGGLE -->
+                        <div class="relative">
+                            <input type="password" name="password" id="password_input" required minlength="8" class="w-full border border-gray-300 p-2.5 pr-10 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                            <button type="button" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none toggle-password" data-target="password_input">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
                         
                         <!-- THE PASSWORD STRENGTH METER BARS -->
                         <div class="mt-2 flex gap-1 h-1.5">
@@ -303,7 +309,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="flex flex-col">
                         <label class="text-sm font-semibold text-gray-600 mb-1.5">Confirm Password <span class="text-red-500">*</span></label>
-                        <input type="password" name="confirm_password" id="confirm_password_input" required minlength="8" class="border border-gray-300 p-2.5 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                        
+                        <!-- WRAPPER FOR CONFIRM PASSWORD TOGGLE -->
+                        <div class="relative">
+                            <input type="password" name="confirm_password" id="confirm_password_input" required minlength="8" class="w-full border border-gray-300 p-2.5 pr-10 rounded-lg text-sm transition-all bg-gray-50 focus:bg-white">
+                            <button type="button" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none toggle-password" data-target="confirm_password_input">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -331,6 +345,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    </div>
 
       <script>
+        // --- NEW: PASSWORD TOGGLE VISIBILITY ---
+        document.querySelectorAll('.toggle-password').forEach(button => {
+            button.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                const input = document.getElementById(targetId);
+                const icon = this.querySelector('i');
+
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.classList.remove('fa-eye');
+                    icon.classList.add('fa-eye-slash');
+                } else {
+                    input.type = 'password';
+                    icon.classList.remove('fa-eye-slash');
+                    icon.classList.add('fa-eye');
+                }
+            });
+        });
+
         // Client-side password match check AND button buffering
         document.querySelector('form').addEventListener('submit', function(e) {
             let password = document.querySelector('input[name="password"]').value;
@@ -359,7 +392,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         });
-                // --- NEW: PASSWORD STRENGTH METER LOGIC ---
+        
+        // --- NEW: PASSWORD STRENGTH METER LOGIC ---
         const passwordInput = document.getElementById('password_input');
         const submitBtn = document.querySelector('button[type="submit"]');
         const strengthBars = [

@@ -292,7 +292,12 @@ if (isset($_SESSION['user_id'])) {
         <?php endif; ?>
 
         <?php if (isset($_GET['registered'])): ?>
-            <div class="success-message">Registration successful! Please login.</div>
+            <div class="success-message">
+                Registration successful! 
+                <?php if (isset($_GET['verify'])): ?>
+                    <br><strong>Please check your email inbox (and spam folder) to verify your account before logging in.</strong>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
 
         <?php if (isset($_GET['timeout'])): ?>
@@ -308,7 +313,7 @@ if (isset($_SESSION['user_id'])) {
             <div class="input-fields">
                 <div class="input-group">
                     <i class="fas fa-user"></i>
-                    <input type="text" name="login_id" placeholder="Student Number or Email" required autocomplete="username">
+                    <input type="text" name="login_id" value="<?= htmlspecialchars($_POST['login_id'] ?? '') ?>" placeholder="Student Number or Email" required autocomplete="username">
                 </div>
                 
                 <div class="input-group">

@@ -1,41 +1,39 @@
 # ACES System — User Manual
 
 **System:** Alumni Career, Enhancement and Services (ACES) Integration of Student Activity and Process Management System
-
 **Institution:** Kolehiyo ng Lungsod ng Dasmariñas (KLD)
-
 **Audience:** Students, ACES staff, and administrators
-
 **Version:** 1.2 — October 2026
 
 ---
 
 ## Table of Contents
-
-1. [Introduction](#1-introduction)
-2. [Getting Started](#2-getting-started)
-3. [Student Manual](#3-student-manual)
-4. [Staff Manual](#4-staff-manual)
-5. [Common Tasks & FAQ](#5-common-tasks--faq)
-6. [Troubleshooting](#6-troubleshooting)
+1. Introduction
+2. Getting Started
+3. Student Manual
+4. Staff Manual
+5. Common Tasks & FAQ
+6. Troubleshooting
+7. Getting Help
+8. Revision History
 
 ---
 
 ## 1. Introduction
 
 The ACES System is the official platform for managing ACES activity sessions at KLD. It handles:
-
 - Preregistration for ACES sessions
-- Subtopic selection
+- Subtopic selection and automated distribution
 - Learning module delivery
 - Attendance tracking
 - Progress and compliance reporting
 
 This manual explains how to use every feature, organized by user role. Students should read Section 3. Staff should read Section 4.
 
-**Logging in:** Your access URL will be provided by the ACES Unit (e.g. `https://aces.kld.edu.ph` for production, or `http://localhost/cair-system` for local testing).
+**Logging in:** Your access URL will be provided by the ACES Unit. 
+*(Production URL: `https://aces-infinityfree.com` | Local Testing: `http://localhost/cair-system`)*
 
-> **Mobile Ready:** The entire system is fully responsive. You can access all features comfortably using the browser on your smartphone. If the navigation menu is hidden, tap the **Hamburger icon (☰)** in the top-left corner to open the sidebar.
+> **📱 Mobile Ready:** The entire system is fully responsive. You can access all features comfortably using the browser on your smartphone. If the navigation menu is hidden, tap the **Hamburger icon (☰)** in the top-left corner to open the sidebar.
 
 ---
 
@@ -50,17 +48,17 @@ This manual explains how to use every feature, organized by user role. Students 
    |-------|-------|
    | **Student ID** | e.g. `2023-2-009999` — as shown on your school ID |
    | **Full Name** | First name, middle name, last name |
-   | **Email** | Use an active email — you'll need it for verification. Must end in `@kld.edu.ph`. |
+   | **Email** | Must end in `@kld.edu.ph`. You will need it for verification. |
    | **Program** | BS Information Systems or BS Psychology |
    | **Section** | Your block section (e.g. `412`) |
    | **Mobile / Telephone** | Optional but recommended |
    | **Username** | Optional. If left blank, you must use your Student ID to log in. |
    | **Password** | Minimum 6 characters — mix of letters and numbers |
 
-3. **Terms & Data Privacy:** At the bottom of the form, check the box to agree to the Terms and Conditions and Data Privacy Policy. You can click the links to read them in a new tab.
+3. **Terms & Data Privacy:** At the bottom of the form, check the box to agree to the Terms and Conditions and Data Privacy Policy.
 4. Click **Create Account**.
 5. Check your email inbox for a verification message from ACES.
-6. Click the verification link inside the email (valid for 24 hours).
+6. Click the **activation link** inside the email (valid for 24 hours) to verify your account.
 7. You'll be redirected to the login page. Log in with your email/Student ID and password.
 
 **Didn't receive the email?**
@@ -95,7 +93,6 @@ You'll be redirected to your dashboard based on your role:
 ### 2.4 Changing Your Password
 
 **Students:** Dashboard → **Account** → **Change Password**
-
 **Staff:** Sidebar → **Account Settings** → **Change Password**
 
 ### 2.5 Logging Out
@@ -111,7 +108,6 @@ Click your name or the **Logout** button in the top-right corner or sidebar.
 ### 3.1 Student Dashboard
 
 The dashboard is your home page after login. It shows:
-
 - **Upcoming sessions** — sessions you're registered for
 - **Registered subtopics** — what you've signed up for
 - **Module progress** — how many modules you've completed
@@ -152,26 +148,21 @@ The dashboard is your home page after login. It shows:
 5. You'll see a success message and the subtopic appears under "My Registrations".
 
 **If you try to register for a second subtopic in a single-choice session:**
-
 A warning appears: *"You are already registered for [Sub A]. Do you want to replace it with [Sub B]?"*
-
 - Click **OK** to swap
 - Click **Cancel** to keep your original choice
 
 > **Note:** Once you swap, your previous attendance record and any module progress for that session are deleted. Only the new subtopic matters.
 
 **If a subtopic is full:**
-
 The **Register** button will be disabled. The system checks the capacity allocated specifically for *your section*. If your section's slots are full, you cannot register even if other sections have space.
 
 **If a subtopic is restricted:**
-
 Some subtopics are restricted to specific **Programs** and **Sections**. If a subtopic has both restrictions, you must match **both** your course AND your section to see and register for it.
 
 ### 3.4 Completing Modules
 
 Modules are learning materials attached to subtopics. They can be:
-
 - **Text** — read and continue
 - **PDF** — paginated, book-style reader
 - **Link** — opens an external site
@@ -179,7 +170,6 @@ Modules are learning materials attached to subtopics. They can be:
 - **Assessment** — a graded task
 
 **To complete a text or PDF module:**
-
 1. Go to **Modules** in the sidebar.
 2. Click the module you want to open.
 3. Read the content. For PDFs, use **Next** / **Previous** to page through.
@@ -187,26 +177,23 @@ Modules are learning materials attached to subtopics. They can be:
 5. Click it to confirm.
 
 **To complete a quiz:**
-
 1. Open the quiz module.
 2. Answer each question.
 3. Click **Submit**.
 4. Your score is shown and saved automatically.
 
-> **Quiz Retake Protection:** If you pass a quiz and decide to retake it to get a higher score, the system will **not** downgrade your grade if you score lower on the second attempt. Your highest passing score is permanently kept.
+> **🛡️ Quiz Retake Protection:** If you pass a quiz and decide to retake it to get a higher score, the system will **not** downgrade your grade if you score lower on the second attempt. Your highest passing score is permanently kept.
 
 **To complete a link module:**
-
 1. Click **Open Link** to visit the external site.
 2. Return to the module and click **Mark as Complete**.
 
-> **Auto-attendance:** For subtopics marked as **Module-based**, completing all required modules will automatically mark you as **Present**. 
+> **✅ Auto-attendance:** For subtopics marked as **Module-based**, completing all required modules will automatically mark you as **Present**. 
 > *Note: This only happens if your attendance status is still 'Pending'. If a staff member has already manually marked you 'Present' or 'Absent', the system respects that manual entry.*
 
 ### 3.5 Viewing Your Progress
 
 Go to **Progress** in the sidebar. You'll see:
-
 - **Overall completion percentage** — a ring chart
 - **Sessions attended** vs. required
 - **Modules completed** vs. total
@@ -216,14 +203,10 @@ Click any subtopic to see module-level detail.
 
 ### 3.6 Updating Your Account
 
-Go to **Account Settings** in the sidebar.
+Go to **Account Settings** in the sidebar. You can update your Full Name, Contact Number, and Password.
 
-You can update:
-
-- Full name
-- Contact number (Mobile & Telephone)
-- Email address (requires re-verification)
-- Password
+**Changing your Email Address:**
+To change your institutional email, enter the new email and click update. The system will send a **6-digit PIN** to your new email address. You must enter this PIN to confirm the change.
 
 **Note:** Your Student ID, Program, and Section are **locked** and cannot be changed. Contact the ACES Unit if these require correction.
 
@@ -237,18 +220,17 @@ The ACES System has three staff roles with different access levels:
 |------|--------|
 | **Viewer** | View dashboards, view student progress, view reports |
 | **Lead** | Everything Viewer can do, plus: create sessions, subtopics, modules, take attendance, export reports |
-| **Admin** | Everything Lead can do, plus: manage staff accounts, view audit log |
+| **Admin** | Everything Lead can do, plus: manage staff accounts, configure courses/sections, view system history |
 
 Your role is shown next to your name in the sidebar.
 
 ### 4.1 Staff Dashboard
 
 After logging in, you land on the dashboard. It shows:
-
 - **Session analytics** — pie chart of registrations by phase
 - **At-risk students** — students who've missed sessions or fallen behind
 - **Upcoming sessions** — next 5 scheduled events
-- **Quick actions** — shortcuts to common tasks
+- **Quick actions** — shortcuts to common tasks (Auto-Assign Now, Purge Excess)
 
 ### 4.2 Creating a Session *(Lead / Admin)*
 
@@ -264,7 +246,6 @@ After logging in, you land on the dashboard. It shows:
 ### 4.3 Creating Subtopics *(Lead / Admin)*
 
 When creating or editing a session, you can add subtopics:
-
 1. Click **Add Subtopic**.
 2. Fill in:
    - **Title** (e.g. "Basic Resume Template")
@@ -272,12 +253,12 @@ When creating or editing a session, you can add subtopics:
    - **Deadline** (Registration cutoff)
    - **Date / Start Time / End Time**
    - **Proctor / Location** (May differ from session)
-   - **Attendance Type** (Physical, Online, or Module-based)
+   - **Attendance Type** (Physical or Module-based)
    - **Visibility Rules** (Restrict to specific Courses or Sections)
    - **Required Rules** (Auto-register specific Courses or Sections)
 3. Click **Create Session** to save all subtopics at once.
 
-> **Even Split Tool:** The system provides an "Even Split" button that automatically distributes the total number of eligible students evenly across all subtopics, ensuring fairness. This takes into account the visibility and required rules you set.
+> **⚖️ Even Split Tool:** The system provides an "Even Split" button that automatically distributes the total number of eligible students evenly across all subtopics, ensuring fairness. This takes into account the visibility and required rules you set.
 
 ### 4.4 Creating Modules and Assessments *(Lead / Admin)*
 
@@ -286,7 +267,7 @@ When creating or editing a session, you can add subtopics:
 3. Choose the **subtopic** to attach it to.
 4. Fill in the title and description.
 5. Choose the content type:
-   - **Module:** Upload File, Provide Link, or Write Content.
+   - **Module:** Upload File (max 10MB), Provide Link, or Write Content.
    - **Assessment:** Provide Link (e.g. Google Form) or Create Quiz.
 6. **If creating a quiz:** Click **+ Add Question** to build your quiz. You can set the question type (Multiple Choice, True/False, Short Answer), the options, the correct answer, and the points.
 7. Click **Create Module** or **Create Assessment**.
@@ -296,10 +277,7 @@ When creating or editing a session, you can add subtopics:
 1. Sidebar → **Attendance**
 2. Select the session and subtopic.
 3. The list of registered students appears.
-4. For each student, choose:
-   - **Present**
-   - **Absent**
-   - **Pending**
+4. For each student, choose: **Present**, **Absent**, or **Pending**.
 5. Click **Save Attendance**.
 
 **Bulk actions:** Select multiple students via checkboxes, use the dropdown to select **Present** or **Absent**, and click **Apply Status**.
@@ -310,12 +288,7 @@ When creating or editing a session, you can add subtopics:
 
 1. Sidebar → **Student Progress**
 2. Search by student ID or name.
-3. Click a student to see:
-   - Sessions attended
-   - Subtopics registered
-   - Modules completed
-   - Overall progress percentage
-4. Use the slide-in drawer to view a single session's detail.
+3. Click a student to see their Sessions attended, Subtopics registered, Modules completed, and Overall progress percentage.
 
 ### 4.7 Reports and Exports *(Lead / Admin)*
 
@@ -331,12 +304,7 @@ Sidebar → **Reports**. Available report types:
 | **Students List** | CSV |
 | **Progress Report** | Print-ready HTML |
 
-**To export:**
-
-1. Choose the report type.
-2. Set filters (date range, session, section, etc.).
-3. Click **Generate**.
-4. The file downloads or opens in a new tab.
+**To export:** Choose the report type, set filters (date range, session, section), and click **Generate**. The file downloads or opens in a new tab.
 
 > **CSV in Excel:** All CSV exports include a UTF-8 BOM marker so Excel opens them without garbled characters.
 
@@ -352,13 +320,10 @@ Sidebar → **Reports**. Available report types:
 ### 4.9 Calendar View
 
 Sidebar → **Calendar** shows all sessions, subtopics, and school events on a monthly view. Color coding:
-
 - **Blue** — Sessions
 - **Green** — Subtopics
 - **Yellow** — School events
 - **Red** — Holidays
-
-Click an event to see details or edit (if Lead/Admin).
 
 ### 4.10 Managing Staff Accounts *(Admin only)*
 
@@ -375,23 +340,18 @@ Click an event to see details or edit (if Lead/Admin).
    - Click **Edit** (pencil icon) next to the name
    - Change role, deactivate, or reactivate
 
-4. All staff actions are logged in the **Activity Log** (visible on the same page).
+4. All staff actions are securely recorded in the system history for accountability.
 
 ### 4.11 Staff Account Settings
 
 Sidebar → **Account Settings**
-
-You can update:
-- Full Name
-- Email Address
-- Password (requires current password to change)
+You can update: Full Name, Email Address (requires 6-digit PIN verification), and Password (requires current password to change).
 
 ---
 
 ## 5. Common Tasks & FAQ
 
 ### For Students
-
 **Q: I registered but didn't get a verification email.**
 A: Check spam, wait 5 minutes, or contact the ACES Unit.
 
@@ -414,7 +374,6 @@ A: Go to Progress — each session shows Present, Absent, or Pending.
 A: Yes, but only if you haven't passed it yet. If you already have a passing score, retaking it will not lower your grade.
 
 ### For Staff
-
 **Q: How do I reset a student's password?**
 A: Ask the student to use Forgot Password. If they can't access their email, use the admin panel to trigger a manual reset.
 
@@ -428,7 +387,7 @@ A: The registration deadline may have passed, or the subtopics may be restricted
 A: Go to Registrants → select students → click **Notify**.
 
 **Q: What's the difference between deactivate and delete for staff?**
-A: Deactivate (soft) keeps the account but blocks login. There is no hard delete — this preserves the audit log.
+A: Deactivate (soft) keeps the account but blocks login. There is no hard delete — this preserves system history.
 
 **Q: How often do cron jobs run?**
 A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by the IT staff.
@@ -456,10 +415,10 @@ A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by 
 
 | Issue Type | Contact |
 |------------|---------|
-| Forgotten password / account issues | ACES Unit: [insert contact] |
+| Forgotten password / account issues | ACES Unit: `aces.unit@kld.edu.ph` |
 | Session, subtopic, or module questions | Your session proctor |
-| System errors or bugs | Research team: [insert contact] |
-| Server / website down | School IT department: [insert contact] |
+| System errors or bugs | Research team: `aces.support@kld.edu.ph` |
+| Server / website down | School IT department: `it.support@kld.edu.ph` |
 
 ---
 
@@ -472,5 +431,4 @@ A: Auto-assignment runs hourly, reminders every 6 hours. Both are configured by 
 | 1.2 | October 2026 | ACES Research Team | Added Quiz Retake Protection, per-section capacity display, AND logic for visibility, deactivated account troubleshooting, and auto-attendance clarification |
 
 ---
-
 **End of user manual.**
