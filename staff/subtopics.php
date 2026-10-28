@@ -1463,9 +1463,22 @@ function buildEditModal(data) {
                 <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">${escapeHtml(data.description)}</textarea>
             </div>
             <div class="mt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Session Banner Image (Optional)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Session Banner Image</label>
+                
+                ${data.image_path ? `
+                    <div class="mb-3 flex items-center gap-3 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                        <img src="../${data.image_path}" class="h-12 w-20 object-cover rounded border border-gray-300 shadow-sm" onerror="this.style.display='none'">
+                        <div>
+                            <span class="text-[11px] font-bold text-green-700 uppercase tracking-wider block">Current Uploaded Image</span>
+                            <span class="text-sm text-gray-700 font-medium">${data.image_path.split('/').pop()}</span>
+                        </div>
+                    </div>
+                ` : `
+                    <p class="text-xs text-gray-500 mb-2 italic">No image currently uploaded.</p>
+                `}
+
                 <input type="file" name="session_image" accept="image/png, image/jpeg, image/webp" class="w-full border border-gray-300 rounded-lg p-2 bg-white text-sm focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
-                <p class="text-xs text-gray-500 mt-1">Upload a new image to replace the current one.</p>
+                <p class="text-xs text-gray-500 mt-1">Choose a new file to replace it, or leave blank to keep the current one.</p>
             </div>
             <div class="mt-4">
                 <label class="flex items-center gap-2 cursor-pointer">
