@@ -87,8 +87,11 @@ foreach ($phases as $phase) {
     $stmt_mod_total->execute([$student_id, $phase]);
     $mod_total = (int)$stmt_mod_total->fetchColumn();
 
-    $stmt_mod_done = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0 JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned') WHERE r.student_id = ? AND smp.completed = 1 AND s.phase = ?");
-    $stmt_mod_done->execute([$student_id, $phase]);
+    // FIXED QUERY HERE (3 placeholders)
+    $stmt_mod_done = $pdo->prepare("SELECT COUNT(DISTINCT smp.module_id) FROM student_module_progress smp JOIN modules m ON smp.module_id = m.module_id AND m.is_deleted = 0 JOIN subtopics st ON m.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 JOIN registrations r ON r.subtopic_id = st.subtopic_id AND r.status IN ('assigned','auto_assigned') WHERE r.student_id = ? AND smp.student_id = ? AND smp.completed = 1 AND s.phase = ?");
+    
+    // FIXED EXECUTE HERE (3 variables matching the 3 placeholders)
+    $stmt_mod_done->execute([$student_id, $student_id, $phase]);
     $mod_done = (int)$stmt_mod_done->fetchColumn();
 
     $total_items = $sub_total + $mod_total;
