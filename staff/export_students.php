@@ -56,12 +56,12 @@ if (empty($cols)) {
 $placeholders = implode(',', array_fill(0, count($ids), '?'));
 $stmt = $pdo->prepare("
     SELECT s.student_id, s.program, s.section, s.middle_name,
-           u.full_name, u.email
+           s.first_name, s.last_name, u.full_name, u.email
     FROM students s
     JOIN users u ON s.user_id = u.user_id
     WHERE s.student_id IN ($placeholders)
       AND s.is_deleted = 0
-    ORDER BY u.full_name
+    ORDER BY s.last_name, s.first_name
 ");
 $stmt->execute($ids);
 $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -71,43 +71,17 @@ if (empty($students)) {
     exit('No matching students.');
 }
 
-// ---- Parse name into parts ----
-function parse_name_parts($full_name, $middle_name = '') {
-    $parts = preg_split('/\s+/', trim($full_name));
-
-    // Remove known middle-name tokens
-    if (!empty($middle_name)) {
-        $mid_parts = preg_split('/\s+/', trim($middle_name));
-        foreach ($mid_parts as $mp) {
-            $k = array_search($mp, $parts, true);
-            if ($k !== false) unset($parts[$k]);
-        }
-        $parts = array_values($parts);
-    }
-
-    $last = '';
-    $first = '';
-    if (count($parts) >= 2) {
-        $last  = array_pop($parts);
-        $first = implode(' ', $parts);
-    } elseif (count($parts) === 1) {
-        $last = $parts[0];
-    }
-
-    return ['first' => $first, 'last' => $last, 'middle' => $middle_name];
-}
+// (Parsing function removed - we use explicit columns now)
 
 // ---- Build rows ----
 $data = [];
 foreach ($students as $student) {
-    $parsed = parse_name_parts($student['full_name'], $student['middle_name']);
-
     $row = [];
     foreach ($cols as $col) {
         switch ($col) {
             case 'student_id':  $row[] = $student['student_id'];   break;
-            case 'last_name':   $row[] = $parsed['last'];          break;
-            case 'first_name':  $row[] = $parsed['first'];         break;
+            case 'last_name':   $row[] = $student['last_name'];    break;
+            case 'first_name':  $row[] = $student['first_name'];   break;
             case 'middle_name': $row[] = $student['middle_name'];  break;
             case 'course':      $row[] = $student['program'];      break;
             case 'section':     $row[] = $student['section'];      break;

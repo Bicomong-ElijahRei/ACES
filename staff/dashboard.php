@@ -88,7 +88,7 @@ $sessions_for_charts = $pdo->query("
 // ---------- AT-RISK STUDENTS (Attendance + Modules) ----------
 $at_risk_students_raw = $pdo->query("
     SELECT 
-        s.student_id, s.program, s.section, u.full_name,
+        s.student_id, s.program, s.section, s.first_name, s.last_name,
         (SELECT COUNT(*) FROM registrations r 
             JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
             JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
@@ -120,7 +120,8 @@ foreach ($at_risk_students_raw as $s) {
     
     // Always set a default to prevent sorting errors
     $s['progress_pct'] = 0;
-    $s['initials'] = strtoupper(implode('', array_map(fn($w) => $w[0] ?? '', array_slice(explode(' ', $s['full_name']), 0, 2))));
+    $s['full_name'] = trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''));
+    $s['initials'] = strtoupper(substr($s['first_name'] ?? '', 0, 1) . substr($s['last_name'] ?? '', 0, 1));
 
     if ($total > 0) {
         $s['progress_pct'] = round(($done / $total) * 100);

@@ -245,9 +245,9 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                         <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
                             <?php
                             $sql = "SELECT a.attendance_id, a.attendance_status, a.attendance_date, a.auto_generated,
-                                           st.student_id, u.full_name, st.program, st.section,
-                                           sub.title as subtopic_title, sess.title as session_title,
-                                           sess.date as session_date
+                                        st.student_id, st.first_name, st.last_name, st.program, st.section,
+                                        sub.title as subtopic_title, sess.title as session_title,
+                                        sess.date as session_date
                                     FROM attendance a
                                     JOIN students st ON a.student_id = st.student_id
                                     JOIN users u ON st.user_id = u.user_id
@@ -267,7 +267,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                 <tr class="hover:bg-gray-50 transition-colors duration-150" data-id="<?= $att['attendance_id'] ?>">
                                     <td class="py-4 px-4 text-center"><input type="checkbox" class="row-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $att['attendance_id'] ?>"></td>
                                     <td class="py-4 px-4 font-mono text-xs text-gray-600"><?= htmlspecialchars($att['student_id']) ?></td>
-                                    <td class="py-4 px-4 font-medium text-gray-900"><?= htmlspecialchars($att['full_name']) ?></td>
+                                    <td class="py-4 px-4 font-medium text-gray-900"><?= htmlspecialchars(trim(($att['last_name'] ?? '') . ', ' . ($att['first_name'] ?? ''), ', ')) ?></td>
                                     <td class="py-4 px-4 text-xs"><?= date('M d, Y', strtotime($att['attendance_date'])) ?></td>
                                     <td class="py-4 px-4 text-xs"><?= htmlspecialchars($att['program']) ?></td>
                                     <td class="py-4 px-4">
@@ -377,7 +377,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                             <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
                                 <?php
                                 $sql_arch = "SELECT a.attendance_id, a.attendance_status, a.attendance_date,
-                                                    st.student_id, u.full_name, sub.title as subtopic_title
+                                                    st.student_id, st.first_name, st.last_name, sub.title as subtopic_title
                                             FROM attendance a
                                             JOIN students st ON a.student_id = st.student_id
                                             JOIN users u ON st.user_id = u.user_id
@@ -402,7 +402,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                             </td>
                                         <?php endif; ?>
                                         <td class="py-3 px-4 font-mono text-xs text-gray-600"><?= htmlspecialchars($arch['student_id']) ?></td>
-                                        <td class="py-3 px-4 font-medium text-gray-900"><?= htmlspecialchars($arch['full_name']) ?></td>
+                                        <td class="py-3 px-4 font-medium text-gray-900"><?= htmlspecialchars(trim(($arch['last_name'] ?? '') . ', ' . ($arch['first_name'] ?? ''), ', ')) ?></td>
                                         <td class="py-3 px-4 text-xs"><?= date('M d, Y', strtotime($arch['attendance_date'])) ?></td>
                                         <td class="py-3 px-4 text-xs"><?= htmlspecialchars($arch['subtopic_title']) ?></td>
                                         <td class="py-3 px-4 text-center">

@@ -7,7 +7,7 @@ redirectIfNotStudent();
 
 // Fetch student details (Added last_id_change)
 $stmt = $pdo->prepare("
-    SELECT u.full_name, u.email, u.pending_email, s.student_id, s.program, s.section, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change, s.last_section_change 
+    SELECT u.email, u.pending_email, s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change, s.last_section_change 
     FROM users u 
     JOIN students s ON u.user_id = s.user_id 
     WHERE s.student_id = ?
@@ -24,32 +24,11 @@ if (!$student) {
     exit;
 }
 
-// --- Parse Name into separate fields ---
-$full_name_raw = $student['full_name'] ?? '';
+// --- Name fields are now explicit ---
+$first_name = $student['first_name'] ?? '';
+$last_name = $student['last_name'] ?? '';
 $middle_name = $student['middle_name'] ?? '';
 $suffix = $student['suffix'] ?? '';
-
-$parts = explode(' ', trim($full_name_raw));
-if (!empty($middle_name)) {
-    $middle_parts = explode(' ', trim($middle_name));
-    foreach ($middle_parts as $mp) {
-        $key = array_search($mp, $parts);
-        if ($key !== false) unset($parts[$key]);
-    }
-    $parts = array_values($parts);
-}
-if (!empty($suffix) && ($key = array_search($suffix, $parts)) !== false) {
-    unset($parts[$key]);
-    $parts = array_values($parts);
-}
-$last_name = '';
-$first_name = '';
-if (count($parts) >= 2) {
-    $last_name = array_pop($parts);
-    $first_name = implode(' ', $parts);
-} elseif (count($parts) == 1) {
-    $last_name = $parts[0];
-}
 // ----------------------------------------
 
 $success = '';
@@ -200,10 +179,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $stmt_upd_u = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
                     $stmt_upd_u->execute([$full_name, $_SESSION['student_id']]);
 
-                    // Update students table (Middle Name and Suffix)
-                    $stmt_upd_name = $pdo->prepare("UPDATE students SET middle_name = ?, suffix = ? WHERE student_id = ?");
-                    $stmt_upd_name->execute([$middle_name ?: null, $suffix ?: null, $_SESSION['student_id']]);
-                    
+                    // Update students table (First Name, Last Name, Middle Name and Suffix)
+                    $stmt_upd_name = $pdo->prepare("UPDATE students SET first_name = ?, last_name = ?, middle_name = ?, suffix = ? WHERE student_id = ?");
+                    $stmt_upd_name->execute([$first_name, $last_name, $middle_name ?: null, $suffix ?: null, $_SESSION['student_id']]);
+                                        
                     $pdo->commit();
                     $success = "Profile updated successfully.";
                     

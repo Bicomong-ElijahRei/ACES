@@ -105,13 +105,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Insert into students
             $stmt2 = $pdo->prepare("INSERT INTO students 
-                (student_id, user_id, section, program, middle_name, suffix, telephone, mobile, username) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                (student_id, user_id, section, program, first_name, last_name, middle_name, suffix, telephone, mobile, username) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt2->execute([
                 $student_id,
                 $user_id,
                 $section,
                 $course,
+                $first_name,
+                $last_name,
                 $middle_name,
                 $suffix,
                 $telephone,

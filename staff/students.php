@@ -91,8 +91,8 @@ if ($action === 'bulk_archive' && isset($_POST['ids'])) {
         $stmt = $pdo->prepare("UPDATE users SET email = ?, full_name = ? WHERE user_id = (SELECT user_id FROM students WHERE student_id = ?)");
         $stmt->execute([$email, $full_name, $student_id_to_update]);
 
-        $stmt = $pdo->prepare("UPDATE students SET program = ?, section = ?, middle_name = ? WHERE student_id = ?");
-        $stmt->execute([$course, $section, $middle_name, $student_id_to_update]);
+        $stmt = $pdo->prepare("UPDATE students SET program = ?, section = ?, middle_name = ?, first_name = ?, last_name = ? WHERE student_id = ?");
+        $stmt->execute([$course, $section, $middle_name, $first_name, $last_name, $student_id_to_update]);
 
         $pdo->commit();
         header('Location: students.php?msg=updated');
@@ -153,7 +153,7 @@ $courses = $pdo->query("SELECT name FROM courses ORDER BY name")->fetchAll(PDO::
 $sections = $pdo->query("SELECT name FROM sections ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
 
 // Fetch active students
-$sql_active = "SELECT s.student_id, s.program, s.section, s.middle_name, u.full_name, u.email FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 0";
+$sql_active = "SELECT s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, u.full_name, u.email, u.is_verified, u.verification_token FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 0";
 $params = [];
 if (isset($_GET['course']) && $_GET['course'] != '') {
     $sql_active .= " AND s.program = ?";
@@ -168,7 +168,7 @@ $stmt_active->execute($params);
 $active_students = $stmt_active->fetchAll();
 
 // Fetch archived students
-$sql_archived = "SELECT s.student_id, s.program, s.section, s.middle_name, u.full_name, u.email FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 1";
+$sql_archived = "SELECT s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, u.email, u.is_verified, u.verification_token FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 1";
 $arch_params = [];
 if (isset($_GET['arch_course']) && $_GET['arch_course'] != '') {
     $sql_archived .= " AND s.program = ?";
@@ -182,34 +182,6 @@ $stmt_archived = $pdo->prepare($sql_archived);
 $stmt_archived->execute($arch_params);
 $archived_students = $stmt_archived->fetchAll();
 
-// Parse student name into parts using middle name
-function parseStudentName($full_name, $middle_name) {
-    $parts = explode(' ', trim($full_name));
-    if (!empty($middle_name)) {
-        $middle_parts = explode(' ', trim($middle_name));
-        foreach ($middle_parts as $mp) {
-            $key = array_search($mp, $parts);
-            if ($key !== false) {
-                unset($parts[$key]);
-            }
-        }
-        $parts = array_values($parts);
-    }
-    $last = '';
-    $first = '';
-    if (count($parts) >= 2) {
-        $last = array_pop($parts);
-        $first = implode(' ', $parts);
-    } elseif (count($parts) == 1) {
-        $last = $parts[0];
-        $first = '';
-    }
-    return [
-        'first'  => $first,
-        'last'   => $last,
-        'middle' => $middle_name
-    ];
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -300,28 +272,32 @@ function parseStudentName($full_name, $middle_name) {
         <!-- Active Students Card -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
             
-            <!-- Modern Toolbar -->
-            <div class="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
-                <div class="flex items-center gap-2">
-                    <button id="bulkArchiveBtn" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+            <!-- Modern Toolbar (Bootstrap Layout) -->
+            <div class="p-3 border-bottom bg-white d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button id="bulkArchiveBtn" class="btn btn-sm btn-outline-danger fw-medium d-flex align-items-center gap-2 shadow-sm">
                         <i class="fa-solid fa-box-archive"></i> Archive Selected
                     </button>
-                    <button type="button" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
-                        <i class="fa-solid fa-filter text-gray-500"></i> Filter
+                    <button type="button" class="btn btn-sm btn-outline-secondary fw-medium d-flex align-items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
+                        <i class="fa-solid fa-filter"></i> Filter
                     </button>
-                        <button id="exportBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
-                        <i class="fa-solid fa-download text-gray-500"></i> Export
+                    <button id="exportBtn" class="btn btn-sm btn-outline-secondary fw-medium d-flex align-items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-download"></i> Export
                     </button>
                     
-                    <!-- NEW: MANAGE COURSES BUTTON -->
-                    <a href="manage_courses.php" class="bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
-                        <i class="fa-solid fa-graduation-cap text-[#0a6e2d]"></i> Manage Courses
+                    <a href="manage_courses.php" class="btn btn-sm btn-outline-secondary fw-medium d-flex align-items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-graduation-cap text-success"></i> Manage Courses
+                    </a>
+
+                    <!-- NEW: CSV IMPORT BUTTON -->
+                    <a href="import_students.php" class="btn btn-sm text-white fw-medium d-flex align-items-center gap-2 shadow-sm" style="background-color: #9333ea; border-color: #9333ea;">
+                        <i class="fa-solid fa-file-csv"></i> Import CSV
                     </a>
                 </div>
                 
-                <div class="relative w-full md:w-72">
-                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                    <input type="text" id="searchInput" placeholder="Search name or ID..." class="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow">
+                <div class="position-relative w-100" style="max-width: 320px;">
+                    <i class="fa-solid fa-magnifying-glass position-absolute text-muted" style="left: 10px; top: 50%; transform: translateY(-50%);"></i>
+                    <input type="text" id="searchInput" placeholder="Search name or ID..." class="form-control form-control-sm ps-4">
                 </div>
             </div>
 
@@ -338,19 +314,18 @@ function parseStudentName($full_name, $middle_name) {
                             <th class="py-4 px-4">Course</th>
                             <th class="py-4 px-4">Section</th>
                             <th class="py-4 px-4">Email</th>
+                            <th class="py-4 px-4">Status</th>
                             <th class="py-4 px-6 text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 text-gray-700 bg-white">
-                        <?php foreach ($active_students as $student):
-                            $name_parts = parseStudentName($student['full_name'], $student['middle_name']);
-                        ?>
+                        <?php foreach ($active_students as $student): ?>
                             <tr class="hover:bg-gray-50 transition-colors duration-150" data-id="<?= $student['student_id'] ?>">
                                 <td class="py-4 px-6 text-center"><input type="checkbox" class="row-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $student['student_id'] ?>"></td>
                                 <td class="py-4 px-6 font-mono text-xs font-medium text-gray-600"><?= htmlspecialchars($student['student_id']) ?></td>
-                                <td class="py-4 px-4 font-medium text-gray-900"><?= htmlspecialchars($name_parts['last']) ?></td>
-                                <td class="py-4 px-4"><?= htmlspecialchars($name_parts['first']) ?></td>
-                                <td class="py-4 px-4 text-gray-500"><?= htmlspecialchars($student['middle_name']) ?></td>
+                                <td class="py-4 px-4 font-medium text-gray-900"><?= htmlspecialchars($student['last_name'] ?? '') ?></td>
+                                <td class="py-4 px-4"><?= htmlspecialchars($student['first_name'] ?? '') ?></td>
+                                <td class="py-4 px-4 text-gray-500"><?= htmlspecialchars($student['middle_name'] ?? '') ?></td>
                                 <td class="py-4 px-4 text-xs"><?= htmlspecialchars($student['program']) ?></td>
                                 <td class="py-4 px-4">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
@@ -358,12 +333,27 @@ function parseStudentName($full_name, $middle_name) {
                                     </span>
                                 </td>
                                 <td class="py-4 px-4 text-gray-500 text-xs"><?= htmlspecialchars($student['email']) ?></td>
+                                <td class="py-4 px-4">
+                                    <?php if ($student['is_verified']): ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 border border-green-200">
+                                            <i class="fas fa-check-circle mr-1"></i> Verified
+                                        </span>
+                                    <?php elseif (!empty($student['verification_token'])): ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                            <i class="fas fa-envelope mr-1"></i> Email Sent
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                                            <i class="fas fa-times-circle mr-1"></i> Not Verified
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="py-4 px-6 text-center">
                                     <div class="flex items-center justify-center gap-2">
                                         <button class="edit-student text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors"
                                             data-student-id="<?= $student['student_id'] ?>"
-                                            data-last="<?= htmlspecialchars($name_parts['last']) ?>"
-                                            data-first="<?= htmlspecialchars($name_parts['first']) ?>"
+                                            data-last="<?= htmlspecialchars($student['last_name'] ?? '') ?>"
+                                            data-first="<?= htmlspecialchars($student['first_name'] ?? '') ?>"
                                             data-middle="<?= htmlspecialchars($student['middle_name']) ?>"
                                             data-course="<?= htmlspecialchars($student['program']) ?>"
                                             data-section="<?= htmlspecialchars($student['section']) ?>"
@@ -431,7 +421,7 @@ function parseStudentName($full_name, $middle_name) {
                             <tr class="hover:bg-gray-50 transition-colors">
                                 <td class="py-3 px-6 text-center"><input type="checkbox" class="archive-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $arch['student_id'] ?>"></td>
                                 <td class="py-3 px-6 font-mono text-xs"><?= htmlspecialchars($arch['student_id']) ?></td>
-                                <td class="py-3 px-6 font-medium text-gray-900"><?= htmlspecialchars($arch['full_name']) ?></td>
+                                <td class="py-3 px-6 font-medium text-gray-900"><?= htmlspecialchars(trim(($arch['last_name'] ?? '') . ', ' . ($arch['first_name'] ?? ''), ', ')) ?></td>
                                 <td class="py-3 px-6 text-xs"><?= htmlspecialchars($arch['program']) ?></td>
                                 <td class="py-3 px-6"><span class="bg-gray-100 text-gray-800 py-0.5 px-2 rounded-full text-xs"><?= htmlspecialchars($arch['section']) ?></span></td>
                                 <td class="py-3 px-6 text-xs text-gray-500"><?= htmlspecialchars($arch['email']) ?></td>
@@ -653,7 +643,7 @@ function parseStudentName($full_name, $middle_name) {
     $(document).ready(function() {
         var table = $('#studentsTable').DataTable({
             order: [[1, 'asc']],
-            columnDefs: [{ orderable: false, targets: [0, 8] }],
+            columnDefs: [{ orderable: false, targets: [0, 9] }],
             paging: true,
             searching: true,
             pageLength: 10,
