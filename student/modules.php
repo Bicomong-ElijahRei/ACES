@@ -249,18 +249,51 @@ if ($action === 'submit_assessment' && $module_id) {
 // ---------- Fetch all accessible modules ----------
 $stmt = $pdo->prepare("
     SELECT DISTINCT m.module_id, m.title, m.description, m.type, m.content, m.due_date,
-           sub.title AS subtopic_title, sub.subtopic_id,
-           sp.completed, sp.score
-    FROM registrations r
-    JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
-    JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
-    JOIN modules m ON m.subtopic_id = sub.subtopic_id AND m.is_deleted = 0
-    LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = r.student_id
-    WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')
+           COALESCE(sub.title, 'General ACES Modules') AS subtopic_title, sub.subtopic_id,
+           sp.completed, sp.score, m.visible_courses, m.visible_sections
+    FROM modules m
+    LEFT JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    LEFT JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+    LEFT JOIN registrations r ON r.subtopic_id = m.subtopic_id AND r.status IN ('assigned','auto_assigned') AND r.student_id = ?
+    LEFT JOIN student_module_progress sp ON sp.module_id = m.module_id AND sp.student_id = ?
+    WHERE m.is_deleted = 0 AND (r.student_id IS NOT NULL OR m.subtopic_id IS NULL)
     ORDER BY m.due_date ASC, m.module_id ASC
 ");
-$stmt->execute([$student_id]);
-$all_modules = $stmt->fetchAll();
+$stmt->execute([$student_id, $student_id]);
+$raw_modules = $stmt->fetchAll();
+
+// --- PHP FILTER FOR GENERAL MODULE VISIBILITY ---
+$all_modules = [];
+foreach ($raw_modules as $mod) {
+    // If it has a subtopic, it's already filtered by the registration query.
+    if ($mod['subtopic_id'] !== null) {
+        $all_modules[] = $mod;
+        continue;
+    }
+
+    // It's a General Module. Check if it has restrictions.
+    $vis_courses = json_decode($mod['visible_courses'] ?? '[]', true) ?: [];
+    $vis_sections = json_decode($mod['visible_sections'] ?? '[]', true) ?: [];
+
+    // If both arrays are empty, it's visible to everyone.
+    if (empty($vis_courses) && empty($vis_sections)) {
+        $all_modules[] = $mod;
+        continue;
+    }
+
+    // Check course restriction
+    if (!empty($vis_courses) && !in_array($student['program'], $vis_courses)) {
+        continue;
+    }
+
+    // Check section restriction
+    if (!empty($vis_sections) && !in_array($student['section'], $vis_sections)) {
+        continue;
+    }
+
+    // If they passed all checks, show the module.
+    $all_modules[] = $mod;
+}
 
 $total_modules     = count($all_modules);
 $completed_modules = 0;

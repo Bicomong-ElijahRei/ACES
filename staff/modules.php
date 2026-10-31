@@ -54,8 +54,10 @@ if ($action === 'bulk_archive' && !empty($_POST['ids'])) {
 // ---------- SINGLE ACTIONS ----------
 if ($action === 'create') {
     $type = $_POST['type'] ?? 'module';
-    $subtopic_id = (int)$_POST['subtopic_id'];
+    $subtopic_id = !empty($_POST['subtopic_id']) ? (int)$_POST['subtopic_id'] : null;
     $title = trim($_POST['title']);
+    $vis_courses = isset($_POST['visible_courses']) ? json_encode($_POST['visible_courses']) : null;
+    $vis_sections = isset($_POST['visible_sections']) ? json_encode($_POST['visible_sections']) : null;
     $description = trim($_POST['description']);
     $due_date = $_POST['due_date'] ?: null;
     $content = '';
@@ -84,19 +86,23 @@ if ($action === 'create') {
         }
     }
 
-    if (!$subtopic_id || !$title) {
-        $error = "Subtopic and title are required.";
+    if (!$title) {
+        $error = "Title is required.";
+    } elseif ($due_date && $due_date < date('Y-m-d')) {
+        $error = "Error: The due date cannot be set in the past.";
     } elseif (empty($error)) {
-        $stmt = $pdo->prepare("INSERT INTO modules (subtopic_id, title, description, due_date, created_by, type, content) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$subtopic_id, $title, $description, $due_date, $_SESSION['user_id'], $type, $content]);
+        $stmt = $pdo->prepare("INSERT INTO modules (subtopic_id, title, description, due_date, created_by, type, content, visible_courses, visible_sections) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$subtopic_id, $title, $description, $due_date, $_SESSION['user_id'], $type, $content, $vis_courses, $vis_sections]);
         $success = "Item created successfully.";
     }
 
 } elseif ($action === 'update') {
     $id = (int)$_POST['id'];
     $type = $_POST['type'] ?? 'module';
-    $subtopic_id = (int)$_POST['subtopic_id'];
+    $subtopic_id = !empty($_POST['subtopic_id']) ? (int)$_POST['subtopic_id'] : null;
     $title = trim($_POST['title']);
+    $vis_courses = isset($_POST['visible_courses']) ? json_encode($_POST['visible_courses']) : null;
+    $vis_sections = isset($_POST['visible_sections']) ? json_encode($_POST['visible_sections']) : null;
     $description = trim($_POST['description']);
     $due_date = $_POST['due_date'] ?: null;
 
@@ -108,11 +114,13 @@ if ($action === 'create') {
         $content = trim($_POST['content'] ?? '');
     }
 
-    if (!$subtopic_id || !$title) {
-        $error = "Subtopic and title are required.";
+    if (!$title) {
+        $error = "Title is required.";
+    } elseif ($due_date && $due_date < date('Y-m-d')) {
+        $error = "Error: The due date cannot be set in the past.";
     } else {
-        $stmt = $pdo->prepare("UPDATE modules SET subtopic_id = ?, title = ?, description = ?, due_date = ?, type = ?, content = ?, is_deleted = 0 WHERE module_id = ?");
-        $stmt->execute([$subtopic_id, $title, $description, $due_date, $type, $content, $id]);
+        $stmt = $pdo->prepare("UPDATE modules SET subtopic_id = ?, title = ?, description = ?, due_date = ?, type = ?, content = ?, visible_courses = ?, visible_sections = ?, is_deleted = 0 WHERE module_id = ?");
+        $stmt->execute([$subtopic_id, $title, $description, $due_date, $type, $content, $vis_courses, $vis_sections, $id]);
         $success = "Item updated successfully.";
     }
 } elseif ($action === 'soft_delete') {
@@ -136,10 +144,10 @@ if ($action === 'create') {
 
 // Fetch all active modules/assessments
 $stmt = $pdo->prepare("
-    SELECT m.*, sub.title as subtopic_title
+    SELECT m.*, COALESCE(sub.title, 'General Module') as subtopic_title
     FROM modules m
-    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
-    JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
+    LEFT JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0
+    LEFT JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0
     WHERE m.is_deleted = 0
     ORDER BY m.due_date ASC, m.module_id DESC
 ");
@@ -163,15 +171,14 @@ foreach ($active_items as $item) {
 
 // Fetch deleted items
 $stmt_deleted = $pdo->prepare("
-    SELECT m.*, sub.title as subtopic_title
+    SELECT m.*, COALESCE(sub.title, 'General Module') as subtopic_title
     FROM modules m
-    JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id
+    LEFT JOIN subtopics sub ON m.subtopic_id = sub.subtopic_id
     WHERE m.is_deleted = 1
     ORDER BY m.updated_at DESC
 ");
 $stmt_deleted->execute();
 $deleted_items = $stmt_deleted->fetchAll();
-
 // Fetch all subtopics for dropdowns
 $subtopics = $pdo->query("
     SELECT s.subtopic_id, s.title 
@@ -180,6 +187,19 @@ $subtopics = $pdo->query("
     WHERE s.is_deleted = 0
     ORDER BY s.title
 ")->fetchAll();
+
+// Fetch courses and sections for visibility filters
+$courses = $pdo->query("SELECT DISTINCT program FROM students WHERE is_deleted = 0 ORDER BY program")->fetchAll(PDO::FETCH_COLUMN);
+$sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted = 0 ORDER BY section")->fetchAll(PDO::FETCH_COLUMN);
+
+$course_sections = [];
+$stmt_cs = $pdo->query("SELECT program, section FROM students WHERE is_deleted = 0 GROUP BY program, section ORDER BY program, section");
+foreach ($stmt_cs->fetchAll() as $row) {
+    $course_sections[$row['program']][] = $row['section'];
+}
+$course_sections_json = json_encode($course_sections);
+$courses_json = json_encode($courses);
+$sections_json = json_encode($sections);
 
 // Content helper
 function renderContent($content) {
@@ -634,7 +654,7 @@ function renderContent($content) {
 
                 <div class="tab-content">
                     <!-- Module Tab -->
-                    <div class="tab-pane fade show active" id="module" role="tabpanel">
+                    <div class="tab-pane active" id="module" role="tabpanel">
                         <form method="POST" id="createModuleForm" enctype="multipart/form-data">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="create">
@@ -644,9 +664,9 @@ function renderContent($content) {
                                 <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Item Details</h6>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic <span class="text-red-500">*</span></label>
-                                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
-                                            <option value="">Select Subtopic</option>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic</label>
+                                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] subtopic-select">
+                                            <option value="">-- General Module (No Subtopic) --</option>
                                             <?php foreach ($subtopics as $sub): ?>
                                                 <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
                                             <?php endforeach; ?>
@@ -656,6 +676,29 @@ function renderContent($content) {
                                         <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
                                         <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                                     </div>
+
+                                    <!-- VISIBILITY FILTERS FOR GENERAL MODULES (Hidden by default) -->
+                                    <div class="md:col-span-2 visibility-filters p-4 bg-gray-50 border border-gray-200 rounded-lg mt-2" style="display: none;">
+                                        <p class="text-xs text-gray-500 mb-2 leading-tight">Leave all unchecked to show this General Module to <strong class="text-gray-700">ALL students</strong>.</p>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-xs font-bold text-gray-700 mb-1">Visible to Courses</label>
+                                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
+                                                    <?php foreach ($courses as $crs): ?>
+                                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" name="visible_courses[]" value="<?= htmlspecialchars($crs) ?>" class="mod-visible-course rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <?= htmlspecialchars($crs) ?></label>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-gray-700 mb-1">Visible to Sections</label>
+                                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
+                                                    <?php foreach ($sections as $sec): ?>
+                                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" name="visible_sections[]" value="<?= htmlspecialchars($sec) ?>" class="mod-visible-section rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" disabled> <?= htmlspecialchars($sec) ?></label>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="mt-4">
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -663,9 +706,9 @@ function renderContent($content) {
                                 </div>
                                 <div class="mt-4">
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
-                                    <input type="date" name="due_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                    <input type="date" name="due_date" min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 </div>
-                            </div>
+                            </div> <!-- THIS WAS MISSING -->
 
                             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
                                 <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-file-alt text-gray-400 mr-2"></i>Content</h6>
@@ -706,7 +749,7 @@ function renderContent($content) {
                     </div>
 
                     <!-- Assessment Tab -->
-                    <div class="tab-pane fade" id="assessment" role="tabpanel">
+                    <div class="tab-pane" id="assessment" role="tabpanel">
                         <form method="POST" id="createAssessmentForm">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="create">
@@ -716,9 +759,9 @@ function renderContent($content) {
                                 <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Assessment Details</h6>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic <span class="text-red-500">*</span></label>
-                                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
-                                            <option value="">Select Subtopic</option>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic</label>
+                                        <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] subtopic-select">
+                                            <option value="">-- General Module (No Subtopic) --</option>
                                             <?php foreach ($subtopics as $sub): ?>
                                                 <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
                                             <?php endforeach; ?>
@@ -728,6 +771,29 @@ function renderContent($content) {
                                         <label class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
                                         <input type="text" name="title" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                                     </div>
+
+                                    <!-- VISIBILITY FILTERS FOR GENERAL MODULES (Hidden by default) -->
+                                    <div class="md:col-span-2 visibility-filters p-4 bg-gray-50 border border-gray-200 rounded-lg mt-2" style="display: none;">
+                                        <p class="text-xs text-gray-500 mb-2 leading-tight">Leave all unchecked to show this General Module to <strong class="text-gray-700">ALL students</strong>.</p>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-xs font-bold text-gray-700 mb-1">Visible to Courses</label>
+                                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
+                                                    <?php foreach ($courses as $crs): ?>
+                                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" name="visible_courses[]" value="<?= htmlspecialchars($crs) ?>" class="mod-visible-course rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <?= htmlspecialchars($crs) ?></label>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-gray-700 mb-1">Visible to Sections</label>
+                                                <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
+                                                    <?php foreach ($sections as $sec): ?>
+                                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" name="visible_sections[]" value="<?= htmlspecialchars($sec) ?>" class="mod-visible-section rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" disabled> <?= htmlspecialchars($sec) ?></label>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="mt-4">
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -735,7 +801,7 @@ function renderContent($content) {
                                 </div>
                                 <div class="mt-4">
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
-                                    <input type="date" name="due_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                    <input type="date" name="due_date" min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 </div>
                             </div>
 
@@ -1045,6 +1111,17 @@ function initViewMode(modal, data, type, id, viewHtml, modalTitle, modalBody) {
         btnEdit.addEventListener('click', () => {
             modalTitle.innerHTML = `<i class="fas fa-edit mr-2"></i>Edit Item`;
             modalBody.innerHTML = buildEditModalHtml(data);
+            modalBody.querySelectorAll('.visibility-filters').forEach(linkCourseToSections);
+            
+            // ADD THIS TOGGLE LOGIC FOR EDIT MODAL
+            modalBody.querySelectorAll('.subtopic-select').forEach(select => {
+                select.addEventListener('change', function() {
+                    const filtersDiv = this.closest('.grid').querySelector('.visibility-filters');
+                    if (filtersDiv) {
+                        filtersDiv.style.display = this.value === "" ? 'block' : 'none';
+                    }
+                });
+            });
             
             const editForm = document.getElementById('editForm');
             if (data.type === 'assessment' && data.content?.startsWith('quiz:')) {
@@ -1212,8 +1289,9 @@ function buildEditModalHtml(data) {
             <h6 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider"><i class="fas fa-info-circle text-gray-400 mr-2"></i>Item Details</h6>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic <span class="text-red-500">*</span></label>
-                    <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>`;
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Subtopic</label>
+                    <select name="subtopic_id" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">`;
+    h += `<option value="">-- General Module (No Subtopic) --</option>`;
     <?php foreach ($subtopics as $sub): ?>
         h += `<option value="<?= $sub['subtopic_id'] ?>" ${data.subtopic_id == <?= $sub['subtopic_id'] ?> ? 'selected' : ''}><?= addslashes($sub['title']) ?></option>`;
     <?php endforeach; ?>
@@ -1222,6 +1300,31 @@ function buildEditModalHtml(data) {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
                     <select name="type" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]"><option value="module" ${data.type=='module'?'selected':''}>Module</option><option value="assessment" ${data.type=='assessment'?'selected':''}>Assessment</option></select>
+                </div>
+                <div class="md:col-span-2 visibility-filters p-4 bg-gray-50 border border-gray-200 rounded-lg mt-2" style="display: ${!data.subtopic_id ? 'block' : 'none'};">
+                    <p class="text-xs text-gray-500 mb-2 leading-tight">Leave all unchecked to show this General Module to <strong class="text-gray-700">ALL students</strong>.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Visible to Courses</label>
+                            <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
+                                ${<?= $courses_json ?>.map(crs => `
+                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                                        <input type="checkbox" name="visible_courses[]" value="${crs}" class="mod-visible-course rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" ${(data.visible_courses && JSON.parse(data.visible_courses).includes(crs)) ? 'checked' : ''}> ${crs}
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Visible to Sections</label>
+                            <div class="checkbox-group bg-white border border-gray-300 rounded-lg p-2 h-24 overflow-y-auto space-y-1">
+                                ${<?= $sections_json ?>.map(sec => `
+                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                                        <input type="checkbox" name="visible_sections[]" value="${sec}" class="mod-visible-section rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" ${(data.visible_sections && JSON.parse(data.visible_sections).includes(sec)) ? 'checked' : ''}> ${sec}
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="mt-4">
@@ -1234,7 +1337,7 @@ function buildEditModalHtml(data) {
             </div>
             <div class="mt-4">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
-                <input type="date" name="due_date" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${data.due_date||''}">
+                <input type="date" name="due_date" min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" value="${data.due_date||''}">
             </div>
         </div>`;
         
@@ -1563,6 +1666,54 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 150);
         }
     }
+});
+// ==================== VISIBILITY FILTERS FOR GENERAL MODULES ====================
+const COURSE_SECTIONS = <?= $course_sections_json ?>;
+
+function linkCourseToSections(container) {
+    const visCourses = container.querySelectorAll('.mod-visible-course');
+    const visSections = container.querySelectorAll('.mod-visible-section');
+    
+    function updateSections() {
+        const checkedCourses = Array.from(visCourses).filter(cb => cb.checked).map(cb => cb.value);
+        const validSections = new Set();
+        checkedCourses.forEach(course => {
+            (COURSE_SECTIONS[course] || []).forEach(sec => validSections.add(String(sec)));
+        });
+
+        visSections.forEach(cb => {
+            const label = cb.closest('label');
+            const isVisible = checkedCourses.length > 0 && validSections.has(String(cb.value));
+            if (isVisible) {
+                if (label) label.style.display = '';
+                cb.disabled = false;
+            } else {
+                if (label) label.style.display = 'none';
+                cb.disabled = true;
+                cb.checked = false;
+            }
+        });
+    }
+    visCourses.forEach(cb => cb.addEventListener('change', updateSections));
+    updateSections();
+}
+
+// Initialize for the Create Modal
+document.querySelectorAll('#createModal .visibility-filters').forEach(linkCourseToSections);
+// Toggle Visibility Filters based on Subtopic selection in Create Modal
+document.querySelectorAll('.subtopic-select').forEach(select => {
+    const toggleFilters = function() {
+        const filtersDiv = this.closest('.grid').querySelector('.visibility-filters');
+        if (filtersDiv) {
+            filtersDiv.style.display = this.value === "" ? 'block' : 'none';
+        }
+    };
+    
+    // Run when the user changes the dropdown
+    select.addEventListener('change', toggleFilters);
+    
+    // Run once immediately when the page loads
+    toggleFilters.call(select);
 });
 </script>
 </body>

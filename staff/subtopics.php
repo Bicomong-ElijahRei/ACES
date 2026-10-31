@@ -29,8 +29,14 @@ if ($action === 'create') {
     $phase = $_POST['phase'];
     $description = trim($_POST['description']);
 
+    $check_date = !empty($_POST['session_date']) ? $_POST['session_date'] : date('Y-m-d');
+    $check_start = !empty($_POST['session_start_time']) ? $_POST['session_start_time'] : '08:00:00';
+    $is_past = ($check_date < date('Y-m-d')) || ($check_date === date('Y-m-d') && $check_start < date('H:i:s'));
+
     if (!$title || !$phase) {
         $error = "Title and phase are required.";
+    } elseif ($is_past) {
+        $error = "Error: You cannot create a session in the past.";
     } else {
         $allow_multiple = isset($_POST['allow_multiple']) ? 1 : 0;
         
@@ -204,8 +210,14 @@ if ($action === 'create') {
     $phase = $_POST['phase'];
     $description = trim($_POST['description']);
 
+    $check_date = !empty($_POST['session_date']) ? $_POST['session_date'] : date('Y-m-d');
+    $check_start = !empty($_POST['session_start_time']) ? $_POST['session_start_time'] : '08:00:00';
+    $is_past = ($check_date < date('Y-m-d')) || ($check_date === date('Y-m-d') && $check_start < date('H:i:s'));
+
     if (!$title || !$phase) {
         $error = "Title and phase are required.";
+    } elseif ($is_past) {
+        $error = "Error: You cannot update a session to a past date/time.";
     } else {
         $allow_multiple = isset($_POST['allow_multiple']) ? 1 : 0;
         
@@ -929,7 +941,7 @@ $course_sections_json = json_encode($course_sections);
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Session Date <span class="text-red-500">*</span></label>
-                                <input type="date" name="session_date" value="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                <input type="date" name="session_date" value="<?= date('Y-m-d') ?>" min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                             </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
@@ -1026,7 +1038,7 @@ $course_sections_json = json_encode($course_sections);
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-                    <input type="datetime-local" class="w-full border border-gray-300 rounded-lg p-2 subtopic-deadline focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                    <input type="datetime-local" class="w-full border border-gray-300 rounded-lg p-2 subtopic-deadline focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" min="<?= date('Y-m-d\TH:i') ?>">
                 </div>
             </div>
 
@@ -1034,7 +1046,7 @@ $course_sections_json = json_encode($course_sections);
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                    <input type="date" class="w-full border border-gray-300 rounded-lg p-2 subtopic-date focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                    <input type="date" class="w-full border border-gray-300 rounded-lg p-2 subtopic-date focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" min="<?= date('Y-m-d') ?>">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
