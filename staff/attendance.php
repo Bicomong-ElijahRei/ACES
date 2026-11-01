@@ -214,6 +214,11 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                         <button type="button" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
                             <i class="fa-solid fa-filter text-gray-500"></i> Filter
                         </button>
+                        <!-- NEW: GENERATE PROCTOR LINK BUTTON -->
+                        <button type="button" id="openProctorModalBtn" class="text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 shadow-sm" style="background-color: #4f46e5; border: 1px solid #4338ca;">
+                            <i class="fas fa-share-alt"></i> Proctor Mode
+                        </button>
+                        
                         <button id="exportAttendanceBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
                             <i class="fa-solid fa-download text-gray-500"></i> Export
                         </button>
@@ -835,7 +840,80 @@ $(document).ready(function() {
         form.submit();
         form.remove();
     });
-});
+        // PROCTOR MODE GENERATOR
+    $('#openProctorModalBtn').on('click', function() {
+        $('#proctorModal').modal('show');
+    });
+
+    $('#proctorSubtopicSelect').on('change', function() {
+        var subId = $(this).val();
+        if (!subId) {
+            $('#proctorResult').addClass('hidden');
+            return;
+        }
+
+        // Generate a random 6-digit PIN
+        var pin = Math.floor(100000 + Math.random() * 900000);
+        
+        // Save PIN to database via AJAX (quick fetch)
+        fetch('ajax_save_proctor_pin.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `subtopic_id=${subId}&pin=${pin}&csrf_token=${CSRF_TOKEN}`
+        }).then(() => {
+            var baseUrl = window.location.origin + window.location.pathname.replace('staff/attendance.php', '');
+            // Secure Link: No PIN in the URL
+            var link = baseUrl + 'public/proctor_scan.php'; 
+
+            $('#displayPin').text(pin);
+            $('#displayLink').val(link);
+            $('#proctorResult').removeClass('hidden');
+        });
+    });
+
+        function copyLink() {
+            var copyText = document.getElementById("displayLink");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(copyText.value);
+            alert("Link copied to clipboard!");
+        }
+    }); // <-- This properly closes the $(document).ready block
 </script>
+
+<!-- Generate Proctor Link Modal (MUST BE OUTSIDE THE SCRIPT TAG) -->
+<div class="modal fade" id="proctorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-indigo-600 text-white p-4">
+                <h5 class="text-lg font-bold"><i class="fas fa-share-alt mr-2"></i>Generate Proctor Link</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-6">
+                <p class="text-sm text-gray-600 mb-4">Select a subtopic to generate a unique PIN and link for the proctor. They can use this on their phone to scan students without logging in.</p>
+                
+                <label class="block text-sm font-bold text-gray-700 mb-2">Select Subtopic</label>
+                <select id="proctorSubtopicSelect" class="w-full border border-gray-300 rounded-lg p-2.5 mb-4 focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="">-- Choose Subtopic --</option>
+                    <?php foreach ($subtopics as $sub): ?>
+                        <option value="<?= $sub['subtopic_id'] ?>"><?= htmlspecialchars($sub['title']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <div id="proctorResult" class="hidden bg-gray-50 border border-gray-200 p-4 rounded-lg text-center">
+                    <p class="text-xs text-gray-500 mb-1">Share this PIN with the Proctor:</p>
+                    <h2 class="text-3xl font-mono font-bold text-indigo-700 tracking-widest mb-3" id="displayPin">------</h2>
+                    
+                    <p class="text-xs text-gray-500 mb-1">Or send them this link directly:</p>
+                    <div class="input-group">
+                        <input type="text" id="displayLink" class="form-control form-control-sm text-xs bg-white" readonly>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="copyLink()">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

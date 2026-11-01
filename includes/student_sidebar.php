@@ -60,6 +60,13 @@ $current = basename($_SERVER['PHP_SELF']);
             <a href="dashboard.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'dashboard.php' ? 'font-bold bg-white/20' : '' ?>">
                 <i class="fas fa-tachometer-alt mr-2 w-5 text-center"></i><span class="sidebar-text">Dashboard</span>
             </a>
+            
+            <!-- NEW: MY QR CODE LINK -->
+            <a href="qr_code.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'qr_code.php' ? 'font-bold bg-white/20' : '' ?>">
+                <i class="fas fa-qrcode mr-2 w-5 text-center"></i><span class="sidebar-text">My QR Code</span>
+            </a>
+            <!-- END NEW LINK -->
+
             <a href="sessions.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'sessions.php' ? 'font-bold bg-white/20' : '' ?>">
                 <i class="fas fa-book mr-2 w-5 text-center"></i><span class="sidebar-text">Subtopics</span>
             </a>

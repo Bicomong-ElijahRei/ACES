@@ -24,11 +24,11 @@ if (!$student) {
     exit;
 }
 
-// --- Name fields are now explicit ---
-$first_name = $student['first_name'] ?? '';
-$last_name = $student['last_name'] ?? '';
-$middle_name = $student['middle_name'] ?? '';
-$suffix = $student['suffix'] ?? '';
+// --- Name fields are now explicit (Renamed to prevent header collision) ---
+$acc_first_name = $student['first_name'] ?? '';
+$acc_last_name = $student['last_name'] ?? '';
+$acc_middle_name = $student['middle_name'] ?? '';
+$acc_suffix = $student['suffix'] ?? '';
 // ----------------------------------------
 
 $success = '';
@@ -54,7 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $last_name   = trim($_POST['last_name']);
     $suffix      = trim($_POST['suffix']);
     $full_name   = trim($first_name . ' ' . ($middle_name ? $middle_name . ' ' : '') . $last_name . ($suffix ? ' ' . $suffix : ''));
-
+        // Update the display variables so the form shows the new data after saving
+    $acc_first_name = $first_name;
+    $acc_last_name = $last_name;
+    $acc_middle_name = $middle_name;
+    $acc_suffix = $suffix;
     $email = trim($_POST['email']);
     $mobile = trim($_POST['mobile']);
     $telephone = trim($_POST['telephone']);
@@ -367,19 +371,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
                                 <div class="md:col-span-1">
                                     <label class="block text-[11px] font-semibold text-gray-500 mb-1">First Name</label>
-                                    <input type="text" name="first_name" value="<?= htmlspecialchars($first_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                    <input type="text" name="first_name" value="<?= htmlspecialchars($acc_first_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                                 </div>
                                 <div class="md:col-span-1">
                                     <label class="block text-[11px] font-semibold text-gray-500 mb-1">Middle Name</label>
-                                    <input type="text" name="middle_name" value="<?= htmlspecialchars($student['middle_name'] ?? '') ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                    <input type="text" name="middle_name" value="<?= htmlspecialchars($acc_middle_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 </div>
                                 <div class="md:col-span-1">
                                     <label class="block text-[11px] font-semibold text-gray-500 mb-1">Last Name</label>
-                                    <input type="text" name="last_name" value="<?= htmlspecialchars($last_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                    <input type="text" name="last_name" value="<?= htmlspecialchars($acc_last_name) ?>" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                                 </div>
                                 <div class="md:col-span-1">
                                     <label class="block text-[11px] font-semibold text-gray-500 mb-1">Suffix</label>
-                                    <input type="text" name="suffix" value="<?= htmlspecialchars($student['suffix'] ?? '') ?>" placeholder="e.g. Jr." class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
+                                    <input type="text" name="suffix" value="<?= htmlspecialchars($acc_suffix) ?>" placeholder="e.g. Jr." class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
                                 </div>
                             </div>
                         </div>
