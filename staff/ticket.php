@@ -65,6 +65,47 @@ if (!$ticket) {
     die("Ticket not found.");
 }
 
+// ==========================================
+// SMART SIMILARITY MATCHING (For Staff)
+// ==========================================
+$similar_tickets = [];
+if (!empty($ticket['subject'])) {
+    // 1. Clean the subject to find keywords (ignore common words)
+    $stopwords = ['the', 'and', 'for', 'with', 'cannot', 'cant', 'not', 'error', 'issue', 'problem', 'my', 'to', 'in', 'on', 'a', 'is', 'of', 'it'];
+    $words = explode(' ', strtolower($ticket['subject']));
+    $keywords = array_filter($words, function($w) use ($stopwords) {
+        return strlen($w) > 3 && !in_array($w, $stopwords);
+    });
+
+    // 2. Search for other active tickets with these keywords
+    if (!empty($keywords)) {
+        $likeClauses = [];
+        $params = [$ticket_id]; // Don't match itself
+        
+        foreach ($keywords as $kw) {
+            $likeClauses[] = "LOWER(t.subject) LIKE ?";
+            $params[] = "%" . $kw . "%";
+        }
+        
+        $likeSql = implode(" OR ", $likeClauses);
+
+        $stmt_sim = $pdo->prepare("
+            SELECT t.ticket_id, t.subject, t.created_at, u.full_name, s.student_id
+            FROM tickets t 
+            JOIN students s ON t.student_id = s.student_id
+            JOIN users u ON s.user_id = u.user_id
+            WHERE t.ticket_id != ? 
+              AND t.status IN ('open', 'in_progress') 
+              AND ($likeSql)
+            ORDER BY t.created_at DESC
+            LIMIT 5
+        ");
+        
+        $stmt_sim->execute($params);
+        $similar_tickets = $stmt_sim->fetchAll();
+    }
+}
+
 // Fetch Messages
 $stmt_msgs = $pdo->prepare("SELECT tm.*, u.full_name, u.role FROM ticket_messages tm JOIN users u ON tm.sender_id = u.user_id WHERE tm.ticket_id = ? ORDER BY tm.created_at ASC");
 $stmt_msgs->execute([$ticket_id]);
@@ -118,6 +159,24 @@ $messages = $stmt_msgs->fetchAll();
                     </form>
                 </div>
             </div>
+
+            <!-- NEW: SMART SIMILARITY ALERT -->
+            <?php if (!empty($similar_tickets)): ?>
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6 shadow-sm">
+                    <h4 class="font-bold text-amber-800 mb-2 flex items-center gap-2">
+                        <i class="fas fa-layer-group"></i> Potential Related Tickets
+                    </h4>
+                    <p class="text-xs text-amber-700 mb-3">Other active tickets with similar keywords. Consider resolving together:</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <?php foreach ($similar_tickets as $sim): ?>
+                            <a href="ticket.php?id=<?= $sim['ticket_id'] ?>" class="block bg-white p-3 rounded-lg border border-amber-100 hover:border-amber-400 hover:shadow-md transition">
+                                <div class="text-sm font-bold text-gray-800 truncate mb-1">#<?= $sim['ticket_id'] ?>: <?= htmlspecialchars($sim['subject']) ?></div>
+                                <div class="text-[11px] text-gray-500"><i class="fas fa-user mr-1"></i> <?= htmlspecialchars($sim['full_name']) ?> (<?= htmlspecialchars($sim['student_id']) ?>)</div>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <!-- Chat Thread -->
             <div class="bg-white rounded-xl shadow-sm p-6 mb-6 min-h-[400px] max-h-[600px] overflow-y-auto flex flex-col gap-4">

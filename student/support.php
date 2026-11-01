@@ -16,18 +16,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $message = trim($_POST['message']);
     
     if ($subject && $message) {
-        try {
-            $stmt = $pdo->prepare("INSERT INTO tickets (student_id, subject, category) VALUES (?, ?, ?)");
-            $stmt->execute([$student_id, $subject, $category]);
-            $ticket_id = $pdo->lastInsertId();
+        // 1. Check for Active Ticket Limit (Max 3)
+        $stmt_active = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE student_id = ? AND status IN ('open', 'in_progress')");
+        $stmt_active->execute([$student_id]);
+        $active_count = $stmt_active->fetchColumn();
+
+        if ($active_count >= 3) {
+            $error = "Limit Reached: You already have {$active_count} active support tickets. Please wait for the ACES Staff to resolve them before opening a new one.";
+        } else {
+            // 2. Check for Duplicate Subject
+            $stmt_dupe = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE student_id = ? AND subject = ? AND status IN ('open', 'in_progress')");
+            $stmt_dupe->execute([$student_id, $subject]);
             
-            $stmt_msg = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message) VALUES (?, ?, ?)");
-            $stmt_msg->execute([$ticket_id, $_SESSION['user_id'], $message]);
-            
-            header("Location: ticket.php?id=$ticket_id");
-            exit;
-        } catch (PDOException $e) {
-            $error = "Failed to create ticket. Please try again.";
+            if ($stmt_dupe->fetchColumn() > 0) {
+                $error = "Duplicate Ticket: You already have an active ticket with this exact subject. Please check your existing tickets below.";
+            } else {
+                // 3. Proceed with creation
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO tickets (student_id, subject, category) VALUES (?, ?, ?)");
+                    $stmt->execute([$student_id, $subject, $category]);
+                    $ticket_id = $pdo->lastInsertId();
+                    
+                    $stmt_msg = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message) VALUES (?, ?, ?)");
+                    $stmt_msg->execute([$ticket_id, $_SESSION['user_id'], $message]);
+                    
+                    header("Location: ticket.php?id=$ticket_id");
+                    exit;
+                } catch (PDOException $e) {
+                    $error = "Failed to create ticket. Please try again.";
+                }
+            }
         }
     } else {
         $error = "Subject and message cannot be empty.";

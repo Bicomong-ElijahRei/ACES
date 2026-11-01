@@ -1,7 +1,41 @@
 <?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php'; // Added for CSRF
 redirectIfNotStudent();
+
+$cert_msg = '';
+
+// Handle Certificate Request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'request_certificate') {
+    csrf_verify();
+    
+    // 1. Check for Unlimited Spam (Already pending or generated)
+    $stmt_check = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests WHERE student_id = ? AND status IN ('pending', 'generated')");
+    $stmt_check->execute([$_SESSION['student_id']]);
+    
+    if ($stmt_check->fetchColumn() > 0) {
+        $cert_msg = "<div class='bg-amber-100 text-amber-800 p-3 rounded-lg mb-4 text-sm font-bold'><i class='fas fa-clock mr-1'></i> You already have a pending or generated certificate request.</div>";
+    } else {
+        // 2. Check for Early Request (Ensure Career Fair has requirements)
+        $stmt_cf = $pdo->prepare("
+            SELECT COUNT(*) FROM registrations r 
+            JOIN subtopics st ON r.subtopic_id = st.subtopic_id 
+            JOIN sessions s ON st.session_id = s.session_id 
+            WHERE r.student_id = ? AND s.phase = 'Career Fair' AND r.status IN ('assigned','auto_assigned')
+        ");
+        $stmt_cf->execute([$_SESSION['student_id']]);
+        $cf_count = $stmt_cf->fetchColumn();
+
+        if ($cf_count == 0) {
+            $cert_msg = "<div class='bg-red-100 text-red-800 p-3 rounded-lg mb-4 text-sm font-bold'><i class='fas fa-exclamation-circle mr-1'></i> You cannot request a certificate yet. The ACES Staff has not assigned the Career Fair sessions to your program.</div>";
+        } else {
+            $stmt_req = $pdo->prepare("INSERT INTO certificate_requests (student_id) VALUES (?)");
+            $stmt_req->execute([$_SESSION['student_id']]);
+            $cert_msg = "<div class='bg-green-100 text-green-800 p-3 rounded-lg mb-4 text-sm font-bold'><i class='fas fa-check-circle mr-1'></i> Request submitted! The ACES Staff will review and generate your certificate shortly.</div>";
+        }
+    }
+}
 
 // ---- Attendance Compliance ----
 $stmt_total_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations r JOIN subtopics sub ON r.subtopic_id = sub.subtopic_id AND sub.is_deleted = 0 JOIN sessions sess ON sub.session_id = sess.session_id AND sess.is_deleted = 0 WHERE r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
@@ -238,10 +272,50 @@ foreach ($all_subs as $sub) {
                     <h2 class="text-3xl font-extrabold text-[#0a6e2d]">Detailed Progress</h2>
                     <p class="text-gray-600 mt-1">View your complete breakdown of attendance and modules by phase.</p>
                 </div>
-                <a href="calendar.php" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-bold text-sm transition shadow-sm hidden md:inline-flex items-center gap-2">
-                    <i class="fas fa-calendar-alt"></i> View Calendar
-                </a>
+                
+                <div class="flex gap-3">
+                    <a href="calendar.php" class="text-gray-700 px-4 py-2 rounded-lg font-bold text-sm transition shadow-sm inline-flex items-center gap-2" style="background-color: white; border: 1px solid #d1d5db;">
+                        <i class="fas fa-calendar-alt"></i> View Calendar
+                    </a>
+
+                    <!-- NEW: CERTIFICATE REQUEST BUTTON -->
+                    <?php 
+                    // Check if 100% compliant AND ensure Career Fair has requirements
+                    $cf_total = $phase_progress['Career Fair']['total'] ?? 0;
+                    $is_100_percent = ($attendance_compliance_pct == 100 && $module_completion_pct == 100 && $cf_total > 0);
+                    
+                    if ($is_100_percent): 
+                        // Check if they already requested
+                        $stmt_req_check = $pdo->prepare("SELECT status FROM certificate_requests WHERE student_id = ? ORDER BY requested_at DESC LIMIT 1");
+                        $stmt_req_check->execute([$_SESSION['student_id']]);
+                        $latest_req = $stmt_req_check->fetchColumn();
+                        
+                        if ($latest_req === 'generated'):
+                    ?>
+                            <!-- DOWNLOAD CERTIFICATE BUTTON -->
+                            <a href="download_certificate.php" class="text-white px-4 py-2 rounded-lg font-bold text-sm transition shadow-md hover:scale-105 inline-flex items-center gap-2" style="background-color: #10b981; border: 1px solid #059669;">
+                                <i class="fas fa-download"></i> Download Certificate
+                            </a>
+                        <?php elseif ($latest_req === 'pending'): ?>
+                            <span class="bg-amber-100 text-amber-800 border border-amber-300 px-4 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-2 shadow-sm">
+                                <i class="fas fa-clock"></i> Request Pending
+                            </span>
+                        <?php else: ?>
+                            <form method="POST">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="request_certificate">
+                                <button type="submit" class="text-white px-4 py-2 rounded-lg font-bold text-sm transition shadow-md hover:scale-105 inline-flex items-center gap-2 animate-pulse" style="background-color: #4f46e5 !important; color: white !important; border: 1px solid #4338ca; display: inline-flex !important;">
+                                    <i class="fas fa-file-signature"></i> Request Certificate
+                                </button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <!-- END CERTIFICATE BUTTON -->
+                </div>
             </div>
+
+            <!-- Display Success/Error Message -->
+            <?= $cert_msg ?>
 
             <!-- TIER 1: QUICK SUMMARY CARDS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">

@@ -102,6 +102,13 @@ $current = basename($_SERVER['PHP_SELF']);
                     <a href="student_progress.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'student_progress.php' ? 'font-bold bg-white/20' : '' ?>">
                         <i class="fas fa-chart-line mr-2 w-5 text-center"></i><span class="sidebar-text">Student Progress</span>
                     </a>
+                    
+                    <!-- NEW: CERTIFICATE REQUESTS LINK -->
+                    <a href="certificate_requests.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'certificate_requests.php' ? 'font-bold bg-white/20' : '' ?>">
+                        <i class="fas fa-award mr-2 w-5 text-center"></i><span class="sidebar-text">Cert. Requests</span>
+                    </a>
+                    <!-- END NEW LINK -->
+
                     <?php if (isAdmin()): ?>
                     <a href="registrants.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors <?= $current == 'registrants.php' ? 'font-bold bg-white/20' : '' ?>">
                         <i class="fas fa-list-ul mr-2 w-5 text-center"></i><span class="sidebar-text">Registrants</span>
