@@ -31,9 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Fetch All Tickets
+// Fetch All Tickets (with unread message count)
 $stmt = $pdo->prepare("
-    SELECT t.*, u.full_name AS student_name 
+    SELECT t.*, u.full_name AS student_name,
+           (SELECT COUNT(*) FROM ticket_messages tm WHERE tm.ticket_id = t.ticket_id AND tm.is_read_by_staff = 0) AS unread_count
     FROM tickets t 
     JOIN students s ON t.student_id = s.student_id 
     JOIN users u ON s.user_id = u.user_id 
@@ -99,7 +100,17 @@ foreach ($all_tickets as $t) {
                             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col h-full hover:shadow-md transition-shadow">
                                 <!-- Top Row -->
                                 <div class="flex justify-between items-start mb-3">
-                                    <span class="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">#<?= $t['ticket_id'] ?></span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">#<?= $t['ticket_id'] ?></span>
+                                        
+                                        <!-- NEW: UNREAD MESSAGE BADGE -->
+                                        <?php if ($t['unread_count'] > 0): ?>
+                                            <span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse" title="<?= $t['unread_count'] ?> unread message(s)">
+                                                <?= $t['unread_count'] ?> New
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
+                                    
                                     <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase <?= $t['status'] === 'open' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800' ?>">
                                         <?= str_replace('_', ' ', $t['status']) ?>
                                     </span>
@@ -163,7 +174,15 @@ foreach ($all_tickets as $t) {
                                     <!-- Content -->
                                     <div class="flex-1 min-w-0">
                                         <div class="flex justify-between items-start mb-2">
-                                            <span class="text-xs font-mono text-gray-500">#<?= $t['ticket_id'] ?></span>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-mono text-gray-500">#<?= $t['ticket_id'] ?></span>
+                                                <!-- NEW: UNREAD BADGE FOR ARCHIVES -->
+                                                <?php if ($t['unread_count'] > 0): ?>
+                                                    <span class="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                                                        <?= $t['unread_count'] ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
                                             <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase <?= $t['status'] === 'resolved' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' ?>">
                                                 <?= $t['status'] === 'resolved' ? 'Resolved' : 'Abolished' ?>
                                             </span>

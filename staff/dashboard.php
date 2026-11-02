@@ -32,6 +32,16 @@ $total_students  = (int) $pdo->query("SELECT COUNT(*) FROM students WHERE is_del
 // ---------- PENDING TICKETS ----------
 $pending_tickets = (int) $pdo->query("SELECT COUNT(*) FROM tickets WHERE status = 'open'")->fetchColumn();
 
+// ---------- NEW: MANUAL REGISTRATIONS PENDING REVIEW ----------
+$manual_verified_count = (int) $pdo->query("
+    SELECT COUNT(*) 
+    FROM users u 
+    JOIN students s ON u.user_id = s.user_id 
+    WHERE u.registration_source = 'manual' 
+      AND u.is_verified = 1 
+      AND s.is_deleted = 0
+")->fetchColumn();
+
 // Unified Math: Present / Total Registrations
 $att_present = (int) $pdo->query("
     SELECT COUNT(DISTINCT a.student_id, a.subtopic_id) 
@@ -542,6 +552,15 @@ unset($m);
                     <a href="support.php" class="bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 text-sm font-bold px-3 py-2 rounded-lg inline-flex items-center gap-2 transition-colors shadow-sm animate-pulse" title="View Pending Tickets">
                         <i class="fas fa-ticket-alt"></i> 
                         <?= $pending_tickets ?> Pending Ticket<?= $pending_tickets > 1 ? 's' : '' ?>
+                    </a>
+                <?php endif; ?>
+                <!-- END BADGE -->
+
+                <!-- NEW: MANUAL REGISTRATIONS BADGE -->
+                <?php if ($manual_verified_count > 0): ?>
+                    <a href="students.php?source=manual" class="bg-blue-100 hover:bg-blue-200 border border-blue-300 text-blue-800 text-sm font-bold px-3 py-2 rounded-lg inline-flex items-center gap-2 transition-colors shadow-sm" title="Review manually registered students">
+                        <i class="fas fa-user-edit"></i> 
+                        <?= $manual_verified_count ?> Manual Reg<?= $manual_verified_count > 1 ? 's' : '' ?>
                     </a>
                 <?php endif; ?>
                 <!-- END BADGE -->

@@ -9,6 +9,16 @@ $ticket_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $user_id = $_SESSION['user_id'];
 $student_id = $_SESSION['student_id'];
 
+// NEW: Mark all messages not sent by this student as read
+if ($ticket_id > 0) {
+    $stmt_read = $pdo->prepare("
+        UPDATE ticket_messages 
+        SET is_read_by_student = 1 
+        WHERE ticket_id = ? AND sender_id != ?
+    ");
+    $stmt_read->execute([$ticket_id, $user_id]);
+}
+
 // Handle Reply
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reply') {
     csrf_verify();
@@ -31,7 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
 
-        $stmt = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message, image_path) VALUES (?, ?, ?, ?)");
+        // Mark as read by student (since they wrote it), unread by staff
+        $stmt = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message, image_path, is_read_by_student, is_read_by_staff) VALUES (?, ?, ?, ?, 1, 0)");
         $stmt->execute([$ticket_id, $user_id, $message, $image_path]);
         
         header("Location: ticket.php?id=$ticket_id");

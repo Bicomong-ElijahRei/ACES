@@ -30,7 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
 
-        $stmt = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message, image_path) VALUES (?, ?, ?, ?)");
+        // Mark as read by staff (since they wrote it), unread by student
+        $stmt = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message, image_path, is_read_by_student, is_read_by_staff) VALUES (?, ?, ?, ?, 0, 1)");
         $stmt->execute([$ticket_id, $user_id, $message, $image_path]);
         
         $pdo->prepare("UPDATE tickets SET status = 'in_progress' WHERE ticket_id = ? AND status = 'open'")->execute([$ticket_id]);
@@ -55,6 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: ticket.php?id=$ticket_id");
     exit;
 }
+
+// NEW: Mark all messages not sent by this staff member as read
+$stmt_read = $pdo->prepare("
+    UPDATE ticket_messages 
+    SET is_read_by_staff = 1 
+    WHERE ticket_id = ? AND sender_id != ?
+");
+$stmt_read->execute([$ticket_id, $user_id]);
 
 // Fetch Ticket Details
 $stmt = $pdo->prepare("SELECT t.*, u.full_name AS student_name, s.section, s.program FROM tickets t JOIN students s ON t.student_id = s.student_id JOIN users u ON s.user_id = u.user_id WHERE t.ticket_id = ?");

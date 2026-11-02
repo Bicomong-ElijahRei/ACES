@@ -37,7 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $stmt->execute([$student_id, $subject, $category]);
                     $ticket_id = $pdo->lastInsertId();
                     
-                    $stmt_msg = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message) VALUES (?, ?, ?)");
+                    // Mark as read by student (they wrote it), unread by staff
+                    $stmt_msg = $pdo->prepare("INSERT INTO ticket_messages (ticket_id, sender_id, message, is_read_by_student, is_read_by_staff) VALUES (?, ?, ?, 1, 0)");
                     $stmt_msg->execute([$ticket_id, $_SESSION['user_id'], $message]);
                     
                     header("Location: ticket.php?id=$ticket_id");
@@ -52,9 +53,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Fetch My Tickets
-$stmt = $pdo->prepare("SELECT * FROM tickets WHERE student_id = ? ORDER BY created_at DESC");
-$stmt->execute([$student_id]);
+// Fetch My Tickets (with unread message count from Staff only)
+$stmt = $pdo->prepare("
+    SELECT t.*, 
+           (SELECT COUNT(*) FROM ticket_messages tm 
+            WHERE tm.ticket_id = t.ticket_id 
+              AND tm.is_read_by_student = 0 
+              AND tm.sender_id != (SELECT user_id FROM students WHERE student_id = ?)
+           ) AS unread_count
+    FROM tickets t 
+    WHERE t.student_id = ? 
+    ORDER BY t.created_at DESC
+");
+$stmt->execute([$student_id, $student_id]);
 $tickets = $stmt->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -119,7 +130,17 @@ $tickets = $stmt->fetchAll();
                             <a href="ticket.php?id=<?= $t['ticket_id'] ?>" class="block bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-[#0a6e2d] transition">
                                 <div class="flex justify-between items-start gap-4">
                                     <div class="min-w-0">
-                                        <h3 class="font-bold text-gray-800 truncate"><?= htmlspecialchars($t['subject']) ?></h3>
+                                        
+                                        <!-- NEW: Subject Row with Unread Badge -->
+                                        <div class="flex items-center gap-2">
+                                            <h3 class="font-bold text-gray-800 truncate"><?= htmlspecialchars($t['subject']) ?></h3>
+                                            <?php if ($t['unread_count'] > 0): ?>
+                                                <span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse" title="<?= $t['unread_count'] ?> unread message(s)">
+                                                    <?= $t['unread_count'] ?> New
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
+                                        
                                         <p class="text-xs text-gray-500 mt-1">Opened on <?= date('M d, Y', strtotime($t['created_at'])) ?> • Category: <?= ucfirst($t['category']) ?></p>
                                     </div>
                                     <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase whitespace-nowrap

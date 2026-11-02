@@ -1,4 +1,19 @@
 <?php
+// NEW: Check for unread support messages
+$unread_support_count = 0;
+if (isset($_SESSION['student_id'])) {
+    $stmt_unread = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM ticket_messages tm 
+        JOIN tickets t ON tm.ticket_id = t.ticket_id 
+        WHERE t.student_id = ? 
+          AND tm.is_read_by_student = 0 
+          AND tm.sender_id != (SELECT user_id FROM students WHERE student_id = ?)
+    ");
+    $stmt_unread->execute([$_SESSION['student_id'], $_SESSION['student_id']]);
+    $unread_support_count = (int)$stmt_unread->fetchColumn();
+}
+
 if (!isset($student)) {
     require_once '../config/database.php';
     $stmt = $pdo->prepare("SELECT u.full_name, s.section FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.student_id = ?");
@@ -89,8 +104,18 @@ $current = basename($_SERVER['PHP_SELF']);
     <div class="mt-auto pt-4 border-t border-white/20">
         
         <!-- MOVED SUPPORT LINK HERE -->
-        <a href="support.php" class="block text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2 <?= $current == 'support.php' ? 'font-bold bg-white/20' : '' ?>">
-            <i class="fas fa-headset mr-2 w-5 text-center"></i><span class="sidebar-text">Support</span>
+        <a href="support.php" class="flex items-center justify-between text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2 <?= $current == 'support.php' ? 'font-bold bg-white/20' : '' ?>">
+            <div class="flex items-center">
+                <i class="fas fa-headset mr-2 w-5 text-center"></i>
+                <span class="sidebar-text">Support</span>
+            </div>
+            
+            <!-- THIS IS THE MISSING BADGE -->
+            <?php if (isset($unread_support_count) && $unread_support_count > 0): ?>
+                <span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse" title="<?= $unread_support_count ?> unread messages">
+                    <?= $unread_support_count ?>
+                </span>
+            <?php endif; ?>
         </a>
 
         <a href="../logout.php" onclick="return confirm('Are you sure you want to log out?');" class="block text-white font-bold hover:text-red-300 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors sidebar-text mb-2">

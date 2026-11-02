@@ -26,7 +26,21 @@ $staff_name = $staff['full_name'] ?? '';
 $action = $_POST['action'] ?? '';
 
 // --- Active student actions ---
-if ($action === 'bulk_archive' && isset($_POST['ids'])) {
+if ($action === 'bulk_staff_verify' && isset($_POST['ids'])) {
+    $ids = explode(',', $_POST['ids']);
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    
+    // Update registration_source to 'staff_verified' for the selected students
+    $stmt = $pdo->prepare("
+        UPDATE users u 
+        JOIN students s ON u.user_id = s.user_id 
+        SET u.registration_source = 'staff_verified' 
+        WHERE s.student_id IN ($placeholders)
+    ");
+    $stmt->execute($ids);
+    header('Location: students.php?msg=verified');
+    exit;
+} elseif ($action === 'bulk_archive' && isset($_POST['ids'])) {
     $ids = explode(',', $_POST['ids']);
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $stmt = $pdo->prepare("UPDATE students SET is_deleted = 1 WHERE student_id IN ($placeholders)");
@@ -153,8 +167,14 @@ $courses = $pdo->query("SELECT name FROM courses ORDER BY name")->fetchAll(PDO::
 $sections = $pdo->query("SELECT name FROM sections ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
 
 // Fetch active students
-$sql_active = "SELECT s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, u.full_name, u.email, u.is_verified, u.verification_token FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 0";
+$sql_active = "SELECT s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, u.full_name, u.email, u.is_verified, u.verification_token, u.registration_source FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 0";
 $params = [];
+
+// NEW: Filter by manual source
+if (isset($_GET['source']) && $_GET['source'] === 'manual') {
+    $sql_active .= " AND u.registration_source = 'manual' AND u.is_verified = 1";
+}
+
 if (isset($_GET['course']) && $_GET['course'] != '') {
     $sql_active .= " AND s.program = ?";
     $params[] = $_GET['course'];
@@ -241,10 +261,30 @@ $archived_students = $stmt_archived->fetchAll();
             </a>
         </div>
 
+        <!-- NEW: FILTER NOTIFICATION -->
+        <?php if (isset($_GET['source']) && $_GET['source'] === 'manual'): ?>
+            <div class="mb-6 bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 rounded-r-lg shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-filter text-blue-500 text-xl"></i>
+                    <div>
+                        <p class="font-bold">Filter Applied: Manual Registrations</p>
+                        <p class="text-sm">Showing only students who self-registered and verified their email. Please review and click the blue checkmark to approve them.</p>
+                    </div>
+                </div>
+                <a href="students.php" class="bg-white border border-blue-300 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition whitespace-nowrap">
+                    Clear Filter
+                </a>
+            </div>
+        <?php endif; ?>
+
         <!-- Flash Messages -->
         <?php if (isset($_GET['msg'])): ?>
             <div class="mb-6 animate-fade-in-down">
-                <?php if ($_GET['msg'] == 'archived'): ?>
+                <?php if ($_GET['msg'] == 'verified'): ?>
+                    <div class="bg-purple-50 border-l-4 border-purple-500 text-purple-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
+                        <i class="fas fa-shield-alt"></i> Selected student(s) successfully verified and approved.
+                    </div>
+                <?php elseif ($_GET['msg'] == 'archived'): ?>
                     <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm flex items-center gap-3">
                         <i class="fas fa-check-circle"></i> Student(s) archived.
                     </div>
@@ -275,6 +315,11 @@ $archived_students = $stmt_archived->fetchAll();
             <!-- Modern Toolbar (Bootstrap Layout) -->
             <div class="p-3 border-bottom bg-white d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                 <div class="d-flex flex-wrap align-items-center gap-2">
+                    <!-- NEW: BULK VERIFY BUTTON -->
+                    <button id="bulkVerifyBtn" class="btn btn-sm text-white fw-medium d-flex align-items-center gap-2 shadow-sm" style="background-color: #3b82f6; border-color: #2563eb;">
+                        <i class="fa-solid fa-user-check"></i> Verify Selected
+                    </button>
+                    
                     <button id="bulkArchiveBtn" class="btn btn-sm btn-outline-danger fw-medium d-flex align-items-center gap-2 shadow-sm">
                         <i class="fa-solid fa-box-archive"></i> Archive Selected
                     </button>
@@ -334,10 +379,28 @@ $archived_students = $stmt_archived->fetchAll();
                                 </td>
                                 <td class="py-4 px-4 text-gray-500 text-xs"><?= htmlspecialchars($student['email']) ?></td>
                                 <td class="py-4 px-4">
-                                    <?php if ($student['is_verified']): ?>
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 border border-green-200">
-                                            <i class="fas fa-check-circle mr-1"></i> Verified
+                                    <?php 
+                                    $source = $student['registration_source'];
+                                    
+                                    if ($student['is_verified']): 
+                                        if ($source === 'staff_verified'):
+                                    ?>
+                                        <!-- Verified via Staff Approval -->
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                            <i class="fas fa-shield-alt mr-1"></i> Staff Approved
                                         </span>
+                                        <?php elseif ($source === 'csv'): ?>
+                                        <!-- Verified via CSV (Trusted) -->
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 border border-green-200" title="Imported by Staff">
+                                            <i class="fas fa-file-csv mr-1"></i> Verified (CSV)
+                                        </span>
+                                        <?php else: ?>
+                                        <!-- Verified via Manual (Needs Review) -->
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200" title="Self-registered via portal">
+                                            <i class="fas fa-user-edit mr-1"></i> Verified (Manual)
+                                        </span>
+                                        <?php endif; ?>
+                                        
                                     <?php elseif (!empty($student['verification_token'])): ?>
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                                             <i class="fas fa-envelope mr-1"></i> Email Sent
@@ -350,6 +413,19 @@ $archived_students = $stmt_archived->fetchAll();
                                 </td>
                                 <td class="py-4 px-6 text-center">
                                     <div class="flex items-center justify-center gap-2">
+                                        
+                                        <!-- NEW: INDIVIDUAL VERIFY BUTTON -->
+                                        <?php if ($student['registration_source'] === 'manual'): ?>
+                                            <form method="POST" style="display:inline;">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="action" value="bulk_staff_verify">
+                                                <input type="hidden" name="ids" value="<?= $student['student_id'] ?>">
+                                                <button type="submit" class="text-white bg-blue-500 hover:bg-blue-600 p-2 rounded-lg transition-colors" title="Verify this student">
+                                                    <i class="fa-solid fa-check"></i>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+
                                         <button class="edit-student text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors"
                                             data-student-id="<?= $student['student_id'] ?>"
                                             data-last="<?= htmlspecialchars($student['last_name'] ?? '') ?>"
@@ -672,6 +748,20 @@ $archived_students = $stmt_archived->fetchAll();
             var totalVisible = $('.row-checkbox:visible').length;
             var checkedVisible = $('.row-checkbox:visible:checked').length;
             $('#selectAllCheckbox').prop('checked', totalVisible > 0 && checkedVisible === totalVisible);
+        });
+
+        // NEW: BULK VERIFY LOGIC
+        $('#bulkVerifyBtn').on('click', function() {
+            var ids = [];
+            $('.row-checkbox:visible:checked').each(function() { ids.push($(this).val()); });
+            if (ids.length === 0) { alert('Please select at least one visible student.'); return; }
+            if (confirm('Verify and approve ' + ids.length + ' selected student(s)? This will mark them as officially verified by staff.')) {
+                var form = $('<form method="POST"></form>');
+                form.append('<input type="hidden" name="csrf_token" value="' + CSRF_TOKEN + '">');
+                form.append('<input type="hidden" name="action" value="bulk_staff_verify">');
+                form.append('<input type="hidden" name="ids" value="' + ids.join(',') + '">');
+                $('body').append(form); form.submit();
+            }
         });
 
         $('#bulkArchiveBtn').on('click', function() {

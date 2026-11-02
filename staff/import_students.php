@@ -40,7 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $default_password = password_hash('password', PASSWORD_BCRYPT);
             $full_name = "$first_name $last_name";
             
-            $stmt_user = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, is_verified) VALUES (?, ?, ?, 'student', 1)");
+            // Tag as 'staff_verified' because the staff manually added them
+            $stmt_user = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, is_verified, registration_source) VALUES (?, ?, ?, 'student', 1, 'staff_verified')");
             $stmt_user->execute([$email, $default_password, $full_name]);
             $user_id = $pdo->lastInsertId();
 
@@ -233,8 +234,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 // 1. Generate a unique verification token
                 $token = bin2hex(random_bytes(32));
                 
-                // 2. Insert user as UNVERIFIED (is_verified = 0)
-                $stmt_user = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, is_verified, verification_token) VALUES (?, ?, ?, 'student', 0, ?)");
+                // 2. Insert user as UNVERIFIED (is_verified = 0) and tag as CSV
+                $stmt_user = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, is_verified, verification_token, registration_source) VALUES (?, ?, ?, 'student', 0, ?, 'csv')");
                 $stmt_user->execute([$email, $default_password, $full_name, $token]);
                 $user_id = $pdo->lastInsertId();
 
