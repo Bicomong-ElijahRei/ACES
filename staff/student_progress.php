@@ -415,6 +415,11 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                 <p class="text-sm text-gray-500 mt-1">Overview of student attendance and module completion</p>
             </div>
             <div class="flex items-center gap-3">
+                <!-- NEW: ADVANCED MAKE-UP BUTTON -->
+                <button onclick="openAdvancedMakeup()" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition shadow-sm">
+                    <i class="fas fa-calendar-plus"></i> Advanced Make-Up
+                </button>
+                
                 <a href="attendance.php" class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition">
                     <i class="fas fa-table text-[#0a6e2d]"></i> Manage Records
                 </a>
@@ -601,6 +606,11 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
             <option value="complete">✅ Complete (100%)</option>
             <option value="in-progress">🔄 In Progress</option>
         </select>
+        
+        <!-- BULK MAKE-UP BUTTON (Auto-selects current session) -->
+        <button onclick="openBulkMakeupModal()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm whitespace-nowrap">
+            <i class="fas fa-calendar-plus mr-1"></i> Bulk Make-Up
+        </button>
     </div>
 
     <div class="drawer-body p-4" id="drawerBody">
@@ -610,7 +620,194 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
         </div>
     </div>
 </div>
+<!-- Make-Up Scenario Modal -->
+<div class="modal fade" id="makeupModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-amber-50 border-b border-amber-200 p-4">
+                <h5 class="text-lg font-bold text-amber-800"><i class="fas fa-calendar-plus mr-2"></i>Create Make-Up Scenario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="makeupForm" method="POST" action="process_makeup.php" onsubmit="prepareMakeupSubmission(event)">
+                <?= csrf_field() ?>
+                <input type="hidden" name="student_ids" id="makeup_student_ids">
+                <input type="hidden" name="missed_subtopic_id" id="makeup_missed_subtopic_id">
+                
+                <div class="modal-body p-6 space-y-4">
+                    <div class="bg-red-50 border border-red-200 p-3 rounded-lg text-sm text-red-800 mb-4">
+                        <i class="fas fa-exclamation-triangle mr-1"></i> This will create a new Make-Up session and automatically reconcile the student's original absent record once they attend.
+                    </div>
 
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
+                        <p class="text-xs text-gray-500 uppercase font-bold mb-1">Missed Subtopic:</p>
+                        <p class="font-bold text-gray-800 text-lg" id="makeup_missed_title">Loading...</p>
+                    </div>
+
+                    <!-- NEW: STUDENT SELECTION LIST -->
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Select Students for Make-Up:</label>
+                        <div id="makeup_student_list" class="max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2 space-y-2">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Make-Up Session Title</label>
+                        <input type="text" name="title" required placeholder="e.g., Make-Up: Professional Etiquette" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                            <input type="date" name="date" required min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Phase</label>
+                            <select name="phase" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                                <option value="Preparation">Preparation</option>
+                                <option value="Pre-Employment">Pre-Employment</option>
+                                <option value="Career Fair">Career Fair</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                            <input type="time" name="start_time" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                            <input type="time" name="end_time" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                    <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Generate Make-Up</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- NEW: Advanced Make-Up Generator Modal -->
+<div class="modal fade" id="advancedMakeupModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
+            <div class="modal-header bg-amber-500 text-white p-4">
+                <h5 class="text-lg font-bold"><i class="fas fa-magic mr-2"></i>Advanced Make-Up Generator</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="advancedMakeupForm" method="POST" action="process_makeup.php" onsubmit="return prepareAdvMakeup()">
+                <?= csrf_field() ?>
+                <input type="hidden" name="selected_data" id="adv_selected_data">
+                
+                <div class="modal-body p-6">
+                    <!-- Filters -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Filter by Course</label>
+                            <select id="adv_course" class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                                <option value="">All Courses</option>
+                                <?php foreach ($courses as $crs): ?>
+                                    <option value="<?= htmlspecialchars($crs) ?>"><?= htmlspecialchars($crs) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Filter by Section</label>
+                            <select id="adv_section" class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                                <option value="">All Sections</option>
+                                <?php foreach ($sections as $sec): ?>
+                                    <option value="<?= htmlspecialchars($sec) ?>"><?= htmlspecialchars($sec) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Select Missed Subtopic (Required)</label>
+                            <select id="adv_subtopic" class="w-full border border-gray-300 rounded-lg p-2 text-sm" required>
+                                <option value="">-- Choose Subtopic --</option>
+                                <?php 
+                                $past_subs = $pdo->query("SELECT st.subtopic_id, st.title as sub_title, s.title as sess_title FROM subtopics st JOIN sessions s ON st.session_id = s.session_id WHERE st.is_deleted = 0 AND s.date <= CURDATE() ORDER BY s.date DESC")->fetchAll();
+                                foreach ($past_subs as $ps): ?>
+                                    <option value="<?= $ps['subtopic_id'] ?>"><?= htmlspecialchars($ps['sess_title']) ?> - <?= htmlspecialchars($ps['sub_title']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end mb-4">
+                        <button type="button" onclick="loadAbsentStudents()" class="bg-gray-800 hover:bg-black text-white px-6 py-2 rounded-lg font-bold text-sm transition">
+                            <i class="fas fa-search mr-2"></i> Find Absent Students
+                        </button>
+                    </div>
+
+                    <!-- Results Table -->
+                    <div id="adv_student_list_container" class="border border-gray-200 rounded-lg max-h-60 overflow-y-auto bg-gray-50 hidden mb-4">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-gray-100 sticky top-0 border-b border-gray-200">
+                                <tr>
+                                    <th class="p-3 w-10"></th>
+                                    <th class="p-3 font-semibold text-gray-600">Student ID</th>
+                                    <th class="p-3 font-semibold text-gray-600">Name</th>
+                                    <th class="p-3 font-semibold text-gray-600">Missed Subtopic</th>
+                                    <th class="p-3 font-semibold text-gray-600">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adv_student_list" class="divide-y divide-gray-200">
+                                <!-- Loaded via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- NEW: SELECTED STAGING BOX -->
+                    <div class="border-2 border-dashed border-amber-300 rounded-lg bg-amber-50 p-4 mt-6">
+                        <div class="flex justify-between items-center mb-3">
+                            <h6 class="font-bold text-amber-800"><i class="fas fa-clipboard-list mr-2"></i>Selected Students for Make-Up (<span id="adv_selected_count">0</span>)</h6>
+                            <button type="button" onclick="clearSelectedAdv()" class="text-xs text-red-600 hover:text-red-800 font-bold underline">Clear All</button>
+                        </div>
+                        <div id="adv_selected_box" class="space-y-2 max-h-40 overflow-y-auto">
+                            <p class="text-sm text-amber-600 italic">No students selected yet. Use the search above to add students.</p>
+                        </div>
+                    </div>
+
+                    <!-- Session Details -->
+                    <div class="border-t border-gray-200 mt-6 pt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Make-Up Session Title Prefix</label>
+                            <input type="text" name="title_prefix" id="adv_title" required value="Make-Up:" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500">
+                            <p class="text-xs text-gray-500 mt-1">The system will append the subtopic name automatically (e.g., "Make-Up: Professional Etiquette").</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Date</label>
+                            <input type="date" name="date" required min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Phase</label>
+                            <select name="phase" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500">
+                                <option value="Preparation">Preparation</option>
+                                <option value="Pre-Employment">Pre-Employment</option>
+                                <option value="Career Fair">Career Fair</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Start Time</label>
+                            <input type="time" name="start_time" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">End Time</label>
+                            <input type="time" name="end_time" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                    <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-sm">Generate Bulk Make-Up</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const CSRF_TOKEN = '<?= csrf_token() ?>';
@@ -1012,6 +1209,16 @@ function renderStudents(students) {
                         <span class="status-pill status-${statusClass || 'no-reg'}">
                             ${attIcon} ${statusLabel}
                         </span>
+                        
+                        <!-- NEW: MAKE-UP BUTTON FOR ABSENT STUDENTS -->
+                        ${sb.attendance_status === 'absent' ? `
+                            <button class="btn-makeup bg-amber-100 text-amber-700 hover:bg-amber-200 px-2 py-1 rounded text-xs font-bold border border-amber-300 transition" 
+                                    onclick="event.stopPropagation(); openMakeupModal('${st.student_id}', '${sb.subtopic_id}', '${escapeHtml(sb.title)}')" 
+                                    title="Create Make-Up for this missed subtopic">
+                                <i class="fas fa-calendar-plus"></i> Make-Up
+                            </button>
+                        ` : ''}
+
                         ${sb.registered ? `
                             <button class="btn-status-cycle" 
                                     data-student-id="${st.student_id}"
@@ -1147,7 +1354,78 @@ function filterDrawer() {
 }
 
 
+// ============================================
+// OPEN MAKE-UP MODAL (SINGLE)
+// ============================================
+function openMakeupModal(studentId, subtopicId, subtopicTitle) {
+    document.getElementById('makeup_missed_subtopic_id').value = subtopicId;
+    document.getElementById('makeup_missed_title').textContent = subtopicTitle;
+    document.querySelector('#makeupModal input[name="title"]').value = 'Make-Up: ' + subtopicTitle;
+    
+    // Populate the checkbox list with just this one student (checked)
+    const list = document.getElementById('makeup_student_list');
+    list.innerHTML = `
+        <label class="flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer">
+            <input type="checkbox" name="makeup_student_cb" value="${studentId}" checked class="rounded text-amber-500 focus:ring-amber-500">
+            <span class="text-sm font-semibold text-gray-800">${studentId}</span>
+        </label>
+    `;
+    
+    new bootstrap.Modal(document.getElementById('makeupModal')).show();
+}
 
+// ============================================
+// OPEN MAKE-UP MODAL (BULK)
+// ============================================
+function openBulkMakeupModal() {
+    // We need to let the staff select which subtopic they are making up.
+    // We will look at the current session's subtopics.
+    // For simplicity, let's just grab the first absent subtopic from the current list of students.
+    
+    // Find all absent subtopics in the current session
+    let absentSubtopics = {};
+    allStudents.forEach(st => {
+        st.subtopics.forEach(sb => {
+            if (sb.attendance_status === 'absent') {
+                absentSubtopics[sb.subtopic_id] = sb.title;
+            }
+        });
+    });
+
+    const subIds = Object.keys(absentSubtopics);
+    if (subIds.length === 0) {
+        alert("No absent students in this session to create a make-up for.");
+        return;
+    }
+
+    // If there are multiple subtopics, we'd ideally have a dropdown. 
+    // For now, let's just pick the first one and list the absent students for it.
+    // (In a full build, we'd add a subtopic selector to the modal).
+    const selectedSubId = subIds[0];
+    const selectedSubTitle = absentSubtopics[selectedSubId];
+
+    document.getElementById('makeup_missed_subtopic_id').value = selectedSubId;
+    document.getElementById('makeup_missed_title').textContent = selectedSubTitle;
+    document.querySelector('#makeupModal input[name="title"]').value = 'Make-Up: ' + selectedSubTitle;
+
+    // Populate the checkbox list with ALL absent students for this subtopic
+    const list = document.getElementById('makeup_student_list');
+    list.innerHTML = '';
+    
+    allStudents.forEach(st => {
+        const sb = st.subtopics.find(s => s.subtopic_id == selectedSubId);
+        if (sb && sb.attendance_status === 'absent') {
+            list.innerHTML += `
+                <label class="flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer">
+                    <input type="checkbox" name="makeup_student_cb" value="${st.student_id}" checked class="rounded text-amber-500 focus:ring-amber-500">
+                    <span class="text-sm font-semibold text-gray-800">${st.full_name}</span>
+                </label>
+            `;
+        }
+    });
+
+    new bootstrap.Modal(document.getElementById('makeupModal')).show();
+}
 // ============================================
 // HELPERS
 // ============================================
@@ -1185,6 +1463,160 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+function prepareMakeupSubmission(e) {
+    const checked = document.querySelectorAll('input[name="makeup_student_cb"]:checked');
+    if (checked.length === 0) {
+        e.preventDefault();
+        alert('Please select at least one student for the make-up.');
+        return;
+    }
+    
+    const ids = Array.from(checked).map(cb => cb.value);
+    document.getElementById('makeup_student_ids').value = ids.join(',');
+}
+// ============================================
+// ADVANCED MAKE-UP LOGIC (STAGING BOX)
+// ============================================
+let advSelectedStudents = []; // Array to hold staged students
+
+function openAdvancedMakeup() {
+    document.getElementById('advancedMakeupForm').reset();
+    document.getElementById('adv_student_list_container').classList.add('hidden');
+    document.getElementById('adv_student_list').innerHTML = '';
+    advSelectedStudents = [];
+    renderAdvSelectedBox();
+    new bootstrap.Modal(document.getElementById('advancedMakeupModal')).show();
+}
+
+function loadAbsentStudents() {
+    const course = document.getElementById('adv_course').value;
+    const section = document.getElementById('adv_section').value;
+    const subtopicId = document.getElementById('adv_subtopic').value;
+    
+    if (!subtopicId) {
+        alert('Please select a missed subtopic first.');
+        return;
+    }
+    
+    const container = document.getElementById('adv_student_list_container');
+    const tbody = document.getElementById('adv_student_list');
+    
+    tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    container.classList.remove('hidden');
+    
+    fetch(`api_get_absent_students.php?course=${encodeURIComponent(course)}&section=${encodeURIComponent(section)}&subtopic_id=${subtopicId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success || data.students.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No absent students found for these filters.</td></tr>';
+                return;
+            }
+            
+            const subtopicText = document.getElementById('adv_subtopic').options[document.getElementById('adv_subtopic').selectedIndex].text;
+            
+            tbody.innerHTML = data.students.map(st => {
+                // Check if already in the staging box
+                const isAlreadySelected = advSelectedStudents.some(s => s.student_id === st.student_id && s.subtopic_id == subtopicId);
+                
+                return `
+                <tr class="hover:bg-white transition ${isAlreadySelected ? 'opacity-50' : ''}">
+                    <td class="p-3 text-center">
+                        ${isAlreadySelected 
+                            ? '<i class="fas fa-check-circle text-green-500"></i>' 
+                            : `<input type="checkbox" onchange="toggleAdvStudent('${st.student_id}', '${st.last_name}, ${st.first_name}', '${subtopicId}', '${escapeHtml(subtopicText)}', this)" class="rounded text-amber-500 focus:ring-amber-500">`}
+                    </td>
+                    <td class="p-3 font-mono text-xs">${st.student_id}</td>
+                    <td class="p-3 font-semibold text-gray-800">${st.last_name}, ${st.first_name}</td>
+                    <td class="p-3 text-xs text-gray-500">${escapeHtml(subtopicText)}</td>
+                    <td class="p-3 text-xs">
+                        ${isAlreadySelected 
+                            ? '<span class="text-green-600 font-bold">Already Listed</span>' 
+                            : '<span class="text-gray-400">Available</span>'}
+                    </td>
+                </tr>
+            `}).join('');
+        })
+        .catch(err => {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">Error loading students.</td></tr>';
+        });
+}
+
+function toggleAdvStudent(studentId, studentName, subtopicId, subtopicTitle, checkbox) {
+    if (checkbox.checked) {
+        // Add to staging
+        advSelectedStudents.push({
+            student_id: studentId,
+            name: studentName,
+            subtopic_id: subtopicId,
+            subtopic_title: subtopicTitle
+        });
+    } else {
+        // Remove from staging
+        advSelectedStudents = advSelectedStudents.filter(s => !(s.student_id === studentId && s.subtopic_id == subtopicId));
+    }
+    
+    renderAdvSelectedBox();
+    
+    // Refresh the table to update "Already Listed" status
+    // (We can just trigger the find button again for a smooth update)
+    // For performance, let's just find the specific row and update it.
+    // Actually, re-running the search is easiest.
+    const btn = document.querySelector('button[onclick="loadAbsentStudents()"]');
+    if (btn) btn.click();
+}
+
+function renderAdvSelectedBox() {
+    const box = document.getElementById('adv_selected_box');
+    const countSpan = document.getElementById('adv_selected_count');
+    countSpan.textContent = advSelectedStudents.length;
+    
+    if (advSelectedStudents.length === 0) {
+        box.innerHTML = '<p class="text-sm text-amber-600 italic">No students selected yet. Use the search above to add students.</p>';
+        return;
+    }
+    
+    box.innerHTML = advSelectedStudents.map((s, index) => `
+        <div class="flex justify-between items-center bg-white p-2 rounded border border-amber-200 shadow-sm">
+            <div>
+                <span class="font-bold text-sm text-gray-800">${s.name}</span>
+                <span class="text-xs text-gray-500 ml-2">(${s.student_id})</span>
+                <br>
+                <span class="text-[10px] font-semibold text-amber-700"><i class="fas fa-book mr-1"></i>Missed: ${s.subtopic_title}</span>
+            </div>
+            <button type="button" onclick="removeAdvStudent(${index})" class="text-red-500 hover:text-red-700 p-1">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function removeAdvStudent(index) {
+    advSelectedStudents.splice(index, 1);
+    renderAdvSelectedBox();
+    // Update table
+    const btn = document.querySelector('button[onclick="loadAbsentStudents()"]');
+    if (btn) btn.click();
+}
+
+function clearSelectedAdv() {
+    if (advSelectedStudents.length === 0) return;
+    if (!confirm('Clear all selected students?')) return;
+    advSelectedStudents = [];
+    renderAdvSelectedBox();
+    const btn = document.querySelector('button[onclick="loadAbsentStudents()"]');
+    if (btn) btn.click();
+}
+
+function prepareAdvMakeup() {
+    if (advSelectedStudents.length === 0) {
+        alert('Please select at least one student from the list.');
+        return false;
+    }
+    
+    // We are sending the whole array as JSON so the backend can group by subtopic
+    document.getElementById('adv_selected_data').value = JSON.stringify(advSelectedStudents);
+    return true;
+}
 </script>
 </body>
 </html>

@@ -68,6 +68,42 @@ if ($action === 'bulk_delete' && isset($_POST['ids'])) {
     $stmt = $pdo->prepare("UPDATE attendance SET attendance_status = ?, validated = IF(? = 'pending', 0, 1), auto_generated = 0, recorded_by = ? WHERE attendance_id IN ($placeholders)");
     $params = array_merge([$new_status, $new_status, $_SESSION['user_id']], $ids);
     $stmt->execute($params);
+
+    // NEW: MAKE-UP SUBSTITUTION LOGIC (Bulk)
+    if ($new_status === 'present') {
+        foreach ($ids as $att_id) {
+            // Get the subtopic and student for this attendance record
+            $stmt_info = $pdo->prepare("SELECT student_id, subtopic_id FROM attendance WHERE attendance_id = ?");
+            $stmt_info->execute([$att_id]);
+            $info = $stmt_info->fetch();
+            
+            if ($info) {
+                // Check if this subtopic is a make-up
+                $stmt_mk = $pdo->prepare("SELECT makeup_for_subtopic_id FROM subtopics WHERE subtopic_id = ?");
+                $stmt_mk->execute([$info['subtopic_id']]);
+                $makeup_for = $stmt_mk->fetchColumn();
+                
+                if ($makeup_for) {
+                    // Update the original missed record to Present
+                    $stmt_fix = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1 WHERE student_id = ? AND subtopic_id = ?");
+                    $stmt_fix->execute([$info['student_id'], $makeup_for]);
+
+                    // EDGE CASE: If no original record existed, create one
+                    if ($stmt_fix->rowCount() === 0) {
+                        $stmt_orig_session = $pdo->prepare("SELECT session_id FROM subtopics WHERE subtopic_id = ?");
+                        $stmt_orig_session->execute([$makeup_for]);
+                        $orig_session_id = $stmt_orig_session->fetchColumn();
+
+                        if ($orig_session_id) {
+                            $pdo->prepare("INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated) VALUES (?, ?, ?, 'present', 1)")
+                                ->execute([$info['student_id'], $orig_session_id, $makeup_for]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     header('Location: attendance.php?status_updated=1');
     exit;
 } elseif ($action === 'single_change' && isset($_POST['id']) && isset($_POST['status'])) {
@@ -75,6 +111,37 @@ if ($action === 'bulk_delete' && isset($_POST['ids'])) {
     $new_status = $_POST['status'];
     $stmt = $pdo->prepare("UPDATE attendance SET attendance_status = ?, validated = IF(? = 'pending', 0, 1), auto_generated = 0, recorded_by = ? WHERE attendance_id = ?");
     $stmt->execute([$new_status, $new_status, $_SESSION['user_id'], $id]);
+
+    // NEW: MAKE-UP SUBSTITUTION LOGIC (Single)
+    if ($new_status === 'present') {
+        $stmt_info = $pdo->prepare("SELECT student_id, subtopic_id FROM attendance WHERE attendance_id = ?");
+        $stmt_info->execute([$id]);
+        $info = $stmt_info->fetch();
+        
+        if ($info) {
+            $stmt_mk = $pdo->prepare("SELECT makeup_for_subtopic_id FROM subtopics WHERE subtopic_id = ?");
+            $stmt_mk->execute([$info['subtopic_id']]);
+            $makeup_for = $stmt_mk->fetchColumn();
+            
+            if ($makeup_for) {
+                $stmt_fix = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1 WHERE student_id = ? AND subtopic_id = ?");
+                $stmt_fix->execute([$info['student_id'], $makeup_for]);
+
+                // EDGE CASE: If no original record existed, create one
+                if ($stmt_fix->rowCount() === 0) {
+                    $stmt_orig_session = $pdo->prepare("SELECT session_id FROM subtopics WHERE subtopic_id = ?");
+                    $stmt_orig_session->execute([$makeup_for]);
+                    $orig_session_id = $stmt_orig_session->fetchColumn();
+
+                    if ($orig_session_id) {
+                        $pdo->prepare("INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated) VALUES (?, ?, ?, 'present', 1)")
+                            ->execute([$info['student_id'], $orig_session_id, $makeup_for]);
+                    }
+                }
+            }
+        }
+    }
+
     header('Location: attendance.php?status_updated=1');
     exit;
 }

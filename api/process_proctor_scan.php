@@ -75,4 +75,27 @@ if ($existing_att) {
         ->execute([$student_id, $session_id, $subtopic_id]);
 }
 
+// 7. NEW: MAKE-UP SUBSTITUTION LOGIC
+// Check if this subtopic is a make-up
+$stmt_mk = $pdo->prepare("SELECT makeup_for_subtopic_id FROM subtopics WHERE subtopic_id = ?");
+$stmt_mk->execute([$subtopic_id]);
+$makeup_for = $stmt_mk->fetchColumn();
+
+if ($makeup_for) {
+    $stmt_fix = $pdo->prepare("UPDATE attendance SET attendance_status = 'present', validated = 1 WHERE student_id = ? AND subtopic_id = ?");
+    $stmt_fix->execute([$student_id, $makeup_for]);
+
+    // EDGE CASE: Insert if no original record exists
+    if ($stmt_fix->rowCount() === 0) {
+        $stmt_orig_session = $pdo->prepare("SELECT session_id FROM subtopics WHERE subtopic_id = ?");
+        $stmt_orig_session->execute([$makeup_for]);
+        $orig_session_id = $stmt_orig_session->fetchColumn();
+
+        if ($orig_session_id) {
+            $pdo->prepare("INSERT INTO attendance (student_id, session_id, subtopic_id, attendance_status, validated) VALUES (?, ?, ?, 'present', 1)")
+                ->execute([$student_id, $orig_session_id, $makeup_for]);
+        }
+    }
+}
+
 echo json_encode(['success' => true, 'student_name' => $full_name]);

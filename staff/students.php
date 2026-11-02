@@ -187,6 +187,15 @@ $stmt_active = $pdo->prepare($sql_active);
 $stmt_active->execute($params);
 $active_students = $stmt_active->fetchAll();
 
+// NEW: Fetch Past Subtopics for the Make-Up Dropdown
+$past_subtopics = $pdo->query("
+    SELECT st.subtopic_id, st.title as sub_title, s.title as sess_title, s.date 
+    FROM subtopics st 
+    JOIN sessions s ON st.session_id = s.session_id 
+    WHERE st.is_deleted = 0 AND s.is_deleted = 0 AND s.date <= CURDATE()
+    ORDER BY s.date DESC
+")->fetchAll();
+
 // Fetch archived students
 $sql_archived = "SELECT s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, u.email, u.is_verified, u.verification_token FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.is_deleted = 1";
 $arch_params = [];
@@ -315,14 +324,31 @@ $archived_students = $stmt_archived->fetchAll();
             <!-- Modern Toolbar (Bootstrap Layout) -->
             <div class="p-3 border-bottom bg-white d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <!-- NEW: BULK VERIFY BUTTON -->
-                    <button id="bulkVerifyBtn" class="btn btn-sm text-white fw-medium d-flex align-items-center gap-2 shadow-sm" style="background-color: #3b82f6; border-color: #2563eb;">
-                        <i class="fa-solid fa-user-check"></i> Verify Selected
-                    </button>
                     
-                    <button id="bulkArchiveBtn" class="btn btn-sm btn-outline-danger fw-medium d-flex align-items-center gap-2 shadow-sm">
-                        <i class="fa-solid fa-box-archive"></i> Archive Selected
-                    </button>
+                    <!-- NEW: UNIFIED BULK ACTIONS DROPDOWN -->
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary fw-medium dropdown-toggle d-flex align-items-center gap-2 shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-list-check"></i> Bulk Actions
+                        </button>
+                        <ul class="dropdown-menu shadow" style="font-size: 0.875rem;">
+                            <li>
+                                <button id="bulkVerifyBtn" class="dropdown-item text-primary fw-medium">
+                                    <i class="fa-solid fa-user-check me-2"></i> Verify Selected
+                                </button>
+                            </li>
+                            <li>
+                                <button id="createMakeupBtn" class="dropdown-item text-warning fw-medium">
+                                    <i class="fa-solid fa-calendar-plus me-2"></i> Create Make-Up
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button id="bulkArchiveBtn" class="dropdown-item text-danger fw-medium">
+                                    <i class="fa-solid fa-box-archive me-2"></i> Archive Selected
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                     <button type="button" class="btn btn-sm btn-outline-secondary fw-medium d-flex align-items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
                         <i class="fa-solid fa-filter"></i> Filter
                     </button>
@@ -665,47 +691,76 @@ $archived_students = $stmt_archived->fetchAll();
 
     <!-- Export Modal -->
     <div class="modal fade" id="exportModal" tabindex="-1">
-        <div class="modal-dialog">
+        <!-- ... export modal content ... -->
+    </div>
+
+    <!-- NEW: Make-Up Scenario Modal -->
+    <div class="modal fade" id="makeupModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content border-0 shadow-xl rounded-xl overflow-hidden">
-                <div class="modal-header bg-gray-50 border-b border-gray-200 p-4">
-                    <h5 class="text-lg font-bold text-gray-800">Export Students</h5>
+                <div class="modal-header bg-amber-50 border-b border-amber-200 p-4">
+                    <h5 class="text-lg font-bold text-amber-800"><i class="fas fa-calendar-plus mr-2"></i>Create Make-Up Scenario</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body p-6 space-y-5">
-                    <div class="grid grid-cols-2 gap-4">
+                <form id="makeupForm" method="POST" action="process_makeup.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="student_ids" id="makeup_student_ids">
+                    <div class="modal-body p-6 space-y-4">
+                        
+                        <div class="bg-red-50 border border-red-200 p-3 rounded-lg text-sm text-red-800 mb-4">
+                            <i class="fas fa-exclamation-triangle mr-1"></i> This will create a new Session, link it to the missed session, register the students, and set their attendance to Pending.
+                        </div>
+
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
-                            <select id="exportFormat" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
-                                <option value="csv">CSV (Excel compatible)</option>
-                                <option value="pdf">PDF (Print to PDF)</option>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">1. Which Session did they miss?</label>
+                            <select name="missed_subtopic_id" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                                <option value="">-- Select Past Session --</option>
+                                <?php foreach ($past_subtopics as $ps): ?>
+                                    <option value="<?= $ps['subtopic_id'] ?>">
+                                        <?= date('M d, Y', strtotime($ps['date'])) ?> | <?= htmlspecialchars($ps['sess_title']) ?> - <?= htmlspecialchars($ps['sub_title']) ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
+
+                        <div class="border-t border-gray-100 my-4"></div>
+
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Export scope</label>
-                            <select id="exportScope" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]">
-                                <option value="all">All filtered students</option>
-                                <option value="selected">Only selected students</option>
-                            </select>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">2. Make-Up Session Title</label>
+                            <input type="text" name="title" required placeholder="e.g., Make-Up: Professional Etiquette" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                <input type="date" name="date" required min="<?= date('Y-m-d') ?>" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Phase</label>
+                                <select name="phase" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                                    <option value="Preparation">Preparation</option>
+                                    <option value="Pre-Employment">Pre-Employment</option>
+                                    <option value="Career Fair">Career Fair</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                <input type="time" name="start_time" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                <input type="time" name="end_time" required class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                            </div>
                         </div>
                     </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Columns to include</label>
-                        <div class="grid grid-cols-2 gap-2 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_student_no" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Student No.</span></label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_last_name" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Last Name</span></label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_first_name" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">First Name</span></label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_middle_name" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Middle Name</span></label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_course" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Course</span></label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_section" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Section</span></label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="col_email" checked class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]"> <span class="text-sm text-gray-700">Email</span></label>
-                        </div>
+                    <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
+                        <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Generate Make-Up</button>
                     </div>
-                </div>
-                <div class="modal-footer bg-gray-50 border-t border-gray-200 p-4">
-                    <button type="button" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" id="doExport" class="bg-[#0a6e2d] hover:bg-[#054018] text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Export</button>
-                </div>
+                </form>
             </div>
         </div>
     </div>
@@ -762,6 +817,20 @@ $archived_students = $stmt_archived->fetchAll();
                 form.append('<input type="hidden" name="ids" value="' + ids.join(',') + '">');
                 $('body').append(form); form.submit();
             }
+        });
+
+        // NEW: MAKE-UP SCENARIO LOGIC
+        $('#createMakeupBtn').on('click', function() {
+            var ids = [];
+            $('.row-checkbox:visible:checked').each(function() { ids.push($(this).val()); });
+            
+            if (ids.length === 0) { 
+                alert('Please select at least one student to create a make-up scenario for.'); 
+                return; 
+            }
+            
+            $('#makeup_student_ids').val(ids.join(','));
+            $('#makeupModal').modal('show');
         });
 
         $('#bulkArchiveBtn').on('click', function() {
