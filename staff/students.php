@@ -1,15 +1,11 @@
 <?php
 require_once __DIR__ . '/../config/env.php';
+// ... the rest of your code ...
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 
-// Block Viewer POST actions
-if (isViewer() && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    header('Location: students.php?msg=error&detail=' . urlencode('Access denied'));
-    exit;
-}
 
 // ---- CSRF check on any POST ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

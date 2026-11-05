@@ -4,12 +4,7 @@ require_once '../includes/auth.php';
 redirectIfNotStaff();
 
 // Block Viewers from reading edit data (defense in depth)
-if (isViewer()) {
-    header('Content-Type: application/json');
-    http_response_code(403);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
+
 
 $id = (int)($_GET['id'] ?? 0);
 if (!$id) {

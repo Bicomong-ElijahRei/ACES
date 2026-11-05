@@ -4,7 +4,6 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
-if (isViewer() && $_SERVER['REQUEST_METHOD'] === 'POST') { exit('Access denied'); }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') { csrf_verify(); }
 
 $action = $_POST['action'] ?? '';

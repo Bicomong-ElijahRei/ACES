@@ -4,10 +4,6 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
-if (isViewer() && isset($_POST['action'])) {
-    header('Location: subtopics.php?error=Access denied');
-    exit;
-}
 
 // ---- CSRF check on any POST ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -611,7 +607,7 @@ $course_sections_json = json_encode($course_sections);
                     <p class="text-sm text-gray-600 mt-1">Manage activities, capacities, and student visibility.</p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <?php if (!isViewer()): ?>
+                    <?php if (isStaff()): ?>
                         <button class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg inline-flex items-center shadow-sm transition-colors" type="button" data-bs-toggle="modal" data-bs-target="#notifyModal">
                             <i class="fas fa-envelope mr-2"></i> Notify Students
                         </button>
@@ -663,12 +659,12 @@ $course_sections_json = json_encode($course_sections);
                                     <?= htmlspecialchars($session['phase']) ?>
                                 </span>
                                 <div class="flex gap-1">
-                                    <?php if (!isViewer() && (isAdmin() || $session['created_by'] == $_SESSION['user_id'])): ?>
+                                    <?php if (isStaff()): ?>
                                         <button class="notify-session-btn text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors" data-session-id="<?= $session['session_id'] ?>" title="Notify students"><i class="fas fa-envelope"></i></button>
                                         <!-- CHANGED TO VIEW BUTTON -->
                                         <button class="view-session text-gray-400 hover:text-green-600 p-1.5 rounded-md hover:bg-green-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="View session"><i class="fas fa-eye"></i></button>
                                         <button class="delete-session text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="Archive"><i class="fas fa-trash-alt"></i></button>
-                                    <?php elseif (!isViewer() && !isAdmin() && $session['created_by'] != $_SESSION['user_id']): ?>
+                                    <?php elseif (!isStaff() && !isAdmin() && $session['created_by'] != $_SESSION['user_id']): ?>
                                         <span class="text-gray-400 text-xs italic" title="Created by another staff member">(other staff)</span>
                                     <?php endif; ?>
                                 </div>
@@ -773,7 +769,7 @@ $course_sections_json = json_encode($course_sections);
                             <div class="flex justify-between items-start mb-2">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border <?= $phaseClass ?>"><?= htmlspecialchars($session['phase']) ?></span>
                                 <div class="flex gap-1">
-                                    <?php if (!isViewer() && (isAdmin() || $session['created_by'] == $_SESSION['user_id'])): ?>
+                                    <?php if (isStaff()): ?>
                                         <button class="view-session text-gray-400 hover:text-green-600 p-1.5 rounded-md hover:bg-green-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="View session"><i class="fas fa-eye"></i></button>
                                         <button class="delete-session text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors" data-id="<?= $session['session_id'] ?>" title="Archive"><i class="fas fa-trash-alt"></i></button>
                                     <?php endif; ?>

@@ -69,7 +69,7 @@ $current = basename($_SERVER['PHP_SELF']);
             </div>
 
             <!-- Management Group -->
-            <?php if (!isViewer()): ?>
+            <?php if (isStaff()): ?>
             <div class="sidebar-group">
                 <button class="group-header flex items-center justify-between w-full text-left text-white hover:text-green-200 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors">
                     <span><i class="fas fa-cogs mr-2 w-5 text-center"></i><span class="sidebar-text">Management</span></span>

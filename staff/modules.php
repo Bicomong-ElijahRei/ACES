@@ -7,10 +7,6 @@ require_once __DIR__ . '/../includes/upload.php';
 redirectIfNotStaff();
 
 // Block Viewer POST actions
-if (isViewer() && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    header('Location: modules.php?error=Access denied');
-    exit;
-}
 
 // ---- CSRF check on any POST ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -277,7 +273,7 @@ function renderContent($content) {
                 <p class="text-sm text-gray-600 mt-1">Create, organize, and track learning materials and assessments.</p>
             </div>
             <div class="flex items-center gap-3">
-                <?php if (!isViewer()): ?>
+                <?php if (isStaff()): ?>
                 <button class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium py-2 px-4 rounded-lg inline-flex items-center shadow-sm transition-colors" data-bs-toggle="modal" data-bs-target="#createModal">
                     <i class="fas fa-plus mr-2"></i> Create New
                 </button>
@@ -417,7 +413,7 @@ function renderContent($content) {
                                         </button>
                                     </div>
                                     
-                                    <?php if (!isViewer()): ?>
+                                    <?php if (isStaff()): ?>
                                     <div class="flex gap-1 flex-shrink-0">
                                         <button class="edit-item text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors" data-id="<?= $item['module_id'] ?>" title="Edit Item"><i class="fas fa-edit text-xs"></i></button>
                                         
@@ -503,7 +499,7 @@ function renderContent($content) {
                                     </button>
                                 </div>
                                 
-                                <?php if (!isViewer()): ?>
+                                <?php if (isStaff()): ?>
                                 <div class="flex gap-1 flex-shrink-0">
                                     <button class="edit-item text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors" data-id="<?= $item['module_id'] ?>" title="Edit Item"><i class="fas fa-edit text-xs"></i></button>
                                     
@@ -588,7 +584,7 @@ function renderContent($content) {
                                     </div>
                                 </div>
                                 
-                                <?php if (!isViewer()): ?>
+                                <?php if (isStaff()): ?>
                                 <div class="flex gap-2 ml-7 md:ml-0">
                                     <form method="POST" class="inline">
                                         <?= csrf_field() ?>
@@ -905,7 +901,7 @@ function renderContent($content) {
 <script>
 // CSRF token for JS-generated forms
 const CSRF_TOKEN = '<?= csrf_token() ?>';
-const isViewerRole = <?= isViewer() ? 'true' : 'false' ?>;
+const isViewerRole = false; // Viewer role eliminated — everyone here is Staff or Admin
 
 // ============================================================
 // ERROR / SUCCESS HELPERS

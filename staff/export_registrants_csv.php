@@ -18,10 +18,6 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 
-if (isViewer()) {
-    http_response_code(403);
-    exit('Access denied.');
-}
 
 // ---- POST only ----
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

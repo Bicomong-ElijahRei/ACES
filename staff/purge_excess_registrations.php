@@ -2,7 +2,6 @@
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 redirectIfNotStaff();
-if (isViewer()) die('Access denied');
 
 $removed = 0;
 

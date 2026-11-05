@@ -490,7 +490,7 @@ $events_json = json_encode($events, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS 
                 <span class="legend-item"><i class="fas fa-star text-red-500"></i> Holidays</span>
                 <span class="legend-item"><i class="fas fa-school text-amber-500"></i> Events</span>
             </div>
-            <?php if (!isViewer()): ?>
+            <?php if (isStaff()): ?>
             <button class="bg-[#0a6e2d] hover:bg-green-800 text-white text-sm font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-2 transition"
                     data-bs-toggle="modal" data-bs-target="#addEventModal">
                 <i class="fas fa-plus"></i> Add Event

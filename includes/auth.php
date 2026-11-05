@@ -35,31 +35,20 @@ function redirectIfNotStudent() {
         exit;
     }
 }
+
 /**
- * Returns true if the current user is a staff member with the admin role.
+ * Returns true if the current user is an Admin (formerly Super Admin).
+ * Admins have full access to manage staff, courses, and system settings.
  */
 function isAdmin() {
-    return isset($_SESSION['staff_role']) && in_array($_SESSION['staff_role'], ['admin', 'superadmin']);
-}
-
-function isSuperAdmin() {
-    return isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'superadmin';
+    return isStaff() && isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'admin';
 }
 
 /**
- * Returns true if the current user is a staff member with the lead role.
+ * Returns true if the current user is a regular Staff member.
+ * Staff members can manage attendance, tickets, FAQs, and certificates.
  */
-function isLead() {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'staff' && isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'lead';
-}
-
-/**
- * Returns true if the current user is a staff member with the viewer role.
- */
-function isViewer() {
-    // Treat missing/null staff_role as viewer (deny by default)
-    if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'staff') return false;
-    $role = $_SESSION['staff_role'] ?? 'viewer';
-    return $role === 'viewer' || $role === '' || $role === null;
+function isStaffMember() {
+    return isStaff() && isset($_SESSION['staff_role']) && $_SESSION['staff_role'] === 'staff';
 }
 ?>

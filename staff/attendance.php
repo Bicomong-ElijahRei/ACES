@@ -5,11 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStaff();
 
-// Block Viewer POST actions
-if (isViewer() && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    header('Location: attendance.php?error=Access denied');
-    exit;
-}
+// (Removed Viewer block - only Staff and Admin can access this page now)
 
 // ---- CSRF check on any POST ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -256,7 +252,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                 <!-- Toolbar -->
                 <div class="p-4 border-b border-gray-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white">
                     <div class="flex flex-wrap items-center gap-2">
-                        <?php if (!isViewer()): ?>
+                        <?php if (isStaff()): ?>
                             <button id="selectAllBtn" class="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
                                 <i class="fa-regular fa-square-check text-gray-500"></i> Select All
                             </button>
@@ -309,7 +305,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                 <th class="py-4 px-4">Section</th>
                                 <th class="py-4 px-4">Subtopic / Session</th>
                                 <th class="py-4 px-4 text-center">Status</th>
-                                <?php if (!isViewer()): ?>
+                                <?php if (isStaff()): ?>
                                 <th class="py-4 px-4 text-center">Action</th>
                                 <?php endif; ?>
                             </tr>
@@ -365,7 +361,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                             <div class="mt-1"><span class="inline-flex items-center text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded"><i class="fas fa-robot mr-1"></i> Auto</span></div>
                                         <?php endif; ?>
                                     </td>
-                                    <?php if (!isViewer()): ?>
+                                    <?php if (isStaff()): ?>
                                     <td class="py-4 px-4 text-center">
                                         <form method="POST" class="inline">
                                             <?= csrf_field() ?>
@@ -406,7 +402,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                     <!-- Archive Toolbar -->
                     <div class="p-4 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200">
                         <div class="flex flex-wrap items-center gap-2">
-                            <?php if (!isViewer()): ?>
+                            <?php if (isStaff()): ?>
                                 <button id="archiveSelectAllBtn" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
                                     <i class="fa-regular fa-square-check text-gray-500"></i> Select All
                                 </button>
@@ -431,7 +427,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                         <table id="archiveTable" class="min-w-full text-left text-sm whitespace-nowrap">
                             <thead class="bg-white border-b border-gray-200">
                                 <tr class="text-gray-500 font-semibold uppercase tracking-wider text-xs">
-                                    <?php if (!isViewer()): ?>
+                                    <?php if (isStaff()): ?>
                                         <th class="py-3 px-4 w-10 text-center">
                                             <input type="checkbox" id="archiveSelectAllCheckbox" class="rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]">
                                         </th>
@@ -441,7 +437,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                     <th class="py-3 px-4">Date</th>
                                     <th class="py-3 px-4">Subtopic</th>
                                     <th class="py-3 px-4 text-center">Status</th>
-                                    <?php if (!isViewer()): ?>
+                                    <?php if (isStaff()): ?>
                                         <th class="py-3 px-4 text-right">Action</th>
                                     <?php endif; ?>
                                 </tr>
@@ -468,7 +464,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                 ?>
                                 <?php foreach ($archived as $arch): ?>
                                     <tr class="hover:bg-gray-50 transition-colors">
-                                        <?php if (!isViewer()): ?>
+                                        <?php if (isStaff()): ?>
                                             <td class="py-3 px-4 text-center">
                                                 <input type="checkbox" class="archive-checkbox rounded border-gray-300 text-[#0a6e2d] focus:ring-[#0a6e2d]" value="<?= $arch['attendance_id'] ?>">
                                             </td>
@@ -488,7 +484,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
                                                 <?= ucfirst($arch['attendance_status']) ?>
                                             </span>
                                         </td>
-                                        <?php if (!isViewer()): ?>
+                                        <?php if (isStaff()): ?>
                                             <td class="py-3 px-4 text-right">
                                                 <div class="flex justify-end gap-2">
                                                     <form method="POST" style="display:inline;">
@@ -691,7 +687,7 @@ $sections  = $pdo->query("SELECT DISTINCT section FROM students ORDER BY section
     }
 
 $(document).ready(function() {
-    var columnDefs = <?= isViewer() ? '[]' : '[{ orderable: false, targets: [0, 7, 8] }]' ?>;
+    var columnDefs = [{ orderable: false, targets: [0, 7, 8] }];
     var table = $('#attendanceTable').DataTable({
         order: [[3, 'desc']],
         columnDefs: columnDefs,
@@ -705,15 +701,15 @@ $(document).ready(function() {
     $('#searchInput').on('keyup', function() { table.search($(this).val()).draw(); });
 
     $('#archiveTable').DataTable({
-        order: [[<?= isViewer() ? 1 : 2 ?>, 'desc']],
+        order: [[2, 'desc']],
         paging: false,
         info: false,
         searching: false,
-        columnDefs: <?= isViewer() ? '[{ orderable: false, targets: [] }]' : '[{ orderable: false, targets: [0, 6] }]' ?>,
+        columnDefs: [{ orderable: false, targets: [0, 6] }],
         language: { emptyTable: "No archived records." }
     });
 
-    <?php if (!isViewer()): ?>
+    <?php if (isStaff()): ?>
     function updateSelectedCount() {
         var count = $('.row-checkbox:visible:checked').length;
         $('#selectedCount').text(count);
@@ -785,7 +781,7 @@ $(document).ready(function() {
     })();
     <?php endif; ?>
 
-    <?php if (!isViewer()): ?>
+    <?php if (isStaff()): ?>
     // ============================================
     // Archive bulk selection
     // ============================================

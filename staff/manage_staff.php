@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/env.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
+require_once __DIR__ . '/../includes/send_email.php';
 redirectIfNotStaff();
 
 // Only Admins and Super Admins can access this page
@@ -21,7 +22,7 @@ $stmt = $pdo->prepare("SELECT full_name, staff_role FROM users WHERE user_id = ?
 $stmt->execute([$_SESSION['user_id']]);
 $current_staff = $stmt->fetch();
 $staff_name = $current_staff['full_name'];
-$current_role = $current_staff['staff_role']; // 'superadmin', 'admin', 'lead', 'viewer'
+$current_role = $current_staff['staff_role']; // 'admin' or 'staff'
 
 $action = $_POST['action'] ?? '';
 $success = '';
@@ -29,9 +30,9 @@ $error = '';
 
 // Helper function to check permissions
 function canManageUser($current_role, $target_role) {
-    if ($current_role === 'superadmin') return true; // Super admin can manage anyone
-    if ($current_role === 'admin' && in_array($target_role, ['lead', 'viewer'])) return true; // Admin can only manage leads/viewers
-    return false;
+    // Admins can manage everyone except themselves
+    // Staff cannot manage anyone
+    return $current_role === 'admin';
 }
 
 // Handle Create Staff
@@ -39,28 +40,72 @@ if ($action === 'create') {
     $full_name = trim($_POST['full_name']);
     $email = trim($_POST['email']);
     $role = $_POST['staff_role'];
-    
-    $temp_password = bin2hex(random_bytes(8));
-    $hash = password_hash($temp_password, PASSWORD_BCRYPT);
 
     if (!$full_name || !$email || !$role) {
-        $error = "All fields are required.";
+        $error = "Name, Email, and Role are required.";
     } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
         $error = "Staff email must be an official KLD email (must end in @kld.edu.ph).";
-    } elseif ($current_role !== 'superadmin' && $role === 'superadmin') {
-        $error = "Only a Super Admin can create another Super Admin.";
+    } elseif (!in_array($role, ['admin', 'staff'])) {
+        $error = "Invalid role selected.";
     } else {
         $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
         $check->execute([$email]);
         if ($check->fetch()) {
             $error = "Email already exists.";
         } else {
-            $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, staff_role, is_active, created_by) VALUES (?, ?, ?, 'staff', ?, 1, ?)");
-            $stmt->execute([$email, $hash, $full_name, $role, $_SESSION['user_id']]);
-            $success = "Staff account created. Temp password: " . $temp_password;
+            try {
+                $pdo->beginTransaction();
+
+                // Generate token and expiry
+                $token = bin2hex(random_bytes(32));
+                $expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
+                
+                // Placeholder random password (they will set their own via email link)
+                $random_pw = bin2hex(random_bytes(16));
+                $hash = password_hash($random_pw, PASSWORD_BCRYPT);
+
+                $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, role, staff_role, is_active, created_by, is_verified, verification_token, verification_expires) VALUES (?, ?, ?, 'staff', ?, 1, ?, 0, ?, ?)");
+                $stmt->execute([$email, $hash, $full_name, $role, $_SESSION['user_id'], $token, $expiry]);
+                $new_id = $pdo->lastInsertId();
+
+                // Audit log
+                $log_stmt = $pdo->prepare("INSERT INTO staff_action_log (performed_by, affected_staff_id, action, details) VALUES (?, ?, 'create', ?)");
+                $log_stmt->execute([$_SESSION['user_id'], $new_id, "Created staff account for {$full_name} ({$email}) with role {$role}"]);
+
+                $pdo->commit();
+
+                // Send verification email
+                $base_url = rtrim(aces_env('APP_URL', 'http://localhost/cair-system'), '/');
+                $verify_link = $base_url . '/public/verify_staff.php?token=' . urlencode($token);
+                
+                $subject = "ACES Staff Account - Verify Your Email";
+                $body = "<div style='font-family: Arial, sans-serif; max-width: 600px;'>
+                            <h2 style='color:#0a6e2d;'>ACES Staff Account</h2>
+                            <p>Dear {$full_name},</p>
+                            <p>An administrator has created a staff account for you on the ACES system.</p>
+                            <p><strong>Role:</strong> " . ucfirst($role) . "</p>
+                            <p>Please click the button below to verify your email and set your password:</p>
+                            <p style='text-align: center; margin: 24px 0;'>
+                                <a href='{$verify_link}' style='display:inline-block; padding:12px 28px; background:#0a6e2d; color:#fff; text-decoration:none; border-radius:6px; font-weight: 600;'>Verify Email &amp; Set Password</a>
+                            </p>
+                            <p style='font-size:0.85em; color:#666;'>Or copy this link: <br>{$verify_link}</p>
+                            <p style='font-size:0.8em; color:#999;'>This link will expire after 24 hours.</p>
+                         </div>";
+
+                $result = sendEmail($email, $subject, $body);
+                
+                if (!empty($result['success'])) {
+                    $success = "Staff account created successfully! A verification email has been sent to {$email}.";
+                } else {
+                    $error = "Account created, but the verification email failed: " . ($result['message'] ?? 'Unknown error');
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $error = "Failed to create staff account: " . $e->getMessage();
+            }
         }
     }
-} 
+}
 
 // Handle Toggle Status
 elseif ($action === 'toggle_status') {
@@ -73,7 +118,15 @@ elseif ($action === 'toggle_status') {
         $stmt->execute([$id]);
         $target_role = $stmt->fetchColumn();
 
-        if (!canManageUser($current_role, $target_role)) {
+        // NEW: Prevent deactivating the last active Admin
+        $admin_count = $pdo->query("SELECT COUNT(*) FROM users WHERE staff_role = 'admin' AND is_active = 1")->fetchColumn();
+        $stmt_status = $pdo->prepare("SELECT is_active FROM users WHERE user_id = ?");
+        $stmt_status->execute([$id]);
+        $target_is_active = $stmt_status->fetchColumn();
+
+        if ($target_role === 'admin' && $admin_count <= 1 && $target_is_active) {
+            $error = "You cannot deactivate the last remaining active Admin account.";
+        } elseif (!canManageUser($current_role, $target_role)) {
             $error = "You do not have permission to modify this user.";
         } else {
             $stmt = $pdo->prepare("UPDATE users SET is_active = NOT is_active WHERE user_id = ?");
@@ -94,7 +147,15 @@ elseif ($action === 'delete') {
         $stmt->execute([$id]);
         $target_role = $stmt->fetchColumn();
 
-        if (!canManageUser($current_role, $target_role)) {
+        // NEW: Prevent deleting the last active Admin
+        $admin_count = $pdo->query("SELECT COUNT(*) FROM users WHERE staff_role = 'admin' AND is_active = 1")->fetchColumn();
+        $stmt_del_status = $pdo->prepare("SELECT is_active FROM users WHERE user_id = ?");
+        $stmt_del_status->execute([$id]);
+        $target_is_active = $stmt_del_status->fetchColumn();
+
+        if ($target_role === 'admin' && $admin_count <= 1 && $target_is_active) {
+            $error = "You cannot delete the last remaining active Admin account. Please promote another staff member to Admin first.";
+        } elseif (!canManageUser($current_role, $target_role)) {
             $error = "You do not have permission to delete this user.";
         } else {
             try {
@@ -212,15 +273,14 @@ $staff_members = $stmt->fetchAll();
                             
                             // Role badge styling
                             $roleClass = 'bg-gray-100 text-gray-800 border-gray-200';
-                            if ($staff_member['staff_role'] === 'superadmin') $roleClass = 'bg-red-100 text-red-800 border-red-200';
-                            elseif ($staff_member['staff_role'] === 'admin') $roleClass = 'bg-purple-100 text-purple-800 border-purple-200';
-                            elseif ($staff_member['staff_role'] === 'lead') $roleClass = 'bg-blue-100 text-blue-800 border-blue-200';
+                            if ($staff_member['staff_role'] === 'admin') $roleClass = 'bg-purple-100 text-purple-800 border-purple-200';
+                            elseif ($staff_member['staff_role'] === 'staff') $roleClass = 'bg-blue-100 text-blue-800 border-blue-200';
                             
                             // Status badge styling
                             $statusClass = $staff_member['is_active'] ? 'bg-green-100 text-green-800 border-green-200' : 'bg-gray-100 text-gray-800 border-gray-200';
                             
                             // Check if current user can manage this target
-                            $can_manage = canManageUser($current_role, $staff_member['staff_role']) && !$is_self;
+                            $can_manage = isAdmin() && !$is_self;
                         ?>
                             <tr class="hover:bg-gray-50 transition-colors duration-150 <?= $is_self ? 'bg-green-50/30' : '' ?>">
                                 <td class="py-4 px-6">
@@ -241,7 +301,7 @@ $staff_members = $stmt->fetchAll();
                                 </td>
                                 <td class="py-4 px-4">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border <?= $roleClass ?> uppercase tracking-wide">
-                                        <?= htmlspecialchars($staff_member['staff_role'] ?: 'viewer') ?>
+                                        <?= htmlspecialchars($staff_member['staff_role'] ?: 'staff') ?>
                                     </span>
                                 </td>
                                 <td class="py-4 px-4 text-center">
@@ -314,16 +374,12 @@ $staff_members = $stmt->fetchAll();
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Role <span class="text-red-500">*</span></label>
                         <select name="staff_role" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
-                            <option value="viewer">Viewer — Read-only access</option>
-                            <option value="lead">Lead — Manage sessions and attendance</option>
-                            <option value="admin">Admin — Manage staff and full system access</option>
-                            <?php if ($current_role === 'superadmin'): ?>
-                                <option value="superadmin">Super Admin — Ultimate access</option>
-                            <?php endif; ?>
+                            <option value="staff">Staff — Manage sessions, attendance, and certificates</option>
+                            <option value="admin">Admin — Full access (manage staff & courses)</option>
                         </select>
                     </div>
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                        <i class="fas fa-info-circle mr-1"></i> A temporary password will be generated automatically. The staff member will be prompted to change it upon first login.
+                        <i class="fas fa-info-circle mr-1"></i> An email will be sent to the staff member with a link to set their password. The link expires in 24 hours.
                     </div>
                 </div>
                 <div class="modal-footer bg-white border-t border-gray-200 p-4">

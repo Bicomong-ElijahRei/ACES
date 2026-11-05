@@ -49,8 +49,9 @@ try {
         $full_title = $title_prefix . ' ' . $orig_title;
 
         // 1. Create the Make-Up Session for this specific missed subtopic
-        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, start_time, end_time, created_by, is_makeup) VALUES (?, ?, ?, ?, ?, ?, 1)");
-        $stmt->execute([$full_title, $phase, $date, $start_time, $end_time, $created_by]);
+        $reason = trim($_POST['reason'] ?? 'Valid Excuse Submitted');
+        $stmt = $pdo->prepare("INSERT INTO sessions (title, phase, date, start_time, end_time, created_by, is_makeup, makeup_reason) VALUES (?, ?, ?, ?, ?, ?, 1, ?)");
+        $stmt->execute([$full_title, $phase, $date, $start_time, $end_time, $created_by, $reason]);
         $session_id = $pdo->lastInsertId();
 
         // 2. Create the Subtopic linked to the original missed subtopic
