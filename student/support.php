@@ -93,6 +93,50 @@ $tickets = $stmt->fetchAll();
                 </div>
             <?php endif; ?>
 
+            <!-- ========================================== -->
+            <!-- DYNAMIC FAQ SECTION                        -->
+            <!-- ========================================== -->
+            <?php
+            // Fetch and group FAQs by category
+            $faq_stmt = $pdo->query("SELECT * FROM faqs WHERE is_deleted = 0 ORDER BY category ASC, created_at DESC");
+            $grouped_faqs = [];
+            while ($row = $faq_stmt->fetch()) {
+                $grouped_faqs[$row['category']][] = $row;
+            }
+            ?>
+            
+            <?php if (!empty($grouped_faqs)): ?>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8 overflow-hidden">
+                <div class="bg-[#054018] p-4 flex items-center justify-between">
+                    <h2 class="text-white font-bold text-lg"><i class="fas fa-question-circle mr-2"></i>Frequently Asked Questions (FAQs)</h2>
+                    <span class="text-green-200 text-sm hidden md:block">Read this before opening a ticket!</span>
+                </div>
+                
+                <div class="divide-y divide-gray-100">
+                    <?php foreach ($grouped_faqs as $category => $faqs): ?>
+                        <!-- Category Header -->
+                        <div class="bg-gray-50 px-6 py-3 border-b border-gray-100">
+                            <h3 class="text-sm font-extrabold text-[#0a6e2d] uppercase tracking-wider"><i class="fas fa-folder-open mr-2"></i><?= htmlspecialchars($category) ?></h3>
+                        </div>
+                        
+                        <!-- FAQs in this category -->
+                        <?php foreach ($faqs as $faq): ?>
+                            <div class="faq-item">
+                                <button type="button" class="faq-question w-full text-left px-6 py-4 font-bold text-gray-800 hover:bg-gray-50 flex justify-between items-center transition-colors">
+                                    <span><?= htmlspecialchars($faq['question']) ?></span>
+                                    <i class="fas fa-chevron-down text-gray-400 faq-icon transition-transform duration-200 shrink-0 ml-4"></i>
+                                </button>
+                                <div class="faq-answer hidden px-6 pb-4 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-3 bg-gray-50">
+                                    <?= nl2br(htmlspecialchars($faq['answer'])) ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+            <!-- ========================================== -->
+
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- Create Ticket Form -->
                 <div class="md:col-span-1 bg-white p-6 rounded-xl shadow-sm h-fit">
@@ -155,5 +199,28 @@ $tickets = $stmt->fetchAll();
             </div>
         </main>
     </div>
+
+    <!-- FAQ SCRIPT -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const faqQuestions = document.querySelectorAll('.faq-question');
+        
+        faqQuestions.forEach(question => {
+            question.addEventListener('click', function() {
+                const answer = this.nextElementSibling;
+                const icon = this.querySelector('.faq-icon');
+                
+                // Toggle the answer
+                if (answer.classList.contains('hidden')) {
+                    answer.classList.remove('hidden');
+                    icon.classList.add('rotate-180');
+                } else {
+                    answer.classList.add('hidden');
+                    icon.classList.remove('rotate-180');
+                }
+            });
+        });
+    });
+    </script>
 </body>
 </html>

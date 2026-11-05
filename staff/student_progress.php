@@ -634,8 +634,17 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                 <input type="hidden" name="missed_subtopic_id" id="makeup_missed_subtopic_id">
                 
                 <div class="modal-body p-6 space-y-4">
-                    <div class="bg-red-50 border border-red-200 p-3 rounded-lg text-sm text-red-800 mb-4">
-                        <i class="fas fa-exclamation-triangle mr-1"></i> This will create a new Make-Up session and automatically reconcile the student's original absent record once they attend.
+                    <!-- STRICT POLICY WARNING -->
+                    <div class="bg-red-100 border-l-4 border-red-600 p-4 rounded-r-lg mb-4 shadow-sm">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-triangle text-red-600 text-xl mt-0.5 mr-3"></i>
+                            <div>
+                                <h4 class="font-bold text-red-800 text-sm uppercase tracking-wide">Strict Policy Enforcement</h4>
+                                <p class="text-sm text-red-700 mt-1">
+                                    <strong>Seminars are non-negotiable.</strong> Do not use this tool to give students an easy way out. Make-ups must <strong>only</strong> be generated for students who have submitted a <strong>valid excuse letter</strong> (e.g., medical emergency, official school conflict).
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
@@ -654,6 +663,10 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-1">Make-Up Session Title</label>
                         <input type="text" name="title" required placeholder="e.g., Make-Up: Professional Etiquette" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Reason for Make-Up (Valid Excuse)</label>
+                        <input type="text" name="reason" required placeholder="e.g., Medical Certificate submitted to ACES" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500 focus:border-amber-500">
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
@@ -703,6 +716,19 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                 <input type="hidden" name="selected_data" id="adv_selected_data">
                 
                 <div class="modal-body p-6">
+                    <!-- STRICT POLICY WARNING -->
+                    <div class="bg-red-100 border-l-4 border-red-600 p-4 rounded-r-lg mb-6 shadow-sm">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-triangle text-red-600 text-xl mt-0.5 mr-3"></i>
+                            <div>
+                                <h4 class="font-bold text-red-800 text-sm uppercase tracking-wide">Strict Policy Enforcement</h4>
+                                <p class="text-sm text-red-700 mt-1">
+                                    <strong>Seminars are non-negotiable.</strong> Do not use this tool to give students an easy way out. Make-ups must <strong>only</strong> be generated for students who have submitted a <strong>valid excuse letter</strong> (e.g., medical emergency, official school conflict).
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Filters -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                         <div>
@@ -789,6 +815,10 @@ $sections = $pdo->query("SELECT DISTINCT section FROM students WHERE is_deleted 
                                 <option value="Pre-Employment">Pre-Employment</option>
                                 <option value="Career Fair">Career Fair</option>
                             </select>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Reason for Make-Up (Valid Excuse)</label>
+                            <input type="text" name="reason" required placeholder="e.g., Validated Medical Certificate for all selected students" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-amber-500">
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm font-bold text-gray-700 mb-1">Start Time</label>

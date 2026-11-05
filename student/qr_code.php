@@ -5,8 +5,13 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 redirectIfNotStudent();
 
-// Fetch student info
-$stmt = $pdo->prepare("SELECT s.student_id, s.first_name, s.last_name, s.program, s.section FROM students s WHERE s.student_id = ?");
+// Fetch student info (Joined with users to get full_name for the sidebar)
+$stmt = $pdo->prepare("
+    SELECT s.student_id, s.first_name, s.last_name, s.program, s.section, u.full_name 
+    FROM students s 
+    JOIN users u ON s.user_id = u.user_id 
+    WHERE s.student_id = ?
+");
 $stmt->execute([$_SESSION['student_id']]);
 $student = $stmt->fetch();
 

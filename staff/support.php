@@ -8,6 +8,54 @@ redirectIfNotStaff();
 $success_msg = '';
 $error_msg = '';
 
+// ==========================================
+// FAQ MANAGEMENT LOGIC
+// ==========================================
+$edit_faq = null;
+
+// Handle Add/Edit FAQ
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_faq') {
+    csrf_verify();
+    $faq_id = !empty($_POST['faq_id']) ? (int)$_POST['faq_id'] : null;
+    $category = trim($_POST['category']);
+    $question = trim($_POST['question']);
+    $answer = trim($_POST['answer']);
+
+    if ($category && $question && $answer) {
+        if ($faq_id) {
+            $stmt = $pdo->prepare("UPDATE faqs SET category = ?, question = ?, answer = ? WHERE faq_id = ?");
+            $stmt->execute([$category, $question, $answer, $faq_id]);
+            $success_msg = "FAQ updated successfully!";
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO faqs (category, question, answer, created_by) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$category, $question, $answer, $_SESSION['user_id']]);
+            $success_msg = "FAQ added successfully!";
+        }
+    } else {
+        $error_msg = "All FAQ fields are required.";
+    }
+}
+
+// Handle Delete FAQ
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_faq') {
+    csrf_verify();
+    $stmt = $pdo->prepare("UPDATE faqs SET is_deleted = 1 WHERE faq_id = ?");
+    $stmt->execute([(int)$_POST['faq_id']]);
+    $success_msg = "FAQ deleted successfully!";
+}
+
+// Handle Edit Request
+if (isset($_GET['edit_faq'])) {
+    $stmt = $pdo->prepare("SELECT * FROM faqs WHERE faq_id = ? AND is_deleted = 0");
+    $stmt->execute([(int)$_GET['edit_faq']]);
+    $edit_faq = $stmt->fetch();
+}
+
+// Fetch all active FAQs for the table
+$all_faqs = $pdo->query("SELECT * FROM faqs WHERE is_deleted = 0 ORDER BY category ASC, created_at DESC")->fetchAll();
+$faq_categories = $pdo->query("SELECT DISTINCT category FROM faqs WHERE is_deleted = 0")->fetchAll(PDO::FETCH_COLUMN);
+// ==========================================
+
 // Handle Permanent Deletion
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_tickets') {
     csrf_verify();
@@ -68,7 +116,17 @@ foreach ($all_tickets as $t) {
     <div class="flex-1 flex flex-col overflow-hidden w-full min-w-0">
         <?php include '../includes/header.php'; ?>
         <main class="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-full">
-            <h1 class="text-2xl font-bold text-gray-800 mb-6">Student Support Tickets</h1>
+            <h1 class="text-2xl font-bold text-gray-800 mb-2">Support & FAQs</h1>
+            
+            <!-- TABS -->
+            <div class="flex border-b border-gray-200 mb-6">
+                <button id="tab-tickets-btn" class="tab-btn font-bold text-sm pb-2 px-4 border-b-2 border-[#0a6e2d] text-[#0a6e2d]" onclick="switchTab('tickets')">
+                    <i class="fas fa-ticket-alt mr-2"></i>Student Tickets
+                </button>
+                <button id="tab-faqs-btn" class="tab-btn font-bold text-sm pb-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-800" onclick="switchTab('faqs')">
+                    <i class="fas fa-question-circle mr-2"></i>Manage FAQs
+                </button>
+            </div>
 
             <!-- Alerts -->
             <?php if ($success_msg): ?>
@@ -81,6 +139,9 @@ foreach ($all_tickets as $t) {
                     <span class="block sm:inline"><?= htmlspecialchars($error_msg) ?></span>
                 </div>
             <?php endif; ?>
+            
+            <!-- TICKETS TAB CONTENT -->
+            <div id="tab-tickets" class="tab-content block">
             
             <!-- ACTIVE TICKETS -->
             <div class="mb-10">
@@ -205,6 +266,84 @@ foreach ($all_tickets as $t) {
                     <?php endif; ?>
                 </div>
             </div>
+            
+            </div> <!-- END TICKETS TAB CONTENT -->
+
+            <!-- FAQS TAB CONTENT -->
+            <div id="tab-faqs" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Add/Edit Form -->
+                    <div class="lg:col-span-1 bg-white p-5 rounded-xl shadow-sm border border-gray-200 h-fit">
+                        <h2 class="font-bold text-gray-800 mb-4 border-b pb-2 text-sm uppercase tracking-wide">
+                            <?= $edit_faq ? '<i class="fas fa-edit text-indigo-500 mr-2"></i>Edit FAQ' : '<i class="fas fa-plus-circle text-[#0a6e2d] mr-2"></i>Add New FAQ' ?>
+                        </h2>
+                        <form method="POST">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="save_faq">
+                            <?php if ($edit_faq): ?><input type="hidden" name="faq_id" value="<?= $edit_faq['faq_id'] ?>"><?php endif; ?>
+                            
+                            <div class="mb-3">
+                                <label class="block text-xs font-bold text-gray-600 mb-1">Category</label>
+                                <select name="category" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#0a6e2d] bg-white">
+                                    <option value="">-- Select Category --</option>
+                                    <?php 
+                                    // Merge hardcoded defaults with existing DB categories to avoid duplicates
+                                    $default_cats = ['Registration', 'Attendance', 'Make-Ups', 'Modules', 'Certificates'];
+                                    $all_cats = array_unique(array_merge($default_cats, $faq_categories));
+                                    sort($all_cats);
+                                    
+                                    foreach ($all_cats as $cat): 
+                                    ?>
+                                        <option value="<?= htmlspecialchars($cat) ?>" <?= (isset($edit_faq['category']) && $edit_faq['category'] === $cat) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($cat) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="block text-xs font-bold text-gray-600 mb-1">Question</label>
+                                <input type="text" name="question" value="<?= htmlspecialchars($edit_faq['question'] ?? '') ?>" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#0a6e2d]">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-xs font-bold text-gray-600 mb-1">Answer</label>
+                                <textarea name="answer" rows="4" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#0a6e2d]"><?= htmlspecialchars($edit_faq['answer'] ?? '') ?></textarea>
+                            </div>
+                            <button type="submit" class="w-full bg-[#0a6e2d] hover:bg-[#054018] text-white font-bold py-2 rounded-lg text-sm transition">
+                                <?= $edit_faq ? 'Update FAQ' : 'Save FAQ' ?>
+                            </button>
+                            <?php if ($edit_faq): ?><a href="support.php" class="block text-center text-xs text-gray-500 mt-2 hover:underline">Cancel Edit</a><?php endif; ?>
+                        </form>
+                    </div>
+
+                    <!-- FAQ List -->
+                    <div class="lg:col-span-2 space-y-3">
+                        <?php if (empty($all_faqs)): ?>
+                            <div class="bg-white p-8 text-center rounded-xl text-gray-500 border border-gray-200">No FAQs added yet.</div>
+                        <?php else: ?>
+                            <?php foreach ($all_faqs as $f): ?>
+                                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                    <div class="flex justify-between items-start gap-4">
+                                        <div>
+                                            <span class="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-[10px] font-bold uppercase rounded mb-1"><?= htmlspecialchars($f['category']) ?></span>
+                                            <h3 class="font-bold text-gray-800 text-sm"><?= htmlspecialchars($f['question']) ?></h3>
+                                            <p class="text-xs text-gray-600 mt-1 line-clamp-2"><?= htmlspecialchars($f['answer']) ?></p>
+                                        </div>
+                                        <div class="flex gap-1 shrink-0">
+                                            <a href="support.php?edit_faq=<?= $f['faq_id'] ?>" class="text-blue-500 hover:text-blue-700 bg-blue-50 p-2 rounded" title="Edit"><i class="fas fa-edit"></i></a>
+                                            <form method="POST" class="inline" onsubmit="return confirm('Delete this FAQ?');">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="action" value="delete_faq">
+                                                <input type="hidden" name="faq_id" value="<?= $f['faq_id'] ?>">
+                                                <button type="submit" class="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div> <!-- END FAQS TAB CONTENT -->
 
             <script>
                 // Toggle Archive Accordion
@@ -232,7 +371,6 @@ foreach ($all_tickets as $t) {
                 }
 
                 // Delete Confirmation
-                const bulkForm = document.getElementById('bulkDeleteForm');
                 if (bulkForm) {
                     bulkForm.addEventListener('submit', function(e) {
                         const checked = document.querySelectorAll('.ticket-checkbox:checked').length;
@@ -247,6 +385,38 @@ foreach ($all_tickets as $t) {
                         }
                     });
                 }
+
+                // ==========================================
+                // TAB SWITCHING LOGIC
+                // ==========================================
+                function switchTab(tabName) {
+                    // Hide all tabs
+                    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+                    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('block'));
+                    
+                    // Reset button styles
+                    document.querySelectorAll('.tab-btn').forEach(el => {
+                        el.classList.remove('border-[#0a6e2d]', 'text-[#0a6e2d]');
+                        el.classList.add('border-transparent', 'text-gray-500');
+                    });
+
+                    // Show selected tab
+                    document.getElementById('tab-' + tabName).classList.remove('hidden');
+                    document.getElementById('tab-' + tabName).classList.add('block');
+
+                    // Highlight selected button
+                    const activeBtn = document.getElementById('tab-' + tabName + '-btn');
+                    activeBtn.classList.remove('border-transparent', 'text-gray-500');
+                    activeBtn.classList.add('border-[#0a6e2d]', 'text-[#0a6e2d]');
+                }
+
+                // Auto-open FAQ tab if editing
+                document.addEventListener('DOMContentLoaded', () => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.has('edit_faq')) {
+                        switchTab('faqs');
+                    }
+                });
             </script>
         </main>
     </div>

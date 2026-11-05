@@ -23,7 +23,7 @@ if (!isset($student)) {
         $student = ['full_name' => 'Student', 'section' => ''];
     }
 }
-$full_name = $student['full_name'];
+$full_name = $student['full_name'] ?? (trim(($student['first_name'] ?? '') . ' ' . ($student['last_name'] ?? '')) ?: 'Student');
 $name_parts = explode(' ', $full_name);
 $first_name = $name_parts[0];
 $current = basename($_SERVER['PHP_SELF']);

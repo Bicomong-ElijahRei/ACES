@@ -62,16 +62,31 @@ foreach ($sessions as &$session) {
     $visible_subtopics = [];
     foreach ($all_subtopics as $sub) {
         $visible = false; $required = false;
-        $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
-        $vis_courses  = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
-        $req_sections = json_decode($sub['required_for'] ?? '[]', true) ?: [];
-        $req_courses  = json_decode($sub['required_courses'] ?? '[]', true) ?: [];
+        
+        // NEW: Make-up sessions are STRICTLY visible only to assigned students
+        $is_makeup_sub = ($session['is_makeup'] == 1 || !empty($sub['makeup_for_subtopic_id']));
+        
+        if ($is_makeup_sub) {
+            // Check if THIS student is registered for the make-up
+            $stmt_is_reg = $pdo->prepare("SELECT COUNT(*) FROM registrations WHERE student_id = ? AND subtopic_id = ?");
+            $stmt_is_reg->execute([$student_id, $sub['subtopic_id']]);
+            if ($stmt_is_reg->fetchColumn() > 0) {
+                $visible = true;
+                $required = true; 
+                $sub['is_makeup'] = true; 
+            }
+        } else {
+            // Standard visibility logic for normal sessions
+            $vis_sections = json_decode($sub['visible_for'] ?? '[]', true) ?: [];
+            $vis_courses  = json_decode($sub['visible_courses'] ?? '[]', true) ?: [];
+            $req_sections = json_decode($sub['required_for'] ?? '[]', true) ?: [];
+            $req_courses  = json_decode($sub['required_courses'] ?? '[]', true) ?: [];
 
-        $has_vis_restrictions = !empty($vis_sections) || !empty($vis_courses);
-        $has_req_restrictions = !empty($req_sections) || !empty($req_courses);
+            $has_vis_restrictions = !empty($vis_sections) || !empty($vis_courses);
+            $has_req_restrictions = !empty($req_sections) || !empty($req_courses);
 
-        // Public
-        if (!$has_vis_restrictions && !$has_req_restrictions) $visible = true;
+            // Public
+            if (!$has_vis_restrictions && !$has_req_restrictions) $visible = true;
 
         // Required (AND logic)
         if ($has_req_restrictions) {
@@ -81,13 +96,14 @@ foreach ($sessions as &$session) {
             if ($match_req) { $required = true; $visible = true; }
         }
 
-        // Visible (AND logic)
-        if ($has_vis_restrictions) {
-            $match_vis = true;
-            if (!empty($vis_courses) && !in_array($student_program, $vis_courses)) $match_vis = false;
-            if (!empty($vis_sections) && !in_array($student_section, $vis_sections)) $match_vis = false;
-            if ($match_vis) $visible = true;
-        }
+            // Visible (AND logic)
+            if ($has_vis_restrictions) {
+                $match_vis = true;
+                if (!empty($vis_courses) && !in_array($student_program, $vis_courses)) $match_vis = false;
+                if (!empty($vis_sections) && !in_array($student_section, $vis_sections)) $match_vis = false;
+                if ($match_vis) $visible = true;
+            }
+        } // <-- THIS CLOSES THE ELSE BLOCK
 
         if ($visible) {
             $sub_date_check = !empty($sub['subtopic_date']) ? $sub['subtopic_date'] : $session['date'];
@@ -96,7 +112,7 @@ foreach ($sessions as &$session) {
                 $visible_subtopics[] = $sub;
             }
         }
-    }
+    } // <-- THIS CLOSES THE FOREACH LOOP
 
     // Auto-register required subtopics
     $stmt_check_reg = $pdo->prepare("SELECT r.registration_id FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id WHERE st.session_id = ? AND r.student_id = ? AND r.status IN ('assigned','auto_assigned')");
@@ -298,6 +314,9 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
 
         <!-- SESSION CARDS GRID -->
         <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-layer-group text-[#0a6e2d] mr-2"></i>Upcoming Sessions</h2>
+        
+        <!-- (Removed global banner - now handled contextually per session) -->
+
         <?php if (count($sessions) == 0): ?>
             <div class="bg-white rounded-xl shadow-sm p-12 text-center"><i class="fas fa-inbox text-5xl text-gray-300 mb-4"></i><h3 class="text-lg font-semibold text-gray-700">No Upcoming Sessions</h3></div>
         <?php else: ?>
@@ -309,7 +328,7 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                     $total_subs = count($visible_subs);
                     if ($total_subs === 0) continue;
                 ?>
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-pointer clickable-card flex flex-col h-full group session-card"
+                    <div class="bg-white rounded-xl shadow-sm border <?= !empty($session['is_makeup']) ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-200' ?> overflow-hidden cursor-pointer clickable-card flex flex-col h-full group session-card"
                          data-session-id="<?= $session['session_id'] ?>"
                          data-session-date="<?= $session['date'] ?>"
                          onclick='openSessionModal(<?= htmlspecialchars(json_encode([
@@ -327,10 +346,16 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                                 <img src="../<?= htmlspecialchars($session['image_path']) ?>" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
                                 <div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
                             <?php else: ?>
-                                <div class="absolute inset-0 bg-gradient-to-br from-[#054018] to-[#0a6e2d] opacity-90"></div>
-                                <i class="fas fa-calendar-alt text-5xl text-white/30 relative z-10"></i>
+                                <div class="absolute inset-0 bg-gradient-to-br <?= !empty($session['is_makeup']) ? 'from-amber-500 to-orange-600' : 'from-[#054018] to-[#0a6e2d]' ?> opacity-90"></div>
+                                <i class="fas <?= !empty($session['is_makeup']) ? 'fa-exclamation-triangle' : 'fa-calendar-alt' ?> text-5xl text-white/30 relative z-10"></i>
                             <?php endif; ?>
-                            <div class="absolute top-3 left-3 z-10"><span class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-md bg-white/90 text-[#0a6e2d] shadow-sm"><?= htmlspecialchars($session['phase']) ?></span></div>
+                            <div class="absolute top-3 left-3 z-10">
+                                <?php if (!empty($session['is_makeup'])): ?>
+                                    <span class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-md bg-amber-500 text-white shadow-sm animate-pulse"><i class="fas fa-calendar-plus mr-1"></i> Make-Up Required</span>
+                                <?php else: ?>
+                                    <span class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-md bg-white/90 text-[#0a6e2d] shadow-sm"><?= htmlspecialchars($session['phase']) ?></span>
+                                <?php endif; ?>
+                            </div>
                         </div>
 
                         <div class="p-5 flex-1 flex flex-col">
@@ -341,7 +366,11 @@ $progress_pct = $total_items_expected > 0 ? min(100, round(($total_items_complet
                             </div>
                             <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
                                 <div class="text-xs font-semibold text-gray-500"><i class="fas fa-list-ul mr-1"></i> <?= $total_subs ?> Subtopics</div>
-                                <span class="text-sm font-bold <?= $reg_count > 0 ? 'text-green-600' : 'text-blue-600' ?>"><?= $reg_count ?>/<?= $total_subs ?> Registered</span>
+                                <?php if ($reg_count > 0): ?>
+                                    <span class="text-sm font-bold text-green-600"><i class="fas fa-check-circle mr-1"></i> <?= $reg_count ?>/<?= $total_subs ?> Registered</span>
+                                <?php else: ?>
+                                    <span class="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200 animate-pulse"><i class="fas fa-exclamation-circle mr-1"></i> Register at least 1</span>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -492,6 +521,23 @@ function openSessionModal(data) {
     
     let html = '';
     if (data.description) html += `<p class="text-gray-600 text-sm mb-6">${escapeHtml(data.description)}</p>`;
+
+    // NEW: CONTEXTUAL WARNING INSIDE THE MODAL
+    if (data.reg_count === 0) {
+        html += `
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3 shadow-sm">
+            <div class="bg-amber-100 text-amber-600 rounded-full p-2 mt-0.5">
+                <i class="fas fa-clipboard-list text-lg"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-amber-900 text-sm">Action Required</h4>
+                <p class="text-sm text-amber-800 mt-1">
+                    You must select and register for at least <strong>one (1) subtopic</strong> from this session to fulfill your ACES requirement. <strong>Seminars are non-negotiable.</strong>
+                </p>
+            </div>
+        </div>`;
+    }
+
     html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
     
     data.subtopics.forEach(sub => {
@@ -506,9 +552,22 @@ function openSessionModal(data) {
         const is_full = display_cap > 0 && display_count >= display_cap;
         
         let statusClass = 'bg-blue-100 text-blue-700 border-blue-200'; let statusText = 'Available';
-        if (sub.required) { statusClass = 'bg-purple-100 text-purple-700 border-purple-200'; statusText = 'Required'; }
-        if (is_registered) { statusClass = 'bg-green-100 text-green-700 border-green-200'; statusText = 'Registered'; }
-        if (is_full && !is_registered) { statusClass = 'bg-red-100 text-red-700 border-red-200'; statusText = 'Full'; }
+        if (sub.is_makeup) { 
+            statusClass = 'bg-amber-100 text-amber-800 border-amber-300'; 
+            statusText = 'Make-Up'; 
+        } else if (sub.required) { 
+            statusClass = 'bg-purple-100 text-purple-700 border-purple-200'; 
+            statusText = 'Required'; 
+        }
+        
+        if (is_registered) { 
+            statusClass = 'bg-green-100 text-green-700 border-green-200'; 
+            statusText = 'Registered'; 
+        }
+        if (is_full && !is_registered) { 
+            statusClass = 'bg-red-100 text-red-700 border-red-200'; 
+            statusText = 'Full'; 
+        }
 
         const display_date = sub.subtopic_date ? new Date(sub.subtopic_date).toLocaleDateString() : data.date;
         const display_time = sub.subtopic_start_time ? sub.subtopic_start_time + ' - ' + sub.subtopic_end_time : data.time;

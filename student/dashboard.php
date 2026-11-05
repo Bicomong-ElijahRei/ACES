@@ -80,14 +80,26 @@ foreach ($phases as $phase) {
 $upcoming_events = [];
 $today_str = date('Y-m-d');
 
-// Sessions
-$stmt_up_sess = $pdo->prepare("SELECT s.session_id, s.title, s.date, s.start_time as time, st.title as subtopic FROM registrations r JOIN subtopics st ON r.subtopic_id = st.subtopic_id AND st.is_deleted = 0 JOIN sessions s ON st.session_id = s.session_id AND s.is_deleted = 0 WHERE r.student_id = ? AND s.date >= ? AND s.date <= DATE_ADD(?, INTERVAL 30 DAY) ORDER BY s.date ASC");
+// Sessions (Show ALL upcoming sessions, flag if unregistered)
+$stmt_up_sess = $pdo->prepare("
+    SELECT s.session_id, s.title, s.date, s.start_time as time,
+           (SELECT COUNT(*) FROM registrations r WHERE r.student_id = ? AND r.session_id = s.session_id AND r.status IN ('assigned','auto_assigned')) as reg_count
+    FROM sessions s 
+    WHERE s.date >= ? AND s.date <= DATE_ADD(?, INTERVAL 30 DAY) AND s.is_deleted = 0
+    ORDER BY s.date ASC
+");
 $stmt_up_sess->execute([$_SESSION['student_id'], $today_str, $today_str]);
 foreach($stmt_up_sess->fetchAll() as $row) {
+    $is_registered = ($row['reg_count'] > 0);
     $upcoming_events[] = [
-        'type' => 'session', 'title' => $row['title'], 'subtitle' => $row['subtopic'],
-        'date' => $row['date'], 'time' => date('M d, Y • g:i A', strtotime($row['date'] . ' ' . $row['time'])),
-        'timestamp' => strtotime($row['date']), 'link' => 'sessions.php'
+        'type' => 'session', 
+        'title' => $row['title'], 
+        'subtitle' => $is_registered ? 'Registered' : 'Registration Required',
+        'date' => $row['date'], 
+        'time' => date('M d, Y • g:i A', strtotime($row['date'] . ' ' . $row['time'])),
+        'timestamp' => strtotime($row['date']), 
+        'link' => 'subtopics.php?session_id=' . $row['session_id'], // Direct link to register
+        'is_unregistered' => !$is_registered // New flag for the UI
     ];
 }
 
@@ -191,18 +203,36 @@ $upcoming_events = array_slice($upcoming_events, 0, 4);
                                 <?php foreach (array_slice($upcoming_events, 0, 4) as $ev): ?>
                                     <?php 
                                         $is_session = ($ev['type'] === 'session');
+                                        $is_unregistered = $ev['is_unregistered'] ?? false;
                                         $is_overdue = $ev['is_overdue'] ?? false;
-                                        $bg_color = $is_session ? 'bg-blue-100 text-blue-600' : ($is_overdue ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600');
-                                        $icon = $is_session ? 'fa-calendar-check' : 'fa-book';
+                                        
+                                        // Change icon and color based on urgency
+                                        if ($is_session) {
+                                            if ($is_unregistered) {
+                                                $bg_color = 'bg-amber-100 text-amber-600';
+                                                $icon = 'fa-exclamation-circle';
+                                            } else {
+                                                $bg_color = 'bg-blue-100 text-blue-600';
+                                                $icon = 'fa-calendar-check';
+                                            }
+                                        } else {
+                                            $bg_color = $is_overdue ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600';
+                                            $icon = 'fa-book';
+                                        }
                                     ?>
-                                    <a href="<?= $ev['link'] ?>" class="block p-4 hover:bg-gray-50 transition-colors group">
+                                    <a href="<?= $ev['link'] ?>" class="block p-4 hover:bg-gray-50 transition-colors group border-l-4 <?= $is_unregistered ? 'border-amber-400' : 'border-transparent' ?>">
                                         <div class="flex items-start gap-3">
                                             <div class="h-8 w-8 rounded-full <?= $bg_color ?> flex items-center justify-center flex-shrink-0 mt-1">
                                                 <i class="fas <?= $icon ?> text-xs"></i>
                                             </div>
                                             <div class="flex-1 min-w-0">
-                                                <p class="text-sm font-bold text-gray-800 truncate group-hover:text-[#0a6e2d] transition-colors"><?= htmlspecialchars($ev['title']) ?></p>
-                                                <div class="flex items-center gap-2 mt-1 text-xs font-semibold text-gray-500">
+                                                <p class="text-sm font-bold text-gray-800 truncate group-hover:text-[#0a6e2d] transition-colors">
+                                                    <?= htmlspecialchars($ev['title']) ?>
+                                                    <?php if ($is_unregistered): ?>
+                                                        <span class="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 uppercase font-extrabold align-middle">Action Required</span>
+                                                    <?php endif; ?>
+                                                </p>
+                                                <div class="flex items-center gap-2 mt-1 text-xs font-semibold <?= $is_unregistered ? 'text-amber-600' : 'text-gray-500' ?>">
                                                     <i class="far fa-calendar-alt"></i> <?= $ev['time'] ?>
                                                 </div>
                                             </div>

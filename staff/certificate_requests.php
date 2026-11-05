@@ -11,13 +11,8 @@ $error = '';
 // Handle Template Text Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_template') {
     csrf_verify();
-    $title = trim($_POST['title_text']);
-    $subtitle = trim($_POST['subtitle_text']);
-    $sig_name = trim($_POST['sig_name']);
-    $sig_title = trim($_POST['sig_title']);
-    
     $stmt = $pdo->prepare("UPDATE certificate_settings SET title_text = ?, subtitle_text = ?, sig_name = ?, sig_title = ? WHERE id = 1");
-    $stmt->execute([$title, $subtitle, $sig_name, $sig_title]);
+    $stmt->execute([trim($_POST['title_text']), trim($_POST['subtitle_text']), trim($_POST['sig_name']), trim($_POST['sig_title'])]);
     $success = "Template text updated successfully!";
 }
 
@@ -31,78 +26,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
             $filename = 'cert_bg.' . $ext;
             if (move_uploaded_file($_FILES['bg_image']['tmp_name'], $upload_dir . $filename)) {
-                $path = 'assets/images/certificate_bg/' . $filename;
-                $pdo->query("UPDATE certificate_settings SET background_image = '$path' WHERE id = 1");
+                $pdo->query("UPDATE certificate_settings SET background_image = 'assets/images/certificate_bg/$filename' WHERE id = 1");
                 $success = "Certificate background updated successfully!";
             }
         } else { $error = "Only JPG and PNG files are allowed."; }
     }
 }
-
-// Handle Request Deletion
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_request') {
+// Handle Signature Upload
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'upload_sig') {
     csrf_verify();
-    $req_id = (int)$_POST['request_id'];
-    $stmt = $pdo->prepare("DELETE FROM certificate_requests WHERE request_id = ?");
-    $stmt->execute([$req_id]);
-    header("Location: certificate_requests.php?success=deleted");
-    exit;
+    if (isset($_FILES['sig_image']) && $_FILES['sig_image']['error'] === UPLOAD_ERR_OK) {
+        $ext = strtolower(pathinfo($_FILES['sig_image']['name'], PATHINFO_EXTENSION));
+        if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
+            $upload_dir = __DIR__ . '/../assets/images/certificate_sig/';
+            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+            $filename = 'cert_sig.' . $ext;
+            if (move_uploaded_file($_FILES['sig_image']['tmp_name'], $upload_dir . $filename)) {
+                $pdo->query("UPDATE certificate_settings SET signature_image = 'assets/images/certificate_sig/$filename' WHERE id = 1");
+                $success = "Signature image updated successfully!";
+            }
+        } else { $error = "Only JPG and PNG files are allowed for signature."; }
+    }
 }
-
-// Handle Custom Name Edit
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_name') {
+// Handle Signature Removal
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'remove_sig') {
     csrf_verify();
-    $req_id = (int)$_POST['request_id'];
-    $custom_name = trim($_POST['custom_name']);
-    $stmt = $pdo->prepare("UPDATE certificate_requests SET custom_name = ? WHERE request_id = ?");
-    $stmt->execute([$custom_name ?: null, $req_id]);
-    $success = "Student name for certificate updated!";
+    $pdo->query("UPDATE certificate_settings SET signature_image = NULL WHERE id = 1");
+    $success = "Signature image removed successfully!";
 }
 
 // Fetch Settings
 $settings = $pdo->query("SELECT * FROM certificate_settings WHERE id = 1")->fetch();
-$bg_image = $settings['background_image'] ?? null;
-$bg_url = $bg_image ? "../$bg_image" : "";
 
-// Fetch ALL Students (and their LATEST request status + COMPLIANCE STATS)
+// Fetch Students for OVERALL certificate (Only 100% compliant)
 $stmt = $pdo->query("
-    SELECT s.student_id, s.first_name, s.last_name, s.program, s.section, 
-           MAX(cr.request_id) as request_id, 
-           MAX(cr.status) as status, 
-           MAX(cr.custom_name) as custom_name, 
-           MAX(cr.requested_at) as requested_at,
+    SELECT s.student_id, s.first_name, s.last_name, s.program, s.section,
            (SELECT COUNT(DISTINCT r.subtopic_id) FROM registrations r WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned')) AS total_subs,
            (SELECT COUNT(DISTINCT a.subtopic_id) FROM attendance a WHERE a.student_id = s.student_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS present_subs,
            (SELECT COUNT(*) FROM registrations r JOIN modules m ON r.subtopic_id = m.subtopic_id WHERE r.student_id = s.student_id AND r.status IN ('assigned','auto_assigned') AND m.is_deleted = 0) AS total_mods,
            (SELECT COUNT(*) FROM student_module_progress smp WHERE smp.student_id = s.student_id AND smp.completed = 1) AS completed_mods
     FROM students s
-    LEFT JOIN certificate_requests cr ON s.student_id = cr.student_id
     WHERE s.is_deleted = 0
-    GROUP BY s.student_id
     ORDER BY s.last_name, s.first_name
 ");
-$all_students = $stmt->fetchAll(); // Used for the Bulk Modal (shows everyone)
-$requests = []; // Used for the Main Table (shows only requesters)
+$all_students = $stmt->fetchAll();
+$compliant_students = [];
 
-// Calculate progress percentage for each student
-$unique_courses = [];
-$unique_sections = [];
-foreach ($all_students as &$r) {
+foreach ($all_students as $r) {
     $total_items = $r['total_subs'] + $r['total_mods'];
     $done_items = min($r['total_subs'], $r['present_subs']) + min($r['total_mods'], $r['completed_mods']);
     $r['progress_pct'] = ($total_items > 0) ? round(($done_items / $total_items) * 100) : 0;
-
-    if (!empty($r['program'])) $unique_courses[$r['program']] = $r['program'];
-    if (!empty($r['section'])) $unique_sections[$r['section']] = $r['section'];
-    
-    // ONLY add to the main page table if they actually requested a certificate
-    if (!empty($r['status'])) {
-        $requests[] = $r;
+    if ($r['progress_pct'] === 100) {
+        $compliant_students[] = $r;
     }
 }
-unset($r); // break reference
-sort($unique_courses);
-sort($unique_sections);
+
+// Fetch Sessions/Subtopics for PER-SEMINAR certificates
+$stmt_sub = $pdo->query("
+    SELECT st.subtopic_id, st.title AS subtopic_title, s.title AS session_title, s.date,
+           (SELECT COUNT(*) FROM registrations r WHERE r.subtopic_id = st.subtopic_id) AS total_registrants,
+           (SELECT COUNT(*) FROM attendance a WHERE a.subtopic_id = st.subtopic_id AND a.attendance_status = 'present' AND a.is_deleted = 0) AS present_count
+    FROM subtopics st
+    JOIN sessions s ON st.session_id = s.session_id
+    WHERE st.is_deleted = 0 AND s.is_deleted = 0
+    ORDER BY s.date DESC
+");
+$subtopics = $stmt_sub->fetchAll();
+
+// Fetch ALL registrants per subtopic (Present, Absent, Pending)
+$attendees_data = [];
+foreach ($subtopics as $sub) {
+    $stmt_att = $pdo->prepare("
+        SELECT s.student_id, s.first_name, s.last_name, s.program, s.section, 
+               a.attendance_status, cr.request_id 
+        FROM registrations r
+        JOIN students s ON r.student_id = s.student_id
+        LEFT JOIN attendance a ON a.student_id = r.student_id AND a.subtopic_id = r.subtopic_id
+        LEFT JOIN certificate_requests cr ON cr.student_id = r.student_id AND cr.subtopic_id = r.subtopic_id
+        WHERE r.subtopic_id = ? AND s.is_deleted = 0
+        ORDER BY s.last_name, s.first_name
+    ");
+    $stmt_att->execute([$sub['subtopic_id']]);
+    $attendees_data[$sub['subtopic_id']] = $stmt_att->fetchAll();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
@@ -112,18 +118,6 @@ sort($unique_sections);
     <title>Certificate Manager | ACES Staff</title>
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        /* A4 Landscape Ratio Preview */
-        .cert-preview {
-            width: 100%; max-width: 800px; aspect-ratio: 297 / 210;
-            background-color: white; background-size: cover; background-position: center;
-            position: relative; margin: 0 auto 30px auto; padding: 40px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
-            border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-        .cert-preview.has-bg { border: none; }
-        .blur-bg { backdrop-filter: blur(8px); background-color: rgba(0,0,0,0.6); }
-    </style>
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row overflow-hidden">
     <?php include '../includes/staff_sidebar.php'; ?>
@@ -134,38 +128,29 @@ sort($unique_sections);
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h1 class="text-3xl font-bold text-[#0a6e2d]">Certificate Manager</h1>
-                    <p class="text-sm text-gray-600 mt-1">Customize template, preview, and export.</p>
+                    <p class="text-sm text-gray-600 mt-1">Customize template and issue certificates to students.</p>
                 </div>
-                <div class="flex gap-2">
-                    <!-- TEMPLATE PREVIEW BUTTON -->
-                    <a href="generate_certificate.php?preview_template=1" target="_blank" class="inline-flex items-center px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition transform hover:scale-105" style="background-color: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc;">
-                        <i class="fas fa-eye mr-2"></i> Preview Template
-                    </a>
-                    
-                    <!-- BULK EXPORT BUTTON (Forced Color) -->
-                    <button onclick="openBulkModal()" class="inline-flex items-center text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition transform hover:scale-105" style="background-color: #4f46e5; border: 1px solid #4338ca;">
-                        <i class="fas fa-layer-group mr-2"></i> Bulk Export
-                    </button>
-                </div>
+                <a href="generate_certificate.php?preview_template=1" target="_blank" class="inline-flex items-center px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition transform hover:scale-105" style="background-color: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc;">
+                    <i class="fas fa-eye mr-2"></i> Preview Template
+                </a>
             </div>
 
             <?php if ($success): ?><div class="bg-green-100 text-green-800 p-4 rounded-lg mb-4"><i class="fas fa-check-circle mr-2"></i> <?= $success ?></div><?php endif; ?>
             <?php if ($error): ?><div class="bg-red-100 text-red-800 p-4 rounded-lg mb-4"><i class="fas fa-exclamation-circle mr-2"></i> <?= $error ?></div><?php endif; ?>
 
-            <!-- TEMPLATE EDITOR -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <!-- Text Editor -->
+            <!-- 1. TEMPLATE EDITOR -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <h2 class="font-bold text-gray-800 mb-4"><i class="fas fa-edit text-indigo-500 mr-2"></i> Edit Template Text</h2>
                     <form method="POST" class="space-y-3">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="update_template">
                         <div>
-                            <label class="text-xs font-bold text-gray-600">Main Title</label>
+                            <label class="text-xs font-bold text-gray-600">Main Title (Overall)</label>
                             <input type="text" name="title_text" value="<?= htmlspecialchars($settings['title_text']) ?>" class="w-full border rounded-lg p-2 text-sm" required>
                         </div>
                         <div>
-                            <label class="text-xs font-bold text-gray-600">Subtitle</label>
+                            <label class="text-xs font-bold text-gray-600">Subtitle (Overall)</label>
                             <input type="text" name="subtitle_text" value="<?= htmlspecialchars($settings['subtitle_text']) ?>" class="w-full border rounded-lg p-2 text-sm" required>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
@@ -182,10 +167,9 @@ sort($unique_sections);
                     </form>
                 </div>
 
-                <!-- Background Uploader -->
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col justify-center">
                     <h2 class="font-bold text-gray-800 mb-4"><i class="fas fa-image text-indigo-500 mr-2"></i> Background Image</h2>
-                    <p class="text-xs text-gray-500 mb-4">Upload an A4 Landscape design. The text above will automatically overlay on top.</p>
+                    <p class="text-xs text-gray-500 mb-4">Upload an A4 Landscape design. The text will overlay on top.</p>
                     <form method="POST" enctype="multipart/form-data" class="space-y-3">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="upload_bg">
@@ -193,80 +177,91 @@ sort($unique_sections);
                         <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm transition">Upload Background</button>
                     </form>
                 </div>
+
+                <!-- SIGNATURE UPLOADER (WITH PREVIEW & REMOVE) -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col justify-center">
+                    <h2 class="font-bold text-gray-800 mb-4"><i class="fas fa-signature text-indigo-500 mr-2"></i> Signature Image</h2>
+                    
+                    <?php if (!empty($settings['signature_image']) && file_exists(__DIR__ . '/../' . $settings['signature_image'])): ?>
+                        <!-- Show existing signature -->
+                        <div class="mb-4 text-center">
+                            <p class="text-xs font-bold text-green-600 mb-2"><i class="fas fa-check-circle"></i> Current Signature:</p>
+                            <img src="../<?= htmlspecialchars($settings['signature_image']) ?>?t=<?= time() ?>" alt="Signature" class="max-h-24 mx-auto object-contain border border-gray-200 p-2 rounded bg-gray-50">
+                            
+                            <form method="POST" class="mt-3">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="remove_sig">
+                                <button type="submit" class="text-red-500 hover:text-red-700 text-xs font-bold transition bg-red-50 hover:bg-red-100 px-3 py-1 rounded" onclick="return confirm('Remove this signature?');">
+                                    <i class="fas fa-trash-alt mr-1"></i> Remove Signature
+                                </button>
+                            </form>
+                        </div>
+                        <hr class="mb-3 border-gray-200">
+                        <p class="text-xs text-gray-500 mb-2">Upload a new one to replace it:</p>
+                    <?php else: ?>
+                        <p class="text-xs text-gray-500 mb-4">Upload a transparent PNG or JPG of the ACES Lead's signature.</p>
+                    <?php endif; ?>
+
+                    <!-- Upload Form -->
+                    <form method="POST" enctype="multipart/form-data" class="space-y-3">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="upload_sig">
+                        <input type="file" name="sig_image" accept=".jpg,.jpeg,.png" required class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                        <button type="submit" class="w-full bg-gray-800 hover:bg-black text-white font-bold py-2 rounded-lg text-sm transition">
+                            <?= !empty($settings['signature_image']) ? 'Upload New Signature' : 'Upload Signature' ?>
+                        </button>
+                    </form>
+                </div>
             </div>
 
-            <!-- REQUESTS TABLE -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                
-                <!-- NEW: TABLE FILTER TABS -->
-                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex gap-4">
-                    <button onclick="filterTable('all')" class="font-bold text-sm pb-1 border-b-2 border-indigo-600 text-indigo-600" id="btn-all">All Requests</button>
-                    <button onclick="filterTable('pending')" class="font-bold text-sm pb-1 border-b-2 border-transparent text-gray-500 hover:text-gray-800" id="btn-pending">Pending</button>
-                    <button onclick="filterTable('generated')" class="font-bold text-sm pb-1 border-b-2 border-transparent text-gray-500 hover:text-gray-800" id="btn-generated">Generated</button>
+            <!-- 2. OVERALL COMPLETION CERTIFICATE -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="font-bold text-gray-800 text-lg"><i class="fas fa-award text-amber-500 mr-2"></i> Overall ACES Completion Certificate</h2>
+                        <p class="text-sm text-gray-500 mt-1">Issue the final certificate to students who are 100% compliant across all phases.</p>
+                    </div>
+                    <button onclick="openOverallModal()" class="inline-flex items-center text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition transform hover:scale-105" style="background-color: #4f46e5; border: 1px solid #4338ca;">
+                        <i class="fas fa-layer-group mr-2"></i> Generate Overall
+                    </button>
                 </div>
+            </div>
 
+            <!-- 3. PER-SEMINAR CERTIFICATES -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-10">
+                <div class="p-6 border-b border-gray-200 bg-gray-50">
+                    <h2 class="font-bold text-gray-800 text-lg"><i class="fas fa-certificate text-blue-500 mr-2"></i> Per-Seminar Certificates</h2>
+                    <p class="text-sm text-gray-500 mt-1">Select a specific session and subtopic to issue Certificates of Participation to attendees.</p>
+                </div>
+                
                 <table class="min-w-full text-left text-sm">
-                    <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase text-xs font-semibold">
+                    <thead class="bg-white border-b border-gray-200 text-gray-500 uppercase text-xs font-semibold">
                         <tr>
-                            <th class="py-4 px-6">Student</th>
-                            <th class="py-4 px-6">Certificate Name (Editable)</th>
-                            <th class="py-4 px-6 text-center">Status / Action</th>
+                            <th class="py-4 px-6">Session Title</th>
+                            <th class="py-4 px-6">Subtopic</th>
+                            <th class="py-4 px-6">Date</th>
+                            <th class="py-4 px-6 text-center">Status</th>
+                            <th class="py-4 px-6 text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
-                        <?php foreach ($requests as $req): ?>
+                        <?php foreach ($subtopics as $sub): ?>
                             <tr class="hover:bg-gray-50">
-                                <td class="py-4 px-6">
-                                    <div class="flex items-center gap-3">
-                                        <!-- PREVIEW (EYE) BUTTON -->
-                                        <?php if (!empty($req['request_id'])): ?>
-                                            <a href="generate_certificate.php?id=<?= $req['student_id'] ?>&req_id=<?= $req['request_id'] ?>&preview=1" target="_blank" class="text-gray-400 hover:text-blue-600 transition" title="Preview Certificate">
-                                                <i class="fas fa-eye text-lg"></i>
-                                            </a>
-                                        <?php endif; ?>
-                                        
-                                        <div>
-                                            <div class="font-bold text-gray-800"><?= htmlspecialchars($req['last_name'] . ', ' . $req['first_name']) ?></div>
-                                            <div class="text-xs text-gray-500 font-mono"><?= htmlspecialchars($req['student_id']) ?></div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="py-4 px-6">
-                                    <form method="POST" class="flex gap-2">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="action" value="update_name">
-                                        <input type="hidden" name="request_id" value="<?= $req['request_id'] ?>">
-                                        <input type="text" name="custom_name" value="<?= htmlspecialchars($req['custom_name'] ?? '') ?>" placeholder="Default: <?= htmlspecialchars($req['first_name'] . ' ' . $req['last_name']) ?>" class="border rounded-lg p-1.5 text-xs w-full">
-                                        <button type="submit" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition"><i class="fas fa-save"></i></button>
-                                    </form>
+                                <td class="py-4 px-6 font-medium text-gray-800"><?= htmlspecialchars($sub['session_title']) ?></td>
+                                <td class="py-4 px-6 text-gray-600"><?= htmlspecialchars($sub['subtopic_title']) ?></td>
+                                <td class="py-4 px-6 text-xs text-gray-500"><?= date('M d, Y', strtotime($sub['date'])) ?></td>
+                                <td class="py-4 px-6 text-center">
+                                    <div class="text-sm font-bold text-gray-800"><?= $sub['total_registrants'] ?> Registered</div>
+                                    <div class="text-xs font-bold text-green-600"><?= $sub['present_count'] ?> Present</div>
                                 </td>
                                 <td class="py-4 px-6 text-center">
-                                    <div class="flex items-center justify-center gap-2">
-                                        <?php if (empty($req['status'])): ?>
-                                            <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase bg-gray-100 text-gray-600">Not Requested</span>
-                                        <?php elseif ($req['status'] === 'pending'): ?>
-                                            <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase bg-amber-100 text-amber-800">Pending</span>
-                                            
-                                            <!-- GENERATE BUTTON (Forced Green) -->
-                                            <a href="generate_certificate.php?id=<?= $req['student_id'] ?>&req_id=<?= $req['request_id'] ?>" target="_blank" class="inline-flex items-center px-3 py-1.5 rounded-md text-[10px] font-bold shadow-sm transition hover:scale-105" style="background-color: #10b981; color: white; border: 1px solid #059669;">
-                                                <i class="fas fa-file-pdf mr-1"></i> Generate
-                                            </a>
-                                            
-                                        <?php else: ?>
-                                            <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase bg-green-100 text-green-800">Generated</span>
-                                            
-                                            <!-- NEW: DELETE BUTTON -->
-                                            <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this record? The student will be able to request it again.');">
-                                                <?= csrf_field() ?>
-                                                <input type="hidden" name="action" value="delete_request">
-                                                <input type="hidden" name="request_id" value="<?= $req['request_id'] ?>">
-                                                <button type="submit" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded-md transition" title="Delete Record">
-                                                    <i class="fas fa-trash-alt"></i>
-                                                </button>
-                                            </form>
-                                            
-                                        <?php endif; ?>
-                                    </div>
+                                    <button type="button" 
+                                            class="manage-cert-btn bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition" 
+                                            data-id="<?= $sub['subtopic_id'] ?>" 
+                                            data-session="<?= htmlspecialchars($sub['session_title']) ?>" 
+                                            data-subtopic="<?= htmlspecialchars($sub['subtopic_title']) ?>">
+                                        Manage Certificates
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -276,300 +271,291 @@ sort($unique_sections);
         </main>
     </div>
 
-    <!-- BULK SELECTION MODAL -->
-    <div id="bulkModal" class="hidden fixed inset-0 z-50 blur-bg flex items-center justify-center p-4" style="backdrop-filter: blur(8px); background-color: rgba(0,0,0,0.6);">
-        <!-- Enforce a fixed height of 90vh so it never overflows the screen -->
+    <!-- ================= MODALS ================= -->
+
+    <!-- OVERALL MODAL -->
+    <div id="overallModal" class="hidden fixed inset-0 z-50 blur-bg flex items-center justify-center p-4" style="backdrop-filter: blur(8px); background-color: rgba(0,0,0,0.6);">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style="height: 90vh;">
-            
-            <!-- Header (Fixed) -->
             <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
-                <h3 class="font-bold text-gray-800 text-lg"><i class="fas fa-layer-group text-indigo-500 mr-2"></i>Select Students to Export</h3>
-                <button onclick="document.getElementById('bulkModal').classList.add('hidden')" class="text-gray-500 hover:text-red-500"><i class="fas fa-times text-xl"></i></button>
+                <h3 class="font-bold text-gray-800 text-lg"><i class="fas fa-award text-amber-500 mr-2"></i>Select Students for Overall Completion</h3>
+                <button onclick="document.getElementById('overallModal').classList.add('hidden')" class="text-gray-500 hover:text-red-500"><i class="fas fa-times text-xl"></i></button>
             </div>
             
-            <!-- Filters & Search (Fixed) -->
-            <div class="p-4 border-b border-gray-200 shrink-0 bg-gray-50">
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-                    <!-- Search -->
-                    <div class="md:col-span-1">
-                        <label class="text-[10px] font-bold text-gray-500 uppercase">Search</label>
-                        <input type="text" id="studentSearch" placeholder="Name or ID..." class="w-full border border-gray-300 rounded-lg p-2 text-sm" onkeyup="filterStudents()">
-                    </div>
-                    <!-- Course -->
-                    <div class="md:col-span-1">
-                        <label class="text-[10px] font-bold text-gray-500 uppercase">Course</label>
-                        <select id="filterCourse" class="w-full border border-gray-300 rounded-lg p-2 text-sm" onchange="filterStudents()">
-                            <option value="">All Courses</option>
-                            <?php foreach ($unique_courses as $crs): ?>
-                                <option value="<?= htmlspecialchars($crs) ?>"><?= htmlspecialchars($crs) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <!-- Section -->
-                    <div class="md:col-span-1">
-                        <label class="text-[10px] font-bold text-gray-500 uppercase">Section</label>
-                        <select id="filterSection" class="w-full border border-gray-300 rounded-lg p-2 text-sm" onchange="filterStudents()">
-                            <option value="">All Sections</option>
-                            <?php foreach ($unique_sections as $sec): ?>
-                                <option value="<?= htmlspecialchars($sec) ?>"><?= htmlspecialchars($sec) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <!-- Status -->
-                    <div class="md:col-span-1">
-                        <label class="text-[10px] font-bold text-gray-500 uppercase">Status</label>
-                        <select id="filterStatus" class="w-full border border-gray-300 rounded-lg p-2 text-sm" onchange="filterStudents()">
-                            <option value="">All Statuses</option>
-                            <option value="Not Requested">Not Requested</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Generated">Generated</option>
-                        </select>
-                    </div>
-                    <!-- NEW: Progress Filter -->
-                    <div class="md:col-span-1">
-                        <label class="text-[10px] font-bold text-gray-500 uppercase">Progress</label>
-                        <select id="filterProgress" class="w-full border border-gray-300 rounded-lg p-2 text-sm" onchange="filterStudents()">
-                            <option value="">All Progress</option>
-                            <option value="100">100% Compliant</option>
-                            <option value="50-99">50% - 99%</option>
-                            <option value="0-49">Below 50%</option>
-                        </select>
-                    </div>
+            <div class="p-4 border-b border-gray-200 shrink-0 bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-3">
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="selectAllOverall" class="rounded text-indigo-600 focus:ring-indigo-500 w-5 h-5" onchange="document.querySelectorAll('.overall-checkbox').forEach(cb => { if(cb.closest('.overall-row').style.display !== 'none') cb.checked = this.checked; }); updateOverallCount();">
+                        <span class="text-sm font-bold text-indigo-900">Select All Visible</span>
+                    </label>
+                </div>
+                
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <input type="text" id="overallSearch" placeholder="Search name or ID..." class="border border-gray-300 rounded-lg p-1.5 text-sm w-full md:w-64" onkeyup="filterOverallStudents()">
+                    <span class="text-sm font-bold text-gray-600 whitespace-nowrap">Selected: <span id="overallCount" class="text-indigo-600">0</span></span>
                 </div>
             </div>
 
-            <!-- Select All Bar -->
-            <div class="px-4 py-2 border-b border-gray-200 bg-indigo-50 flex justify-between items-center shrink-0">
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="selectAllVisible" class="rounded text-indigo-600 focus:ring-indigo-500 w-5 h-5" onchange="toggleSelectAll(this)">
-                    <span class="text-sm font-bold text-indigo-900">Select All Visible</span>
-                </label>
-                <span class="text-xs text-indigo-700 italic">Filters apply to selection</span>
-            </div>
-
-            <!-- Scrollable List -->
-            <div class="p-4" id="studentList" style="flex: 1; overflow-y: auto;">
-                <?php foreach ($all_students as $req): 
-                    $status_text = empty($req['status']) ? 'Not Requested' : ucfirst($req['status']);
-                ?>
-                    <label class="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer border-b border-gray-100 student-row" 
-                           data-name="<?= strtolower($req['first_name'] . ' ' . $req['last_name'] . ' ' . $req['student_id']) ?>"
-                           data-course="<?= htmlspecialchars($req['program']) ?>"
-                           data-section="<?= htmlspecialchars($req['section']) ?>"
-                           data-status="<?= $status_text ?>"
-                           data-progress="<?= $req['progress_pct'] ?>">
-                        
-                        <input type="checkbox" class="student-checkbox rounded text-indigo-600 focus:ring-indigo-500 w-5 h-5" 
-                               value="<?= $req['student_id'] ?>" 
-                               data-name="<?= htmlspecialchars(!empty($req['custom_name']) ? $req['custom_name'] : $req['first_name'] . ' ' . $req['last_name']) ?>"
-                               onchange="updateCount()">
-                        
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2">
+            <div class="p-4" style="flex: 1; overflow-y: auto;">
+                <?php if(empty($compliant_students)): ?>
+                    <p class="text-center text-gray-500 py-10">No students are currently 100% compliant.</p>
+                <?php else: ?>
+                    <?php foreach ($compliant_students as $req): ?>
+                        <label class="overall-row flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer border-b border-gray-100" 
+                               data-name="<?= strtolower($req['first_name'] . ' ' . $req['last_name'] . ' ' . $req['student_id']) ?>">
+                            <input type="checkbox" class="overall-checkbox rounded text-indigo-600 w-5 h-5" value="<?= $req['student_id'] ?>" onchange="updateOverallCount()">
+                            <div class="flex-1">
                                 <div class="font-bold text-sm text-gray-800"><?= htmlspecialchars($req['first_name'] . ' ' . $req['last_name']) ?></div>
-                                <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded <?= $req['progress_pct'] === 100 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700' ?>">
-                                    <?= $req['progress_pct'] ?>%
-                                </span>
+                                <div class="text-xs text-gray-500"><?= htmlspecialchars($req['student_id']) ?> • <?= htmlspecialchars($req['program']) ?> - <?= htmlspecialchars($req['section']) ?></div>
                             </div>
-                            <div class="text-xs text-gray-500"><?= htmlspecialchars($req['student_id']) ?> • <?= htmlspecialchars($req['program']) ?> - <?= htmlspecialchars($req['section']) ?></div>
-                        </div>
-                        <div class="text-[10px] font-bold px-2 py-1 rounded <?= $status_text === 'Not Requested' ? 'bg-gray-100 text-gray-500' : ($status_text === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700') ?>">
-                            <?= $status_text ?>
-                        </div>
-                    </label>
-                <?php endforeach; ?>
+                            <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-green-100 text-green-700">100%</span>
+                        </label>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
 
-            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
-                <span class="text-sm font-bold text-gray-600">Selected: <span id="selectedCount" class="text-indigo-600">0</span></span>
-                <button onclick="previewSelected()" class="text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md transition transform hover:scale-105" style="background-color: #4f46e5; border: 1px solid #4338ca;">
-                    Preview & Export (<span id="btnSelectedCount">0</span>) <i class="fas fa-arrow-right ml-1"></i>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end shrink-0">
+                <button onclick="previewOverall()" class="text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md transition transform hover:scale-105" style="background-color: #4f46e5;">
+                    Preview & Export <i class="fas fa-arrow-right ml-1"></i>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- PREVIEW MODAL (Iframe PDF Viewer) -->
-    <div id="previewModal" class="hidden fixed inset-0 flex flex-col p-0 m-0" style="z-index: 2147483647 !important; background-color: rgba(0,0,0,0.9);">
-        
-        <!-- Header Controls (Forced to top, with high z-index) -->
-        <div class="flex flex-col md:flex-row justify-between items-center p-3 bg-white shrink-0 gap-3 border-b border-gray-200 shadow-sm relative z-50">
+    <!-- SEMINAR MODAL -->
+    <div id="seminarModal" class="hidden fixed inset-0 z-50 blur-bg flex items-center justify-center p-4" style="backdrop-filter: blur(8px); background-color: rgba(0,0,0,0.6);">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style="height: 90vh;">
+            <div class="p-4 border-b border-gray-200 bg-blue-50 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="font-bold text-gray-800 text-lg"><i class="fas fa-certificate text-blue-500 mr-2"></i>Issue Seminar Certificates</h3>
+                    <p class="text-xs text-blue-700 mt-1" id="seminarHeaderTitle">Loading...</p>
+                </div>
+                <button onclick="document.getElementById('seminarModal').classList.add('hidden')" class="text-gray-500 hover:text-red-500"><i class="fas fa-times text-xl"></i></button>
+            </div>
             
-            <!-- Left Side: Close X + Title -->
-            <div class="flex items-center gap-3 w-full md:w-auto overflow-hidden">
-                <!-- BIG RED X BUTTON -->
-                <button onclick="document.getElementById('previewModal').classList.add('hidden')" class="text-red-500 hover:text-red-700 transition-colors bg-red-50 hover:bg-red-100 p-2 rounded-lg shrink-0" title="Close Preview">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
+            <div class="p-4 border-b border-gray-200 shrink-0 bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-3">
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="selectAllSeminar" class="rounded text-blue-600 focus:ring-blue-500 w-5 h-5" onchange="document.querySelectorAll('.seminar-checkbox').forEach(cb => { if(cb.closest('.student-row-seminar').style.display !== 'none') cb.checked = this.checked; }); updateSeminarCount();">
+                        <span class="text-sm font-bold text-blue-900">Select All Visible</span>
+                    </label>
+                    
+                    <button onclick="selectAllPresent()" type="button" class="bg-green-100 hover:bg-green-200 text-green-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-green-300 transition">
+                        <i class="fas fa-check-circle mr-1"></i> Quick Select Present
+                    </button>
+                </div>
                 
-                <h3 class="text-gray-800 font-bold text-lg truncate">
-                    <i class="fas fa-file-pdf text-red-500 mr-2"></i>
-                    Live PDF Preview (<span id="previewCount">0</span> Students)
-                </h3>
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <select id="seminarStatusFilter" onchange="filterSeminarStudents()" class="border border-gray-300 rounded-lg p-1.5 text-sm w-full md:w-auto">
+                        <option value="">All Registrants</option>
+                        <option value="present">Present Only</option>
+                        <option value="absent">Absent Only</option>
+                        <option value="pending">Pending Only</option>
+                    </select>
+                    <span class="text-sm font-bold text-gray-600 whitespace-nowrap">Selected: <span id="seminarCount" class="text-blue-600">0</span></span>
+                </div>
             </div>
 
-            <!-- Right Side: Cancel & Confirm -->
-            <div class="flex gap-2 w-full md:w-auto justify-end shrink-0">
-                <!-- FORCED VISIBILITY CANCEL BUTTON -->
-                <button onclick="document.getElementById('previewModal').classList.add('hidden')" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm" style="display: block;">
-                    Cancel
-                </button>
-                
-                <button onclick="confirmExport()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md transition transform hover:scale-105">
-                    <i class="fas fa-download mr-2"></i> Confirm & Download PDF
+            <div class="p-4" style="flex: 1; overflow-y: auto;" id="seminarStudentList">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end shrink-0">
+                <button onclick="previewSeminar()" class="text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md transition transform hover:scale-105" style="background-color: #2563eb;">
+                    Preview & Export <i class="fas fa-arrow-right ml-1"></i>
                 </button>
             </div>
         </div>
+    </div>
 
-        <!-- The PDF Iframe (Absolute positioning forces it to fill the exact remaining space) -->
+    <!-- PREVIEW MODAL -->
+    <div id="previewModal" class="hidden fixed inset-0 flex flex-col p-0 m-0" style="z-index: 2147483647 !important; background-color: rgba(0,0,0,0.9);">
+        <div class="flex justify-between items-center p-3 bg-white shrink-0 border-b border-gray-200 relative z-50">
+            <div class="flex items-center gap-3">
+                <button onclick="document.getElementById('previewModal').classList.add('hidden')" class="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-lg"><i class="fas fa-times text-xl"></i></button>
+                <h3 class="text-gray-800 font-bold text-lg"><i class="fas fa-file-pdf text-red-500 mr-2"></i> Live PDF Preview</h3>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="document.getElementById('previewModal').classList.add('hidden')" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Cancel</button>
+                <button onclick="confirmExport()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md"><i class="fas fa-download mr-2"></i> Confirm & Download</button>
+            </div>
+        </div>
         <div class="flex-1 w-full bg-gray-300 relative">
             <iframe name="pdfFrame" id="pdfFrame" class="absolute inset-0 w-full h-full border-0"></iframe>
         </div>
     </div>
 
-    <!-- Hidden Form to Submit to the Iframe -->
+    <!-- HIDDEN FORM FOR EXPORTING -->
     <form id="pdfForm" method="POST" action="generate_certificate.php" target="pdfFrame" class="hidden">
         <input type="hidden" name="student_ids" id="exportIds">
         <input type="hidden" name="is_preview" id="isPreviewInput" value="1">
+        <input type="hidden" name="cert_type" id="exportCertType" value="overall">
+        <input type="hidden" name="subtopic_id" id="exportSubtopicId" value="">
     </form>
 
     <script>
-        // 1. Selection Logic
-        const checkboxes = document.querySelectorAll('.student-checkbox');
-        const countSpan = document.getElementById('selectedCount');
-
-        function updateCount() {
-            const checked = document.querySelectorAll('.student-checkbox:checked').length;
-            document.getElementById('selectedCount').textContent = checked;
-            document.getElementById('btnSelectedCount').textContent = checked;
+        // Data from PHP
+        const allAttendees = <?= json_encode($attendees_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+        
+        // ==========================================
+        // OVERALL MODAL LOGIC
+        // ==========================================
+        function openOverallModal() {
+            document.getElementById('overallModal').classList.remove('hidden');
         }
-        checkboxes.forEach(cb => cb.addEventListener('change', updateCount));
 
-        // 2. Advanced Multi-Filter Logic (Now includes Progress)
-        function filterStudents() {
-            const query = document.getElementById('studentSearch').value.toLowerCase();
-            const filterCourse = document.getElementById('filterCourse').value;
-            const filterSection = document.getElementById('filterSection').value;
-            const filterStatus = document.getElementById('filterStatus').value;
-            const filterProgress = document.getElementById('filterProgress').value;
+        function updateOverallCount() {
+            document.getElementById('overallCount').textContent = document.querySelectorAll('.overall-checkbox:checked').length;
+        }
 
-            let visibleCount = 0;
-
-            document.querySelectorAll('.student-row').forEach(row => {
+        function filterOverallStudents() {
+            const query = document.getElementById('overallSearch').value.toLowerCase();
+            document.querySelectorAll('.overall-row').forEach(row => {
                 const name = row.getAttribute('data-name');
-                const course = row.getAttribute('data-course');
-                const section = row.getAttribute('data-section');
-                const status = row.getAttribute('data-status');
-                const progress = parseInt(row.getAttribute('data-progress') || '0');
-
-                // Check if it matches ALL active filters
-                const matchSearch = name.includes(query);
-                const matchCourse = !filterCourse || course === filterCourse;
-                const matchSection = !filterSection || section === filterSection;
-                const matchStatus = !filterStatus || status === filterStatus;
-                
-                // Progress Filter Logic
-                let matchProgress = true;
-                if (filterProgress === '100') matchProgress = (progress === 100);
-                else if (filterProgress === '50-99') matchProgress = (progress >= 50 && progress < 100);
-                else if (filterProgress === '0-49') matchProgress = (progress < 50);
-
-                if (matchSearch && matchCourse && matchSection && matchStatus && matchProgress) {
+                if (name.includes(query)) {
                     row.style.display = 'flex';
-                    visibleCount++;
                 } else {
                     row.style.display = 'none';
                 }
             });
-
-            // Uncheck the "Select All" box if the filter changes
-            document.getElementById('selectAllVisible').checked = false;
+            document.getElementById('selectAllOverall').checked = false;
         }
 
-        // 3. Select All Visible
-        function toggleSelectAll(source) {
-            const isChecked = source.checked;
+        function previewOverall() {
+            const checked = Array.from(document.querySelectorAll('.overall-checkbox:checked')).map(cb => cb.value);
+            if (checked.length === 0) return alert('Select at least one student.');
             
-            // Only select checkboxes in rows that are currently visible (not display:none)
-            document.querySelectorAll('.student-row').forEach(row => {
-                if (row.style.display !== 'none') {
-                    row.querySelector('.student-checkbox').checked = isChecked;
+            document.getElementById('exportIds').value = checked.join(',');
+            document.getElementById('exportCertType').value = 'overall';
+            document.getElementById('exportSubtopicId').value = '';
+            
+            showPreview();
+        }
+        
+
+        // ==========================================
+        // ATTACH CLICK LISTENER TO BUTTONS
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.manage-cert-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.getAttribute('data-id');
+                    const session = this.getAttribute('data-session');
+                    const subtopic = this.getAttribute('data-subtopic');
+                    
+                    // Call the function
+                    openSeminarModal(id, session, subtopic);
+                });
+            });
+        });
+
+        // ==========================================
+        // SEMINAR MODAL LOGIC
+        // ==========================================
+        function openSeminarModal(subtopicId, sessionTitle, subtopicTitle) {
+            document.getElementById('seminarHeaderTitle').textContent = sessionTitle + ' - ' + subtopicTitle;
+            document.getElementById('exportSubtopicId').value = subtopicId;
+            
+            const listDiv = document.getElementById('seminarStudentList');
+            const students = allAttendees[subtopicId] || [];
+            
+            if (students.length === 0) {
+                listDiv.innerHTML = '<p class="text-center text-gray-500 py-10">No registrants found for this subtopic.</p>';
+            } else {
+                listDiv.innerHTML = students.map(st => {
+                    let statusColor = 'bg-gray-100 text-gray-500';
+                    let statusText = 'Not Recorded';
+                    
+                    if (st.attendance_status === 'present') { 
+                        statusColor = 'bg-green-100 text-green-700'; 
+                        statusText = 'Present'; 
+                    } else if (st.attendance_status === 'absent') { 
+                        statusColor = 'bg-red-100 text-red-700'; 
+                        statusText = 'Absent'; 
+                    } else if (st.attendance_status === 'pending') { 
+                        statusColor = 'bg-amber-100 text-amber-700'; 
+                        statusText = 'Pending'; 
+                    }
+
+                    return `
+                    <label class="student-row-seminar flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer border-b border-gray-100" data-status="${st.attendance_status || 'none'}">
+                        <input type="checkbox" class="seminar-checkbox rounded text-blue-600 w-5 h-5" value="${st.student_id}" onchange="updateSeminarCount()" ${st.attendance_status === 'present' ? 'checked' : ''}>
+                        <div class="flex-1">
+                            <div class="font-bold text-sm text-gray-800">${st.last_name}, ${st.first_name}</div>
+                            <div class="text-xs text-gray-500">${st.student_id} • ${st.program} - ${st.section}</div>
+                        </div>
+                        <div class="flex gap-2">
+                            ${st.request_id ? '<span class="text-[10px] font-bold px-2 py-1 rounded bg-indigo-100 text-indigo-700">Generated</span>' : ''}
+                            <span class="text-[10px] font-bold px-2 py-1 rounded ${statusColor}">${statusText}</span>
+                        </div>
+                    </label>
+                    `;
+                }).join('');
+            }
+            
+            document.getElementById('seminarStatusFilter').value = '';
+            document.getElementById('selectAllSeminar').checked = false;
+            filterSeminarStudents(); 
+            updateSeminarCount();
+            document.getElementById('seminarModal').classList.remove('hidden');
+        }
+
+        function updateSeminarCount() {
+            document.getElementById('seminarCount').textContent = document.querySelectorAll('.seminar-checkbox:checked').length;
+        }
+
+        function filterSeminarStudents() {
+            const filter = document.getElementById('seminarStatusFilter').value;
+            document.querySelectorAll('.student-row-seminar').forEach(row => {
+                const status = row.getAttribute('data-status');
+                if (filter === '' || status === filter) {
+                    row.style.display = 'flex';
+                } else {
+                    row.style.display = 'none';
                 }
             });
+            document.getElementById('selectAllSeminar').checked = false; 
+        }
+
+        function selectAllPresent() {
+            document.querySelectorAll('.student-row-seminar').forEach(row => {
+                if (row.style.display !== 'none' && row.getAttribute('data-status') === 'present') {
+                    row.querySelector('.seminar-checkbox').checked = true;
+                }
+            });
+            updateSeminarCount();
+        }
+
+        function previewSeminar() {
+            const checked = Array.from(document.querySelectorAll('.seminar-checkbox:checked')).map(cb => cb.value);
+            if (checked.length === 0) return alert('Select at least one student.');
             
-            updateCount();
+            document.getElementById('exportIds').value = checked.join(',');
+            document.getElementById('exportCertType').value = 'seminar';
+            
+            showPreview();
         }
 
-        // 3. Modal Switchers
-        function openBulkModal() {
-            document.getElementById('bulkModal').classList.remove('hidden');
-        }
-
-        // 4. Generate PDF Preview (Loads into iframe)
-        function previewSelected() {
-            const checked = document.querySelectorAll('.student-checkbox:checked');
-            if (checked.length === 0) {
-                alert("Please select at least one student.");
-                return;
-            }
-
-            const ids = [];
-            checked.forEach(cb => ids.push(cb.value));
-
-            // Setup form for PREVIEW (No DB update)
-            document.getElementById('exportIds').value = ids.join(',');
+        // ==========================================
+        // PDF PREVIEW & EXPORT LOGIC
+        // ==========================================
+        function showPreview() {
             document.getElementById('isPreviewInput').value = '1';
-            document.getElementById('previewCount').textContent = ids.length;
-
-            // Submit to iframe to generate preview
             const form = document.getElementById('pdfForm');
-            form.target = 'pdfFrame'; // Load inside iframe
+            form.target = 'pdfFrame';
             form.submit();
-
-            // Switch Modals
-            document.getElementById('bulkModal').classList.add('hidden');
+            
+            document.getElementById('overallModal').classList.add('hidden');
+            document.getElementById('seminarModal').classList.add('hidden');
             document.getElementById('previewModal').classList.remove('hidden');
         }
 
-        // 5. Confirm & Download
         function confirmExport() {
-            // Setup form for ACTUAL EXPORT (Updates DB and downloads)
             document.getElementById('isPreviewInput').value = '0';
-            
-            // Change target to _blank so it downloads instead of loading in iframe
             const form = document.getElementById('pdfForm');
             form.target = '_blank';
             form.submit();
-
-            // Close the modal
             document.getElementById('previewModal').classList.add('hidden');
-
-            // Refresh the page after a short delay to update the table status
-            setTimeout(() => {
-                location.reload();
-            }, 1500);
-        }
-    </script>
-        <script>
-        function filterTable(status) {
-            const rows = document.querySelectorAll('tbody tr');
-            
-            // Update Tab Styles
-            document.getElementById('btn-all').className = "font-bold text-sm pb-1 border-b-2 border-transparent text-gray-500 hover:text-gray-800";
-            document.getElementById('btn-pending').className = "font-bold text-sm pb-1 border-b-2 border-transparent text-gray-500 hover:text-gray-800";
-            document.getElementById('btn-generated').className = "font-bold text-sm pb-1 border-b-2 border-transparent text-gray-500 hover:text-gray-800";
-            
-            document.getElementById('btn-' + status).className = "font-bold text-sm pb-1 border-b-2 border-indigo-600 text-indigo-600";
-
-            // Filter Rows
-            rows.forEach(row => {
-                const rowStatus = row.getAttribute('data-status');
-                if (status === 'all' || rowStatus === status) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
+            setTimeout(() => { location.reload(); }, 1500);
         }
     </script>
 </body>
