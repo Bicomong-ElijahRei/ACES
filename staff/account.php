@@ -11,35 +11,34 @@ $stmt->execute([$_SESSION['user_id']]);
 $staff = $stmt->fetch();
 $staff_name = $staff['full_name'];
 
-$action = $_POST['action'] ?? '';
+$action  = $_POST['action'] ?? '';
 $success = '';
-$error = '';
+$error   = '';
 
-// Fetch current user data
-$stmt_user = $pdo->prepare("SELECT email, full_name, created_at FROM users WHERE user_id = ?");
+// Fetch current user data (includes avatar)
+$stmt_user = $pdo->prepare("SELECT email, full_name, avatar, created_at FROM users WHERE user_id = ?");
 $stmt_user->execute([$_SESSION['user_id']]);
 $user_data = $stmt_user->fetch();
 
 // --- Handle Profile Update ---
 if ($action === 'update_profile') {
-    csrf_verify(); // BUG FIX: Added missing CSRF verification
+    csrf_verify();
     $full_name = trim($_POST['full_name']);
-    $email = trim($_POST['email']);
+    $email     = trim($_POST['email']);
 
     if (!$full_name || !$email) {
         $error = "Name and email are required.";
     } elseif (!str_ends_with(strtolower($email), '@kld.edu.ph')) {
         $error = "Email must be an official KLD email (must end in @kld.edu.ph).";
     } else {
-        // Check if email is taken by another user
         $check = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
         $check->execute([$email, $_SESSION['user_id']]);
-        
+
         if ($check->fetch()) {
             $error = "That email address is already in use.";
         } elseif ($email !== $user_data['email']) {
-            // EMAIL CHANGE DETECTED - Trigger PIN
-            $pin = sprintf("%06d", mt_rand(1, 999999));
+            // EMAIL CHANGE — Trigger PIN
+            $pin    = sprintf("%06d", mt_rand(1, 999999));
             $expiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
 
             $stmt_pin = $pdo->prepare("UPDATE users SET pending_email = ?, email_change_pin = ?, email_pin_expiry = ? WHERE user_id = ?");
@@ -47,14 +46,13 @@ if ($action === 'update_profile') {
 
             require_once __DIR__ . '/../includes/send_email.php';
             $subject = "ACES - Verify Your New Email Address";
-            $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
+            $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>" . $pin . "</strong></p><p>This PIN expires in 15 minutes.</p>";
             sendEmail($email, $subject, $body);
 
             $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
             header("Location: ../verify_email_change.php");
             exit;
         } else {
-            // Email NOT changed
             $stmt = $pdo->prepare("UPDATE users SET full_name = ? WHERE user_id = ?");
             $stmt->execute([$full_name, $_SESSION['user_id']]);
             $success = "Profile updated successfully.";
@@ -67,7 +65,7 @@ if ($action === 'update_profile') {
 if ($action === 'change_password') {
     csrf_verify();
     $current = $_POST['current_password'];
-    $new = $_POST['new_password'];
+    $new     = $_POST['new_password'];
     $confirm = $_POST['confirm_password'];
 
     if (!$current || !$new || !$confirm) {
@@ -77,7 +75,6 @@ if ($action === 'change_password') {
     } elseif (strlen($new) < 8) {
         $error = "New password must be at least 8 characters long.";
     } else {
-        // Verify current password
         $stmt_pw = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt_pw->execute([$_SESSION['user_id']]);
         $hash = $stmt_pw->fetchColumn();
@@ -90,6 +87,40 @@ if ($action === 'change_password') {
             $stmt_upd->execute([$new_hash, $_SESSION['user_id']]);
             $success = "Password changed successfully.";
         }
+    }
+}
+
+// --- Handle Avatar Upload ---
+if ($action === 'upload_avatar') {
+    csrf_verify();
+    if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['avatar'];
+        $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+            $error = "Only JPG and PNG files are allowed.";
+        } elseif ($file['size'] > 2097152) {
+            $error = "File must be under 2MB.";
+        } else {
+            $upload_dir = __DIR__ . '/../assets/images/avatars/';
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
+            }
+            $filename = 'avatar_user_' . $_SESSION['user_id'] . '.' . $ext;
+            $target   = $upload_dir . $filename;
+            if (move_uploaded_file($file['tmp_name'], $target)) {
+                $pdo->prepare("UPDATE users SET avatar = ? WHERE user_id = ?")
+                    ->execute(['assets/images/avatars/' . $filename, $_SESSION['user_id']]);
+                $success = "Profile picture updated successfully.";
+                // Refresh user data
+                $stmt_user = $pdo->prepare("SELECT email, full_name, avatar, created_at FROM users WHERE user_id = ?");
+                $stmt_user->execute([$_SESSION['user_id']]);
+                $user_data = $stmt_user->fetch();
+            } else {
+                $error = "Failed to upload avatar.";
+            }
+        }
+    } else {
+        $error = "No file uploaded.";
     }
 }
 ?>
@@ -106,17 +137,8 @@ if ($action === 'change_password') {
         html, body { height: 100%; margin: 0; padding: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* Modal Fixes */
         .modal-backdrop { z-index: 1040 !important; }
         .modal { z-index: 1050 !important; }
-        
-        /* Password Strength Meter */
-        .strength-meter { height: 4px; border-radius: 2px; transition: all 0.3s; }
-        .strength-weak { background-color: #ef4444; width: 25%; }
-        .strength-fair { background-color: #f59e0b; width: 50%; }
-        .strength-good { background-color: #3b82f6; width: 75%; }
-        .strength-strong { background-color: #10b981; width: 100%; }
     </style>
 </head>
 <body class="bg-[#dcf3e6] font-sans h-screen flex flex-col md:flex-row">
@@ -127,13 +149,11 @@ if ($action === 'change_password') {
     <?php include '../includes/header.php'; ?>
     <main class="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
 
-        <!-- Header -->
         <div class="mb-6">
             <h1 class="text-3xl font-bold text-[#0a6e2d]">Account Settings</h1>
             <p class="text-sm text-gray-600 mt-1">Manage your personal information and security preferences.</p>
         </div>
 
-        <!-- Flash Messages -->
         <?php if ($success): ?>
             <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm mb-6 flex items-center gap-3">
                 <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success) ?>
@@ -147,7 +167,42 @@ if ($action === 'change_password') {
         <?php endif; ?>
 
         <div class="max-w-4xl mx-auto space-y-8">
-            
+
+            <!-- Section 0: Profile Picture -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50 flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                        <i class="fas fa-camera"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Profile Picture</h3>
+                        <p class="text-xs text-gray-500">Upload a JPG or PNG under 2MB.</p>
+                    </div>
+                </div>
+                <form method="POST" enctype="multipart/form-data" class="p-6 flex flex-col md:flex-row items-center gap-6">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="upload_avatar">
+
+                    <?php if (!empty($user_data['avatar'])): ?>
+                        <img src="../<?= htmlspecialchars($user_data['avatar']) ?>" alt="Avatar"
+                             class="h-24 w-24 rounded-full object-cover border-4 border-[#0a6e2d]/20 shadow">
+                    <?php else: ?>
+                        <div class="h-24 w-24 rounded-full bg-[#0a6e2d] text-white flex items-center justify-center font-bold text-4xl shadow">
+                            <?= strtoupper(substr($user_data['full_name'], 0, 1)) ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="flex-1 w-full">
+                        <input type="file" name="avatar" accept="image/png,image/jpeg" required
+                               class="text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
+                        <p class="text-xs text-gray-500 mt-2">Max size: 2MB. Accepted: JPG, PNG.</p>
+                    </div>
+                    <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium py-2 px-6 rounded-lg shadow-sm">
+                        <i class="fas fa-upload mr-1"></i> Upload
+                    </button>
+                </form>
+            </div>
+
             <!-- Section 1: Profile Information -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50 flex items-center gap-3">
@@ -169,7 +224,7 @@ if ($action === 'change_password') {
                                 <p class="text-xs text-gray-500 mt-1">Your display name.</p>
                             </div>
                             <div class="md:col-span-2">
-                                <input type="text" name="full_name" value="<?= htmlspecialchars($user_data['full_name']) ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow" required>
+                                <input type="text" name="full_name" value="<?= htmlspecialchars($user_data['full_name']) ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                             </div>
                         </div>
 
@@ -179,7 +234,7 @@ if ($action === 'change_password') {
                                 <p class="text-xs text-gray-500 mt-1">Used for login and notifications.</p>
                             </div>
                             <div class="md:col-span-2">
-                                <input type="email" name="email" value="<?= htmlspecialchars($user_data['email']) ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow" required>
+                                <input type="email" name="email" value="<?= htmlspecialchars($user_data['email']) ?>" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
                             </div>
                         </div>
 
@@ -193,7 +248,7 @@ if ($action === 'change_password') {
                         </div>
                     </div>
                     <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-                        <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium py-2 px-6 rounded-lg transition-colors shadow-sm">
+                        <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium py-2 px-6 rounded-lg shadow-sm">
                             <i class="fas fa-save mr-1"></i> Save Changes
                         </button>
                     </div>
@@ -220,10 +275,8 @@ if ($action === 'change_password') {
                                 <label class="block text-sm font-bold text-gray-700">Current Password</label>
                             </div>
                             <div class="md:col-span-2 relative">
-                                <input type="password" name="current_password" id="current_password" class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow" required>
-                                <button type="button" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 toggle-password" data-target="current_password">
-                                    <i class="fas fa-eye"></i>
-                                </button>
+                                <input type="password" name="current_password" id="current_password" class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required>
+                                <button type="button" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 toggle-password" data-target="current_password"><i class="fas fa-eye"></i></button>
                             </div>
                         </div>
 
@@ -234,12 +287,9 @@ if ($action === 'change_password') {
                             </div>
                             <div class="md:col-span-2">
                                 <div class="relative">
-                                    <input type="password" name="new_password" id="new_password" class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow" required minlength="8">
-                                    <button type="button" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 toggle-password" data-target="new_password">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
+                                    <input type="password" name="new_password" id="new_password" class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required minlength="8">
+                                    <button type="button" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 toggle-password" data-target="new_password"><i class="fas fa-eye"></i></button>
                                 </div>
-                                <!-- Strength Meter -->
                                 <div class="mt-2 flex gap-1 h-1">
                                     <div class="flex-1 rounded-full bg-gray-200" id="strength-1"></div>
                                     <div class="flex-1 rounded-full bg-gray-200" id="strength-2"></div>
@@ -255,15 +305,13 @@ if ($action === 'change_password') {
                                 <label class="block text-sm font-bold text-gray-700">Confirm Password</label>
                             </div>
                             <div class="md:col-span-2 relative">
-                                <input type="password" name="confirm_password" id="confirm_password" class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d] transition-shadow" required minlength="8">
-                                <button type="button" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 toggle-password" data-target="confirm_password">
-                                    <i class="fas fa-eye"></i>
-                                </button>
+                                <input type="password" name="confirm_password" id="confirm_password" class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-[#0a6e2d] focus:border-[#0a6e2d]" required minlength="8">
+                                <button type="button" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 toggle-password" data-target="confirm_password"><i class="fas fa-eye"></i></button>
                             </div>
                         </div>
                     </div>
                     <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-                        <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white font-medium py-2 px-6 rounded-lg transition-colors shadow-sm">
+                        <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white font-medium py-2 px-6 rounded-lg shadow-sm">
                             <i class="fas fa-key mr-1"></i> Update Password
                         </button>
                     </div>
@@ -277,13 +325,12 @@ if ($action === 'change_password') {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- Password Visibility Toggles ---
+    // Password visibility toggles
     document.querySelectorAll('.toggle-password').forEach(btn => {
         btn.addEventListener('click', function() {
             const targetId = this.dataset.target;
             const input = document.getElementById(targetId);
             const icon = this.querySelector('i');
-            
             if (input.type === 'password') {
                 input.type = 'text';
                 icon.classList.remove('fa-eye');
@@ -296,38 +343,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // --- Password Strength Meter ---
+    // Password strength meter
     const newPassword = document.getElementById('new_password');
-    const strengthBars = [
-        document.getElementById('strength-1'),
-        document.getElementById('strength-2'),
-        document.getElementById('strength-3'),
-        document.getElementById('strength-4')
-    ];
+    const strengthBars = ['strength-1','strength-2','strength-3','strength-4'].map(id => document.getElementById(id));
     const strengthText = document.getElementById('strength-text');
 
     newPassword.addEventListener('input', function() {
         const val = this.value;
         let score = 0;
-        
         if (val.length > 0) score = 1;
         if (val.length >= 8) score = 2;
         if (val.length >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val)) score = 3;
         if (val.length >= 10 && /[A-Z]/.test(val) && /[0-9]/.test(val) && /[^A-Za-z0-9]/.test(val)) score = 4;
 
-        // Reset bars
-        strengthBars.forEach(bar => {
-            bar.className = 'flex-1 rounded-full bg-gray-200';
-        });
-
-        // Update bars based on score
+        strengthBars.forEach(bar => { bar.className = 'flex-1 rounded-full bg-gray-200'; });
         const colors = ['bg-red-500', 'bg-amber-500', 'bg-blue-500', 'bg-green-500'];
         for (let i = 0; i < score; i++) {
             strengthBars[i].classList.remove('bg-gray-200');
             strengthBars[i].classList.add(colors[i]);
         }
-
-        // Update text
         const texts = ['Enter a password', 'Weak', 'Fair', 'Good', 'Strong'];
         strengthText.textContent = texts[score];
     });

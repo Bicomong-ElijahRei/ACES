@@ -7,7 +7,7 @@ redirectIfNotStudent();
 
 // Fetch student details (Added last_id_change)
 $stmt = $pdo->prepare("
-    SELECT u.email, u.pending_email, s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change, s.last_section_change 
+    SELECT u.email, u.pending_email, u.avatar, s.student_id, s.program, s.section, s.first_name, s.last_name, s.middle_name, s.suffix, s.telephone, s.mobile, s.last_id_change, s.last_section_change 
     FROM users u 
     JOIN students s ON u.user_id = s.user_id 
     WHERE s.student_id = ?
@@ -231,6 +231,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 }
+
+// --- Handle Avatar Upload ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'upload_avatar') {
+    csrf_verify();
+    if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['avatar'];
+        $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
+            $error = "Only JPG and PNG files are allowed.";
+        } elseif ($file['size'] > 2097152) {
+            $error = "File must be under 2MB.";
+        } else {
+            // Resolve user_id from student_id (needed for filename so avatar survives ID changes)
+            $stmt_uid = $pdo->prepare("SELECT user_id FROM students WHERE student_id = ?");
+            $stmt_uid->execute([$_SESSION['student_id']]);
+            $uid = (int)$stmt_uid->fetchColumn();
+
+            $upload_dir = __DIR__ . '/../assets/images/avatars/';
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
+            }
+            $filename = 'avatar_user_' . $uid . '.' . $ext;
+            $target   = $upload_dir . $filename;
+
+            if (move_uploaded_file($file['tmp_name'], $target)) {
+                $pdo->prepare("UPDATE users SET avatar = ? WHERE user_id = ?")
+                    ->execute(['assets/images/avatars/' . $filename, $uid]);
+                $success = "Profile picture updated successfully.";
+                // Refresh the local $student data so the card immediately shows the new image
+                $student['avatar'] = 'assets/images/avatars/' . $filename;
+            } else {
+                $error = "Failed to upload avatar.";
+            }
+        }
+    } else {
+        $error = "No file uploaded.";
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en" class="h-full">
@@ -297,7 +335,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         <?php endif; ?>
 
         <div class="max-w-4xl mx-auto space-y-8">
-            
+
+            <!-- Section 0: Profile Picture -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50 flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                        <i class="fas fa-camera"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Profile Picture</h3>
+                        <p class="text-xs text-gray-500">Upload a JPG or PNG under 2MB.</p>
+                    </div>
+                </div>
+                <form method="POST" enctype="multipart/form-data" class="p-6 flex flex-col md:flex-row items-center gap-6">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="upload_avatar">
+
+                    <?php if (!empty($student['avatar'])): ?>
+                        <img src="../<?= htmlspecialchars($student['avatar']) ?>" alt="Avatar"
+                             class="h-24 w-24 rounded-full object-cover border-4 border-[#0a6e2d]/20 shadow">
+                    <?php else: ?>
+                        <div class="h-24 w-24 rounded-full bg-[#0a6e2d] text-white flex items-center justify-center font-bold text-4xl shadow">
+                            <?= strtoupper(substr($acc_first_name ?: ($student['first_name'] ?? 'U'), 0, 1)) ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="flex-1 w-full">
+                        <input type="file" name="avatar" accept="image/png,image/jpeg" required
+                               class="text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#0a6e2d] file:text-white hover:file:bg-[#054018]">
+                        <p class="text-xs text-gray-500 mt-2">Max size: 2MB. Accepted: JPG, PNG.</p>
+                    </div>
+                    <button type="submit" class="bg-[#0a6e2d] hover:bg-[#054018] text-white font-medium py-2 px-6 rounded-lg shadow-sm">
+                        <i class="fas fa-upload mr-1"></i> Upload
+                    </button>
+                </form>
+            </div>
+
             <!-- Section 1: Profile Information -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50 flex items-center gap-3">

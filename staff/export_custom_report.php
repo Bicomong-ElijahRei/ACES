@@ -29,6 +29,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 csrf_verify();
 
+// ---- Preview mode detection ----
+$preview_mode = !empty($_POST['preview']) && $_POST['preview'] === '1';
+
 // ---- Read inputs ----
 $format     = $_POST['format']     ?? 'csv';
 $session_id = $_POST['session_id'] ?? '';
@@ -176,6 +179,75 @@ function formatCellValue($col, $val) {
 // CSV EXPORT
 // ============================================================
 if ($format === 'csv') {
+
+    // ---- CSV PREVIEW (HTML table, first 50 rows) ----
+    if ($preview_mode) {
+        header('Content-Type: text/html; charset=utf-8');
+        $preview_rows = array_slice($rows, 0, 50);
+        ?>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <title>CSV Preview</title>
+            <style>
+                * { box-sizing: border-box; }
+                body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f9fafb; color: #1f2937; }
+                h2 { color: #0a6e2d; margin: 0 0 6px 0; font-size: 18px; }
+                .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+                .subtitle strong { color: #054018; }
+                table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-radius: 8px; overflow: hidden; font-size: 12.5px; }
+                thead th { background: #054018; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; white-space: nowrap; }
+                tbody td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+                tbody tr:nth-child(even) td { background: #f9fafb; }
+                tbody tr:last-child td { border-bottom: none; }
+                .more-notice { margin-top: 16px; padding: 12px 16px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px; color: #92400e; font-size: 13px; }
+                .empty-notice { padding: 40px; text-align: center; background: #fff; border-radius: 8px; color: #6b7280; }
+            </style>
+        </head>
+        <body>
+            <h2>📄 CSV Preview</h2>
+            <p class="subtitle">
+                Total: <strong><?= count($rows) ?> records</strong> ·
+                Columns: <strong><?= count($columns) ?></strong> ·
+                <em>Click "Download" in the modal to save the complete CSV.</em>
+            </p>
+
+            <?php if (empty($rows)): ?>
+                <div class="empty-notice">No records match your filters.</div>
+            <?php else: ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <?php foreach ($columns as $col): ?>
+                                <th><?= htmlspecialchars($col_meta[$col]['label']) ?></th>
+                            <?php endforeach; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($preview_rows as $row): ?>
+                            <tr>
+                                <?php foreach ($columns as $col): ?>
+                                    <td><?= htmlspecialchars(formatCellValue($col, $row[$col] ?? '')) ?></td>
+                                <?php endforeach; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <?php if (count($rows) > 50): ?>
+                    <div class="more-notice">
+                        <i>⚠️ Showing first 50 of <?= count($rows) ?> rows. Download the CSV to get the full dataset.</i>
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+
+    // ---- CSV DOWNLOAD (original behavior) ----
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="custom_report_' . date('Y-m-d') . '.csv"');
 
@@ -314,7 +386,11 @@ if ($format === 'pdf') {
     $pdf->Cell(0, 6, 'ACES Unit - Kolehiyo ng Lungsod ng Dasmarinas  |  Page ' . $pdf->PageNo() . '/{nb}', 0, 0, 'C');
     $pdf->AliasNbPages();
 
-    $pdf->Output('D', 'custom_report_' . date('Y-m-d') . '.pdf');
+    if ($preview_mode) {
+        $pdf->Output('I', 'custom_report_preview.pdf');   // Inline (renders in iframe)
+    } else {
+        $pdf->Output('D', 'custom_report_' . date('Y-m-d') . '.pdf'); // Force download
+    }
     exit;
 }
 

@@ -352,6 +352,9 @@ $default_columns = ['student_id', 'full_name', 'session_title', 'subtopic_title'
                         <button type="submit" name="format" value="pdf" class="btn-primary-clean">
                             <i class="fas fa-file-pdf"></i> Export as PDF
                         </button>
+                        <button type="button" id="previewBtn" class="btn-outline-clean">
+                            <i class="fas fa-eye text-[#0a6e2d]"></i> Preview
+                        </button>
                     </div>
                 </form>
             </div>
@@ -391,6 +394,149 @@ $default_columns = ['student_id', 'full_name', 'session_title', 'subtopic_title'
         const count = document.querySelectorAll('.column-chip input:checked').length;
         document.getElementById('columnCount').textContent = count;
     }
+</script>
+<!-- ============ EXPORT PREVIEW MODAL ============ -->
+<div id="previewModal" style="display: none;" class="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-2xl mx-auto mt-6 flex flex-col" style="max-width: 95vw; width: 1200px; height: calc(100vh - 48px);">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
+            <h3 class="text-xl font-bold text-[#0a6e2d]">
+                <i class="fas fa-eye mr-2"></i> Export Preview
+            </h3>
+            <button type="button" id="closePreviewX" class="text-gray-400 hover:text-gray-700 text-3xl leading-none">&times;</button>
+        </div>
+
+        <!-- Format toggle -->
+        <div class="px-6 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-4 shrink-0">
+            <span class="text-sm font-bold text-gray-700">Format:</span>
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="preview_format" value="pdf" checked class="accent-[#0a6e2d]">
+                <span class="text-sm font-semibold">PDF (Printable)</span>
+            </label>
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="preview_format" value="csv" class="accent-[#0a6e2d]">
+                <span class="text-sm font-semibold">CSV (Table)</span>
+            </label>
+        </div>
+
+        <!-- Iframe -->
+        <div class="flex-1 overflow-hidden bg-gray-100 relative">
+            <iframe id="previewIframe" name="previewIframe" style="width: 100%; height: 100%; border: none;"></iframe>
+            <div id="previewLoading" class="absolute inset-0 flex items-center justify-center bg-white/80 pointer-events-none">
+                <div class="text-center">
+                    <i class="fas fa-spinner fa-spin text-3xl text-[#0a6e2d] mb-2"></i>
+                    <p class="text-sm text-gray-600">Generating preview...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-white shrink-0">
+            <p class="text-sm text-gray-500">
+                <i class="fas fa-info-circle mr-1"></i> Preview only. Click Download to save the file.
+            </p>
+            <div class="flex gap-2">
+                <button type="button" id="closePreviewBtn" class="btn-outline-clean">Close</button>
+                <button type="button" id="downloadBtn" class="btn-primary-clean">
+                    <i class="fas fa-download"></i> Download
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden iframe for downloads -->
+<iframe id="downloadIframe" name="downloadIframe" style="display:none;"></iframe>
+
+<script>
+(function() {
+    const modal      = document.getElementById('previewModal');
+    const iframe     = document.getElementById('previewIframe');
+    const loading    = document.getElementById('previewLoading');
+    const previewBtn = document.getElementById('previewBtn');
+
+    function getSelectedFormat() {
+        const checked = document.querySelector('input[name="preview_format"]:checked');
+        return checked ? checked.value : 'pdf';
+    }
+
+    function buildAndSubmitForm(preview) {
+        const sourceForm = document.getElementById('reportForm');
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'export_custom_report.php';
+        form.target = preview ? 'previewIframe' : 'downloadIframe';
+        form.style.display = 'none';
+
+        // Copy all fields from source form (except format & preview which we control)
+        const fd = new FormData(sourceForm);
+        fd.forEach((value, key) => {
+            if (key === 'format' || key === 'preview') return;
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = key;
+            inp.value = value;
+            form.appendChild(inp);
+        });
+
+        // Add our format + preview flag
+        const fmt = document.createElement('input');
+        fmt.type = 'hidden';
+        fmt.name = 'format';
+        fmt.value = getSelectedFormat();
+        form.appendChild(fmt);
+
+        const pv = document.createElement('input');
+        pv.type = 'hidden';
+        pv.name = 'preview';
+        pv.value = preview ? '1' : '0';
+        form.appendChild(pv);
+
+        document.body.appendChild(form);
+        form.submit();
+        setTimeout(() => form.remove(), 5000);
+    }
+
+    function openPreview() {
+        modal.style.display = 'flex';
+        loading.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        buildAndSubmitForm(true);
+    }
+
+    function closePreview() {
+        modal.style.display = 'none';
+        loading.style.display = 'none';
+        document.body.style.overflow = '';
+        iframe.src = 'about:blank';
+    }
+
+    // Wire up
+    previewBtn?.addEventListener('click', openPreview);
+    document.getElementById('closePreviewX')?.addEventListener('click', closePreview);
+    document.getElementById('closePreviewBtn')?.addEventListener('click', closePreview);
+
+    document.querySelectorAll('input[name="preview_format"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            loading.style.display = 'flex';
+            buildAndSubmitForm(true);
+        });
+    });
+
+    document.getElementById('downloadBtn')?.addEventListener('click', function() {
+        buildAndSubmitForm(false);
+        setTimeout(closePreview, 500);
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.style.display === 'flex') closePreview();
+    });
+
+    // Hide loading spinner when iframe finishes loading (any load = content ready)
+    iframe.addEventListener('load', function() {
+        loading.style.display = 'none';
+    });
+})();
 </script>
 </body>
 </html>

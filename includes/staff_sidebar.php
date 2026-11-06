@@ -45,8 +45,24 @@ $current = basename($_SERVER['PHP_SELF']);
         </div>
 
         <!-- Welcome -->
-        <div class="mb-6 sidebar-text">
-            <h2 class="text-xl font-bold leading-tight">Welcome<br><?= htmlspecialchars($staff_name) ?></h2>
+        <?php
+        $stmt_av = $pdo->prepare("SELECT full_name, avatar FROM users WHERE user_id = ?");
+        $stmt_av->execute([$_SESSION['user_id']]);
+        $sb_user = $stmt_av->fetch();
+        $sb_name = $sb_user['full_name'] ?? $staff_name;
+        $sb_avatar = $sb_user['avatar'] ?? null;
+        ?>
+        <div class="mb-6 sidebar-text flex items-center gap-3">
+            <?php if (!empty($sb_avatar)): ?>
+                <img src="../<?= htmlspecialchars($sb_avatar) ?>" alt="Avatar" class="h-10 w-10 rounded-full object-cover border-2 border-white/30 shadow-sm shrink-0">
+            <?php else: ?>
+                <div class="h-10 w-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-lg border-2 border-white/30 shrink-0">
+                    <?= strtoupper(substr($sb_name, 0, 1)) ?>
+                </div>
+            <?php endif; ?>
+            <div class="min-w-0">
+                <h2 class="text-sm font-bold leading-tight">Welcome<br><?= htmlspecialchars($sb_name) ?></h2>
+            </div>
         </div>
 
         <!-- Navigation Groups -->
