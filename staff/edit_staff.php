@@ -52,7 +52,7 @@ switch ($action) {
 
     case 'update_role':
         $new_role = $_POST['staff_role'] ?? '';
-        if (!in_array($new_role, ['admin', 'lead', 'viewer'], true)) {
+        if (!in_array($new_role, ['admin', 'staff'], true)) {
             header('Location: manage_staff.php?error=' . urlencode('Invalid role'));
             exit;
         }

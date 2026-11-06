@@ -109,6 +109,7 @@ if ($action === 'bulk_staff_verify' && isset($_POST['ids'])) {
         exit;
     } catch (Exception $e) {
         $pdo->rollBack();
+        $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
         $error = "Update failed: " . $e->getMessage();
         header('Location: students.php?msg=error&detail=' . urlencode($error));
         exit;

@@ -65,6 +65,7 @@ if ($action === 'update_profile') {
 
 // --- Handle Password Change ---
 if ($action === 'change_password') {
+    csrf_verify();
     $current = $_POST['current_password'];
     $new = $_POST['new_password'];
     $confirm = $_POST['confirm_password'];

@@ -16,20 +16,7 @@
  */
 
 require_once __DIR__ . '/config/database.php';
-
-// Secure session cookies — use session_set_cookie_params for consistency with includes/session.php
-$https_on = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
-session_set_cookie_params([
-    'lifetime' => 0,
-    'path'     => '/',
-    'domain'   => '',
-    'secure'   => $https_on,
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-session_start();
-
-// CSRF protection
+require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/includes/csrf.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -121,11 +108,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Handle "remember me" checkbox
         if (!empty($_POST['remember'])) {
-            require_once __DIR__ . '/includes/session.php';
-            aces_set_remember_cookie($user['user_id'], $pdo, (int) aces_env('SESSION_REMEMBER_DAYS', 30), isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on');
+            aces_set_remember_cookie($user['user_id'], $pdo, (int) aces_env('SESSION_REMEMBER_DAYS', 30), !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
         } else {
             // Clear any existing cookie if user didn't check the box
-            require_once __DIR__ . '/includes/session.php';
             aces_clear_remember_cookie();
         }
 

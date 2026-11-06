@@ -2,8 +2,13 @@
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 
-// This endpoint can be called without a student context (staff) or with ?student_id=... (student)
+// Staff-only when no student context is requested
 $student_id = $_GET['student_id'] ?? '';
+if ($student_id === '' && !isStaff()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Unauthorized']);
+    exit;
+}
 $sessions = [];
 
 if ($student_id) {

@@ -128,10 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         $body = "<p>Your 6-digit verification PIN is: <strong style='font-size:24px;'>{$pin}</strong></p><p>This PIN expires in 15 minutes.</p>";
                         sendEmail($email, $subject, $body);
                         
-                        // CRITICAL FIX: Save the PIN to the database BEFORE redirecting!
-                        $pdo->commit(); 
-
-                        $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address.'];
+                        // Save the PIN within the transaction; commit happens once at the end
+                        $_SESSION['flash'] = ['type' => 'info', 'text' => 'A verification PIN has been sent to your new email address. Please wait for the update to complete.'];
                         header("Location: ../verify_email_change.php");
                         exit;
                     }

@@ -205,7 +205,7 @@ foreach ($sessions as $session) {
             )->execute($att_params);
 
             $pdo->commit();
-            $total_assigned = count($to_register);
+            $total_assigned += count($to_register);
 
             // Send emails AFTER commit (so if SMTP fails, DB is still saved)
             foreach ($to_register as $r) {

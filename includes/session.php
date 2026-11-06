@@ -18,7 +18,7 @@ require_once __DIR__ . '/../config/env.php';
 require_once __DIR__ . '/../config/database.php';
 
 // ---- Cookie settings ----
-$https_on = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
+$https_on = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([

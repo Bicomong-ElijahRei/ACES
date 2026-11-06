@@ -31,8 +31,19 @@ foreach ($subtopics as $sub) {
 
     if (!empty($ids)) {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        // Capture student/subtopic/session before deleting so attendance can be cleaned up
+        $stmt_info = $pdo->prepare("SELECT student_id, subtopic_id, session_id FROM registrations WHERE registration_id IN ($placeholders)");
+        $stmt_info->execute($ids);
+        $excess_rows = $stmt_info->fetchAll(PDO::FETCH_ASSOC);
+
         $stmt_del = $pdo->prepare("DELETE FROM registrations WHERE registration_id IN ($placeholders)");
         $stmt_del->execute($ids);
+
+        foreach ($excess_rows as $er) {
+            $pdo->prepare("DELETE FROM attendance WHERE student_id = ? AND session_id = ? AND subtopic_id = ?")
+                ->execute([$er['student_id'], $er['session_id'], $er['subtopic_id']]);
+        }
+
         $removed += count($ids);
     }
 }

@@ -76,7 +76,7 @@ if ($action === 'create') {
 
                 // Send verification email
                 $base_url = rtrim(aces_env('APP_URL', 'http://localhost/cair-system'), '/');
-                $verify_link = $base_url . '/public/verify_staff.php?token=' . urlencode($token);
+                $verify_link = $base_url . '/public/verify.php?token=' . urlencode($token);
                 
                 $subject = "ACES Staff Account - Verify Your Email";
                 $body = "<div style='font-family: Arial, sans-serif; max-width: 600px;'>

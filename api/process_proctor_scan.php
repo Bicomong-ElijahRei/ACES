@@ -35,16 +35,32 @@ if (!$student) {
 }
 $full_name = $student['first_name'] . ' ' . $student['last_name'];
 
-// 3. CHECK ELIGIBILITY (Course Restrictions)
-$stmt_sub = $pdo->prepare("SELECT visible_courses FROM subtopics WHERE subtopic_id = ?");
+// 3. CHECK ELIGIBILITY (Course & Section Restrictions)
+$stmt_sub = $pdo->prepare("SELECT visible_courses, visible_for, required_courses, required_for FROM subtopics WHERE subtopic_id = ?");
 $stmt_sub->execute([$subtopic_id]);
 $sub_rules = $stmt_sub->fetch();
 
 $vis_courses = json_decode($sub_rules['visible_courses'] ?? '[]', true) ?: [];
+$vis_sections = json_decode($sub_rules['visible_for'] ?? '[]', true) ?: [];
+$req_courses = json_decode($sub_rules['required_courses'] ?? '[]', true) ?: [];
+$req_sections = json_decode($sub_rules['required_for'] ?? '[]', true) ?: [];
 
-// If the subtopic has restrictions and the student doesn't match, reject them!
+// Required gate: if specified, student must match
+if (!empty($req_courses) && !in_array($student['program'], $req_courses)) {
+    echo json_encode(['success' => false, 'message' => "Access Denied: This student is not in a required course for this session."]);
+    exit;
+}
+if (!empty($req_sections) && !in_array($student['section'], $req_sections)) {
+    echo json_encode(['success' => false, 'message' => "Access Denied: This student is not in a required section for this session."]);
+    exit;
+}
+// Visible gate: if restrictions exist, student must match
 if (!empty($vis_courses) && !in_array($student['program'], $vis_courses)) {
     echo json_encode(['success' => false, 'message' => "Access Denied: This student belongs to {$student['program']} and is not eligible for this session."]);
+    exit;
+}
+if (!empty($vis_sections) && !in_array($student['section'], $vis_sections)) {
+    echo json_encode(['success' => false, 'message' => "Access Denied: This student's section is not eligible for this session."]);
     exit;
 }
 
