@@ -1,4 +1,12 @@
 <?php
+ignore_user_abort(true); // Tell PHP to keep running even if the browser/cron disconnects
+set_time_limit(0);       // Remove PHP's time limit
+// Simple security check
+$secret = 'aces_cron_8f4a9d2c7b1e6f3a'; // <--- Paste it here
+if (!isset($_GET['secret']) || $_GET['secret'] !== $secret) {
+    header('HTTP/1.0 403 Forbidden');
+    die('Unauthorized');
+}
 /**
  * ACES Automated Compliance Alert Script
  *
