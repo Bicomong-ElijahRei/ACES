@@ -248,21 +248,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt_uid->execute([$_SESSION['student_id']]);
             $uid = (int)$stmt_uid->fetchColumn();
 
-            $upload_dir = __DIR__ . '/../assets/images/avatars/';
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-            $filename = 'avatar_user_' . $uid . '.' . $ext;
-            $target   = $upload_dir . $filename;
-
-            if (move_uploaded_file($file['tmp_name'], $target)) {
-                $pdo->prepare("UPDATE users SET avatar = ? WHERE user_id = ?")
-                    ->execute(['assets/images/avatars/' . $filename, $uid]);
-                $success = "Profile picture updated successfully.";
-                // Refresh the local $student data so the card immediately shows the new image
-                $student['avatar'] = 'assets/images/avatars/' . $filename;
+            if ($uid <= 0) {
+                $error = "Unable to resolve your user account.";
             } else {
-                $error = "Failed to upload avatar.";
+                $upload_dir = __DIR__ . '/../assets/images/avatars/';
+                if (!is_dir($upload_dir)) {
+                    mkdir($upload_dir, 0755, true);
+                }
+                $filename = 'avatar_user_' . $uid . '.' . $ext;
+                $target   = $upload_dir . $filename;
+
+                if (move_uploaded_file($file['tmp_name'], $target)) {
+                    $pdo->prepare("UPDATE users SET avatar = ? WHERE user_id = ?")
+                        ->execute(['assets/images/avatars/' . $filename, $uid]);
+                    $success = "Profile picture updated successfully.";
+                    // Refresh the local $student data so the card immediately shows the new image
+                    $student['avatar'] = 'assets/images/avatars/' . $filename;
+                } else {
+                    $error = "Failed to upload avatar.";
+                }
             }
         }
     } else {

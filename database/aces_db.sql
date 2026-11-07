@@ -1788,6 +1788,7 @@ INSERT INTO `ticket_messages` (`message_id`, `ticket_id`, `sender_id`, `message`
 CREATE TABLE `users` (
   `user_id` int(11) NOT NULL,
   `email` varchar(100) NOT NULL,
+  `avatar` varchar(255) DEFAULT NULL,
   `password_hash` varchar(255) NOT NULL,
   `is_verified` tinyint(1) NOT NULL DEFAULT 0,
   `verification_token` varchar(64) DEFAULT NULL,

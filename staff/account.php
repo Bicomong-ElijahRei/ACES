@@ -9,7 +9,7 @@ $staff_name = '';
 $stmt = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $staff = $stmt->fetch();
-$staff_name = $staff['full_name'];
+$staff_name = $staff['full_name'] ?? '';
 
 $action  = $_POST['action'] ?? '';
 $success = '';
