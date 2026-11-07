@@ -263,6 +263,12 @@ Alternatively, use cPanel's **Domains** → **Redirects** tool to force HTTPS.
 /usr/local/bin/php /home/kld/public_html/cron/send_reminders.php
 ```
 
+6. Repeat for the third job, using **Once Per Day** as the frequency:
+
+```
+/usr/local/bin/php /home/kld/public_html/cron/compliance_alerts.php
+```
+
 > **Cron path note:** The PHP binary path on shared hosting is often `/usr/local/bin/php` or `/usr/bin/php`. If the cron job doesn't run, check cPanel's **Cron Jobs** page for the exact PHP path — some hosts display it.
 
 > **CRON_SECRET alternative:** If your host runs PHP via CGI/FastCGI instead of CLI, use the curl-based approach instead:
@@ -449,6 +455,7 @@ Add these two lines:
 ```
 0 * * * * /usr/bin/php /var/www/html/cair-system/cron/auto_assign.php
 0 */6 * * * /usr/bin/php /var/www/html/cair-system/cron/send_reminders.php
+0 8 * * * /usr/bin/php /var/www/html/cair-system/cron/compliance_alerts.php
 ```
 
 ### 10. Create the Initial Super Admin (optional — a default admin exists)

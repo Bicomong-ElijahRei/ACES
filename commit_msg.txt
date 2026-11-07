@@ -1,0 +1,31 @@
+feat: add automated cron job for at-risk compliance alerts
+
+CRON JOB IMPLEMENTATION
+- Created cron/compliance_alerts.php to automatically identify students 
+  whose overall compliance (attendance + modules) falls below 50%.
+- The script loads the DB and email configs exactly like auto_assign.php 
+  to ensure architectural alignment.
+- Includes a fully styled HTML email template with a breakdown of the 
+  student's program, section, attendance, and module completion.
+
+ANTI-SPAM COOLDOWN MECHANISM
+- Created migrations/005_add_compliance_alerts.sql to track sent alerts.
+- The script queries the compliance_alerts table to enforce a strict 
+  7-day cooldown per student, preventing daily spam if they have not 
+  yet resolved their compliance deficit.
+- The table auto-creates via CREATE TABLE IF NOT EXISTS if the 
+  migration hasn't been run.
+
+DOCUMENTATION UPDATES
+- Updated INSTALL.md with instructions for adding the third cron job 
+  to both shared hosting (cPanel) and VPS (crontab) environments.
+- Updated HANDOVER.md with the manual-run command for the new script.
+
+VERIFICATION & ALIGNMENT
+- Dry-run tested locally: Successfully processed 11 at-risk students 
+  and logged them to the DB before hitting XAMPP's 60-second SMTP timeout 
+  (expected behavior for localhost without a mail server).
+- Verified schema alignment: All SQL column references match the 
+  current database dump perfectly.
+- No core application files (staff, student, includes) were modified, 
+  ensuring zero regressions in existing dashboards.

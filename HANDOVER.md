@@ -223,6 +223,7 @@ mysql -u root -p aces_db < database/aces_db.sql
 ```bash
 php /path/to/cair-system/cron/auto_assign.php
 php /path/to/cair-system/cron/send_reminders.php
+php /path/to/cair-system/cron/compliance_alerts.php
 ```
 
 Or via curl (if CRON_SECRET is set):
