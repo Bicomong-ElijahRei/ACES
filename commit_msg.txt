@@ -1,0 +1,7 @@
+fix: resolve FPDF pagination and header repetition in custom report exports
+
+- Replaced the manual row-drawing loop in staff/export_custom_report.php
+- Added a manual page break check ($pdf->GetY() + $row_height > $pdf->PageBreakTrigger)
+- Automatically redraws the dark-green table header on new pages
+- Temporarily disables AutoPageBreak during MultiCell to prevent rows from splitting
+- Fixes both the inline iframe preview and the downloaded PDF

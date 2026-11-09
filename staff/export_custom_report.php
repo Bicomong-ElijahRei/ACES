@@ -336,6 +336,7 @@ if ($format === 'pdf') {
     foreach ($rows as $row) {
         $pdf->SetX($margin_left);
 
+        // 1. Calculate row height first
         $max_lines = 1;
         $cell_values = [];
         foreach ($columns as $col) {
@@ -349,6 +350,24 @@ if ($format === 'pdf') {
         }
         $row_height = max(6, $max_lines * 4.5);
 
+        // 2. Check if we need a new page BEFORE drawing the row
+        if ($pdf->GetY() + $row_height > $pdf->PageBreakTrigger) {
+            $pdf->AddPage();
+            // Re-draw the header on the new page
+            $pdf->SetFillColor(5, 64, 24);
+            $pdf->SetTextColor(255, 255, 255);
+            $pdf->SetFont('Helvetica', 'B', 9);
+            $pdf->SetX($margin_left);
+            foreach ($columns as $col) {
+                $meta = $col_meta[$col];
+                $pdf->Cell($col_widths[$col], 9, $meta['label'], 1, 0, 'C', true);
+            }
+            $pdf->Ln();
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('Helvetica', '', 8.5);
+        }
+
+        // 3. Draw the row safely
         $fill = ($row_index % 2 === 1);
         if ($fill) {
             $pdf->SetFillColor(248, 250, 252);
@@ -363,16 +382,20 @@ if ($format === 'pdf') {
             $x_cur = $pdf->GetX();
             $y_cur = $pdf->GetY();
 
+            // Draw cell background/border
             $pdf->SetXY($x_cur, $y_cur);
-            if ($fill) {
-                $pdf->Cell($col_widths[$col], $row_height, '', 1, 0, '', true);
-            } else {
-                $pdf->Cell($col_widths[$col], $row_height, '', 1, 0, '', false);
-            }
+            $pdf->Cell($col_widths[$col], $row_height, '', 1, 0, '', $fill);
 
+            // Draw text
             $pdf->SetXY($x_cur + 1, $y_cur + 1);
-            $pdf->MultiCell($col_widths[$col] - 2, 4, $val, 0, $meta['align']);
 
+            // Temporarily disable auto page break so MultiCell doesn't split the row unexpectedly
+            $auto_page_break = $pdf->AutoPageBreak;
+            $pdf->SetAutoPageBreak(false);
+            $pdf->MultiCell($col_widths[$col] - 2, 4, $val, 0, $meta['align']);
+            $pdf->SetAutoPageBreak($auto_page_break);
+
+            // Move to the next column
             $pdf->SetXY($x_cur + $col_widths[$col], $y_start);
         }
 
