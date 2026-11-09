@@ -351,7 +351,7 @@ if ($format === 'pdf') {
         $row_height = max(6, $max_lines * 4.5);
 
         // 2. Check if we need a new page BEFORE drawing the row
-        if ($pdf->GetY() + $row_height > $pdf->PageBreakTrigger) {
+        if ($pdf->GetY() + $row_height > $pdf->GetPageHeight() - 15) {
             $pdf->AddPage();
             // Re-draw the header on the new page
             $pdf->SetFillColor(5, 64, 24);
@@ -390,10 +390,9 @@ if ($format === 'pdf') {
             $pdf->SetXY($x_cur + 1, $y_cur + 1);
 
             // Temporarily disable auto page break so MultiCell doesn't split the row unexpectedly
-            $auto_page_break = $pdf->AutoPageBreak;
-            $pdf->SetAutoPageBreak(false);
+            $pdf->SetAutoPageBreak(false, 15);
             $pdf->MultiCell($col_widths[$col] - 2, 4, $val, 0, $meta['align']);
-            $pdf->SetAutoPageBreak($auto_page_break);
+            $pdf->SetAutoPageBreak(true, 15); // Restore margin
 
             // Move to the next column
             $pdf->SetXY($x_cur + $col_widths[$col], $y_start);
@@ -403,11 +402,11 @@ if ($format === 'pdf') {
         $row_index++;
     }
 
+    $pdf->AliasNbPages();
     $pdf->SetY(-12);
     $pdf->SetFont('Helvetica', 'I', 8);
     $pdf->SetTextColor(120, 120, 120);
     $pdf->Cell(0, 6, 'ACES Unit - Kolehiyo ng Lungsod ng Dasmarinas  |  Page ' . $pdf->PageNo() . '/{nb}', 0, 0, 'C');
-    $pdf->AliasNbPages();
 
     if ($preview_mode) {
         $pdf->Output('I', 'custom_report_preview.pdf');   // Inline (renders in iframe)

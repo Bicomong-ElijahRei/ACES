@@ -1,7 +1,19 @@
-fix: resolve FPDF pagination and header repetition in custom report exports
+fix: resolve FPDF pagination and protected property errors on live server
 
-- Replaced the manual row-drawing loop in staff/export_custom_report.php
-- Added a manual page break check ($pdf->GetY() + $row_height > $pdf->PageBreakTrigger)
-- Automatically redraws the dark-green table header on new pages
-- Temporarily disables AutoPageBreak during MultiCell to prevent rows from splitting
-- Fixes both the inline iframe preview and the downloaded PDF
+FPDF PAGINATION & INFINITYFREE COMPATIBILITY
+- Resolved an HTTP 500 error on InfinityFree caused by accessing protected 
+  FPDF properties ($PageBreakTrigger and $bMargin) which behave differently 
+  across FPDF versions.
+- Replaced `$pdf->PageBreakTrigger` with `$pdf->GetPageHeight() - 15` 
+  (using public methods) to correctly detect when a new page is needed.
+- Replaced the dynamic `$bMargin` save/restore logic with a hardcoded 
+  `SetAutoPageBreak(..., 15)` inside the row-drawing loop to prevent 
+  fatal errors while keeping rows intact.
+- The PDF generator now successfully creates multiple pages, 
+  automatically redrawing the dark-green table headers on Page 2, 3, etc.
+- Fixed both the inline iframe preview and the actual downloaded PDF.
+
+VERIFICATION
+- Tested locally and live on InfinityFree.
+- Preview and Download now correctly span multiple pages with no 
+  fatal errors, preserving all data rows.
